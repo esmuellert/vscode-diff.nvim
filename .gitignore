@@ -1,0 +1,15 @@
+# Build artifacts
+*.o
+*.so
+*.dylib
+*.dll
+test_diff_core
+
+# Neovim
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
