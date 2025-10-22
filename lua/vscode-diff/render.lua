@@ -93,7 +93,7 @@ function M.add_filler_lines(bufnr, side_plan)
       -- Add extmark with virtual line
       if prev_line > 0 then
         vim.api.nvim_buf_set_extmark(bufnr, extmark_ns, prev_line - 1, 0, {
-          virt_lines = {{"", "Normal"}},
+          virt_lines = {{{"~", "NonText"}}},  -- Array of line chunks
           virt_lines_above = false,
         })
       end
