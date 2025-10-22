@@ -6,24 +6,25 @@ local config = require("vscode-diff.config")
 -- Based on VSCode's style.css and registrations.contribution.ts
 function M.setup_highlights()
   -- Line-level highlights (light backgrounds)
+  -- Using RGB colors that approximate VSCode's appearance
   vim.api.nvim_set_hl(0, "VscodeDiffLineInsert", {
-    bg = "#9bb95533",  -- Light green background
+    bg = "#1e3a1e",  -- Dark green background (approximation for dark theme)
     default = true,
   })
   
   vim.api.nvim_set_hl(0, "VscodeDiffLineDelete", {
-    bg = "#ff000033",  -- Light red background
+    bg = "#3a1e1e",  -- Dark red background (approximation for dark theme)
     default = true,
   })
   
   -- Character-level highlights (deep/dark colors - THE "DEEPER COLOR" EFFECT)
   vim.api.nvim_set_hl(0, "VscodeDiffCharInsert", {
-    bg = "#487e0299",  -- Deep/dark green for inserted characters
+    bg = "#2d6d2d",  -- Deeper/darker green for inserted characters
     default = true,
   })
   
   vim.api.nvim_set_hl(0, "VscodeDiffCharDelete", {
-    bg = "#ff000099",  -- Deep/dark red for deleted characters
+    bg = "#6d2d2d",  -- Deeper/darker red for deleted characters
     default = true,
   })
 end
