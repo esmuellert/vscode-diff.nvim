@@ -29,10 +29,11 @@ First attempt used a simpler Longest Common Subsequence (LCS) approach with dyna
 - `c-diff-core/include/types.h` - Core type definitions
 - `c-diff-core/src/utils.c` - Utility functions  
 - `c-diff-core/src/myers.c` - LCS-based implementation
-- `c-diff-core/tests/test_myers.c` - Unit tests (9 test cases)
+- `c-diff-core/tests/test_myers.c` - Unit tests (started with 9 cases, later streamlined to 6)
 - `c-diff-core/Makefile` - Build system
 
-**Test Coverage (Initial):**
+**Test Coverage (Initial - LCS Version):**
+The initial LCS implementation had 9 test cases:
 1. Empty vs empty
 2. Identical files
 3. Single line insertion
@@ -43,7 +44,9 @@ First attempt used a simpler Longest Common Subsequence (LCS) approach with dyna
 8. All deletions (empty modified)
 9. Complex multi-line scenario
 
-**Result:** All tests passing, but implementation was not true O(ND) Myers algorithm.
+**Result:** All 9 tests passing, but implementation was not true O(ND) Myers algorithm.
+
+**Note:** When reimplementing with true Myers O(ND), the test suite was streamlined to 6 core test cases that better match VSCode's testing approach (removing redundant edge cases).
 
 ---
 
@@ -210,6 +213,8 @@ c-diff-core/tests/
 ```
 
 ### Test Results
+
+**Final test suite** (6 comprehensive test cases, matching VSCode's approach):
 
 All tests passing with true Myers O(ND):
 - ✓ Empty files (0 diffs)

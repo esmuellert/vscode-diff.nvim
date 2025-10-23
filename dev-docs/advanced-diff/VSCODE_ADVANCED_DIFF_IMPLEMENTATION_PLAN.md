@@ -130,14 +130,19 @@ Computes the shortest edit sequence using Myers' O(ND) algorithm. Produces a min
   - `computeDiff()` - Core Myers implementation
 
 ### Unit Tests to Implement
-- **VSCode Test Location:** `src/vs/editor/test/common/diff/diffComputer.test.ts`
+- **Note:** VSCode has minimal tests for advanced diff (only 5 tests total in `defaultLinesDiffComputer.test.ts`, with just 1 basic Myers test). The following are our comprehensive test cases:
 - **Test Cases:**
   1. Empty vs empty → no diffs
   2. Identical files → no diffs
   3. Single line insertion → 1 diff
   4. Single line deletion → 1 diff
-  5. Multiple line changes → correct diff regions
-  6. Large file performance test
+  5. Single line modification → 1 diff (explicit modify test)
+  6. Multiple separate diffs → correct diff array
+  7. Interleaved changes → insert, delete, modify mixed
+  8. Completely different files → 1 large diff
+  9. Snake following verification → diagonal matching works
+  10. Large file performance test (500+ lines)
+  11. Worst-case scenario → maximum edit distance
 
 ---
 
@@ -158,12 +163,16 @@ Shifts diff boundaries to more intuitive positions (e.g., moving changes to blan
   - `removeShortMatches()` - Preview of step 3
 
 ### Unit Tests to Implement
-- **VSCode Test Location:** `src/vs/editor/test/common/diff/diffComputer.test.ts`
+- **Note:** VSCode doesn't have isolated tests for this step. The following are our test cases:
 - **Test Cases:**
   1. Shift diff to blank line
   2. Shift diff to brace boundary
   3. Join adjacent diffs with 1-line gap
   4. Preserve meaningful separation
+  5. Optimize at file start (boundary case)
+  6. Optimize at file end (boundary case)
+  7. No optimization needed (already optimal)
+  8. Comment boundary shift
 
 ---
 
@@ -183,12 +192,16 @@ Merges diff regions separated by very short unchanged sequences (typically 1-2 l
   - `removeVeryShortMatchingTextBetweenDiffs()` - Character-level version
 
 ### Unit Tests to Implement
-- **VSCode Test Location:** `src/vs/editor/test/common/diff/diffComputer.test.ts`
+- **Note:** VSCode doesn't have isolated tests for this step. The following are our test cases:
 - **Test Cases:**
   1. Merge diffs with 1-line gap
   2. Keep diffs with 3+ line gap
   3. Edge case: start/end of file
   4. Multiple consecutive short matches
+  5. Exactly 2-line gap (threshold boundary)
+  6. All gaps are short (stress merge logic)
+  7. Cascading merges (A+B, then (A+B)+C)
+  8. Zero-line gap (adjacent diffs)
 
 ---
 
@@ -209,13 +222,18 @@ For each line-level diff region, computes character-by-character differences usi
   - Character sequence handling in `DiffAlgorithmResult`
 
 ### Unit Tests to Implement
-- **VSCode Test Location:** `src/vs/editor/test/common/diff/diffComputer.test.ts`
+- **Note:** VSCode doesn't have isolated tests for this step. The following are our test cases:
 - **Test Cases:**
   1. Single word change in line
   2. Multiple changes in one line
   3. Whitespace-only changes
   4. Empty line vs content line
   5. Full line replacement
+  6. UTF-8 multibyte characters (e.g., "café" → "cafe")
+  7. Emoji changes (e.g., "hello👋" → "hello")
+  8. Tab vs spaces (e.g., "\t" vs "    ")
+  9. Very long line (10k+ characters)
+  10. Line ending changes (LF vs CRLF)
 
 ---
 
@@ -236,12 +254,14 @@ Groups character-level changes by line range. Creates `DetailedLineRangeMapping`
   - `DetailedLineRangeMapping.fromRangeMappings()`
 
 ### Unit Tests to Implement
-- **VSCode Test Location:** `src/vs/editor/test/common/diff/diffComputer.test.ts`
+- **Note:** VSCode doesn't have isolated tests for this step. The following are our test cases:
 - **Test Cases:**
   1. Single-line change → 1 DetailedLineRangeMapping
   2. Multi-line change → 1 DetailedLineRangeMapping with multiple inner changes
   3. Adjacent line changes → Separate mappings
   4. Touching line changes → Single merged mapping
+  5. Empty line in mapping
+  6. Very large mapping (100+ lines)
 
 ---
 
@@ -262,12 +282,16 @@ Identifies code blocks that were moved (cut from one location, pasted in another
   - Hashing and matching logic for identical blocks
 
 ### Unit Tests to Implement
-- **VSCode Test Location:** `src/vs/editor/test/common/diff/diffComputer.test.ts`
+- **Note:** VSCode doesn't have isolated tests for this step. The following are our test cases:
 - **Test Cases:**
   1. Function moved to different location
   2. Multiple blocks moved
   3. Block moved and modified (should not detect)
   4. Partial move (only some lines)
+  5. Hash collision handling
+  6. Move within move (nested scenarios)
+  7. Minimum block size threshold
+  8. Identical duplicate blocks
 
 ---
 
@@ -290,11 +314,16 @@ Transforms coordinate-based algorithm output into rendering instructions with ac
   - Side-by-side alignment
 
 ### Unit Tests to Implement
+- **Note:** VSCode doesn't have isolated tests for this step. The following are our test cases:
 - **Test Cases:**
   1. Simple diff → correct highlights
   2. Multi-line change → proper alignment
   3. Move detection → move decorations
   4. Empty diff → no highlights
+  5. Filler lines for alignment
+  6. Very wide lines (wrapping behavior)
+  7. Side-by-side alignment sync
+  8. Mixed decoration types
 
 ---
 
@@ -304,17 +333,37 @@ Transforms coordinate-based algorithm output into rendering instructions with ac
 Each module has isolated tests verifying correctness:
 - Input/output validation
 - Edge cases (empty, single-line, large files)
-- VSCode parity verification using their test cases
+- Error handling (null input, invalid data)
+- Memory safety (no leaks, proper cleanup)
+- Performance bounds (time constraints)
 
 ### Integration Tests
 - **Full Pipeline:** Feed real file diffs through entire pipeline
 - **VSCode Comparison:** Compare our output against VSCode's expected results
 - **Performance:** Benchmark against large files (1000+ lines)
+- **Cross-Step:** Verify data flow between pipeline stages
+
+### Additional Test Suites
+**Error Handling:**
+- Null/invalid input handling
+- Negative counts
+- Invalid UTF-8 sequences
+
+**Memory Safety:**
+- Memory leak detection (valgrind)
+- Large allocation stress tests
+- Proper cleanup verification
+
+**Performance:**
+- Each step < 50ms for typical files
+- Large file benchmarks (500, 5000 lines)
+- Worst-case complexity bounds
 
 ### Test Data Sources
-1. **VSCode Test Suite:** Use test cases from `src/vs/editor/test/common/diff/diffComputer.test.ts`
+1. **VSCode Advanced Tests:** `defaultLinesDiffComputer.test.ts` (5 tests - limited coverage)
 2. **Real-World Files:** Common programming scenarios (refactoring, bug fixes)
-3. **Edge Cases:** Empty files, binary-like content, very long lines
+3. **Synthetic Edge Cases:** Crafted for boundary conditions
+4. **Adversarial Cases:** Worst-case complexity scenarios
 
 ---
 
