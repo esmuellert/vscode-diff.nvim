@@ -75,9 +75,11 @@ ffi.cdef[[
                            const char** lines_b, int count_b);
   void free_render_plan(RenderPlan* plan);
   const char* get_version(void);
-  void diff_core_set_verbose(bool enabled);
   void diff_core_print_render_plan(const RenderPlan* plan);
 ]]
+
+-- Global verbose flag
+local verbose_enabled = false
 
 -- Convert Lua table of strings to C array
 local function lua_to_c_strings(tbl)
@@ -159,19 +161,33 @@ function M.get_version()
 end
 
 function M.set_verbose(enabled)
-  lib.diff_core_set_verbose(enabled)
+  verbose_enabled = enabled
 end
 
-function M.print_render_plan(c_plan)
-  lib.diff_core_print_render_plan(c_plan)
+local function print_lua_verbose(msg)
+  if not verbose_enabled then return end
+  
+  -- Simple output without ANSI codes (more reliable across environments)
+  print(string.format("\n[LUA] %s\n", msg))
 end
 
 function M.compute_diff(lines_a, lines_b)
   local c_arr_a, count_a = lua_to_c_strings(lines_a)
   local c_arr_b, count_b = lua_to_c_strings(lines_b)
 
+  print_lua_verbose(string.format("Computing diff: %d lines (left) vs %d lines (right)", count_a, count_b))
+
   local c_plan = lib.compute_diff(c_arr_a, count_a, c_arr_b, count_b)
+  
+  -- Print C verbose output if enabled
+  if verbose_enabled then
+    lib.diff_core_print_render_plan(c_plan)
+  end
+  
   local lua_plan = c_to_lua_plan(c_plan)
+
+  print_lua_verbose(string.format("Render plan created: LEFT=%d lines, RIGHT=%d lines", 
+                                  lua_plan.left.line_count, lua_plan.right.line_count))
 
   lib.free_render_plan(c_plan)
 

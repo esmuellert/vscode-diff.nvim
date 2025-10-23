@@ -1,0 +1,4 @@
+Line 1 stays
+Line 3 modified new
+Line 3.5 inserted
+Line 4 stays

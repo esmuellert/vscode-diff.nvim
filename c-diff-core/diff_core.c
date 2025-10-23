@@ -1,55 +1,195 @@
+#define _POSIX_C_SOURCE 200809L
 #include "diff_core.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <unistd.h>  // for isatty() and fileno()
 
 // ============================================================================
 // Version and Debug
 // ============================================================================
 
-static bool g_verbose = false;
-
 const char* get_version(void) {
     return "0.1.0";
 }
 
-void diff_core_set_verbose(bool enabled) {
-    g_verbose = enabled;
+static const char* get_type_name(HighlightType type) {
+    switch (type) {
+        case HL_LINE_INSERT: return "INSERT";
+        case HL_LINE_DELETE: return "DELETE";
+        case HL_CHAR_INSERT: return "CHAR_INSERT";
+        case HL_CHAR_DELETE: return "CHAR_DELETE";
+        default: return "UNKNOWN";
+    }
 }
 
 void diff_core_print_render_plan(const RenderPlan* plan) {
-    printf("\n=== RENDER PLAN DEBUG OUTPUT ===\n");
+    // Use ANSI colors only if stdout is a TTY
+    bool use_color = isatty(fileno(stdout));
+    const char* cyan = use_color ? "\033[36m" : "";
+    const char* yellow = use_color ? "\033[33m" : "";
+    const char* green = use_color ? "\033[32m" : "";
+    const char* red = use_color ? "\033[31m" : "";
+    const char* bold = use_color ? "\033[1m" : "";
+    const char* reset = use_color ? "\033[0m" : "";
     
-    printf("\nLEFT BUFFER (%d lines):\n", plan->left.line_count);
+    #define BOX_WIDTH 80
+    
+    printf("\n");
+    printf("%s╔", bold);
+    for (int i = 0; i < BOX_WIDTH - 2; i++) printf("═");
+    printf("╗%s\n", reset);
+    
+    printf("%s║ %s[C-CORE] RENDER PLAN", bold, cyan);
+    // Padding to align right border
+    int title_len = strlen("[C-CORE] RENDER PLAN");
+    for (int i = 0; i < BOX_WIDTH - title_len - 4; i++) printf(" ");
+    printf("%s║%s\n", bold, reset);
+    
+    printf("%s╚", bold);
+    for (int i = 0; i < BOX_WIDTH - 2; i++) printf("═");
+    printf("╝%s\n", reset);
+    printf("\n");
+    
+    // Left buffer
+    char left_title[100];
+    snprintf(left_title, sizeof(left_title), "LEFT BUFFER (%d lines)", plan->left.line_count);
+    printf("%s┌─ %s ", yellow, left_title);
+    int title_width = strlen(left_title) + 4;
+    for (int i = 0; i < BOX_WIDTH - title_width - 2; i++) printf("─");
+    printf("┐%s\n", reset);
+    
+    printf("%s│", yellow);
+    for (int i = 0; i < BOX_WIDTH - 2; i++) printf(" ");
+    printf("│%s\n", reset);
+    
     for (int i = 0; i < plan->left.line_count; i++) {
         LineMetadata meta = plan->left.line_metadata[i];
-        printf("  [%d] line=%d, type=%d (%s), filler=%s, char_hl=%d\n",
-               i, meta.line_num, meta.type,
-               meta.type == HL_LINE_DELETE ? "DELETE" : 
-               meta.type == HL_LINE_INSERT ? "INSERT" : "OTHER",
-               meta.is_filler ? "YES" : "NO",
-               meta.char_highlight_count);
+        const char* type_name = get_type_name(meta.type);
+        
+        // Determine line color based on type
+        const char* line_color = "";
+        if (meta.type == HL_LINE_DELETE || meta.type == HL_CHAR_DELETE) {
+            line_color = red;
+        } else if (meta.type == HL_LINE_INSERT || meta.type == HL_CHAR_INSERT) {
+            line_color = green;
+        }
+        
+        char line_buf[200];
+        snprintf(line_buf, sizeof(line_buf), 
+                "  [%d] line_num=%-3d type=%-11s filler=%-3s char_hl=%d",
+                i, meta.line_num, type_name,
+                meta.is_filler ? "YES" : "NO",
+                meta.char_highlight_count);
+        
+        printf("%s│%s%s", yellow, line_color, line_buf);
+        int content_len = strlen(line_buf);
+        for (int j = 0; j < BOX_WIDTH - content_len - 2; j++) printf(" ");
+        printf("%s│%s\n", yellow, reset);
+        
+        // Character highlights
         for (int j = 0; j < meta.char_highlight_count; j++) {
             CharHighlight hl = meta.char_highlights[j];
-            printf("      char[%d-%d] type=%d\n", hl.start_col, hl.end_col, hl.type);
+            const char* hl_type = get_type_name(hl.type);
+            
+            char char_buf[200];
+            snprintf(char_buf, sizeof(char_buf),
+                    "      ↳ char[%d-%d] type=%s",
+                    hl.start_col, hl.end_col, hl_type);
+            
+            printf("%s│%s%s", yellow, cyan, char_buf);
+            // UTF-8 arrow ↳ is 3 bytes but displays as 1 char, so subtract 2 for visual width
+            int char_len = strlen(char_buf) - 2;
+            for (int k = 0; k < BOX_WIDTH - char_len - 2; k++) printf(" ");
+            printf("%s│%s\n", yellow, reset);
+        }
+        
+        if (i < plan->left.line_count - 1) {
+            printf("%s│", yellow);
+            for (int j = 0; j < BOX_WIDTH - 2; j++) printf(" ");
+            printf("│%s\n", reset);
         }
     }
     
-    printf("\nRIGHT BUFFER (%d lines):\n", plan->right.line_count);
+    printf("%s│", yellow);
+    for (int i = 0; i < BOX_WIDTH - 2; i++) printf(" ");
+    printf("│%s\n", reset);
+    
+    printf("%s└", yellow);
+    for (int i = 0; i < BOX_WIDTH - 2; i++) printf("─");
+    printf("┘%s\n", reset);
+    printf("\n");
+    
+    // Right buffer
+    char right_title[100];
+    snprintf(right_title, sizeof(right_title), "RIGHT BUFFER (%d lines)", plan->right.line_count);
+    printf("%s┌─ %s ", yellow, right_title);
+    title_width = strlen(right_title) + 4;
+    for (int i = 0; i < BOX_WIDTH - title_width - 2; i++) printf("─");
+    printf("┐%s\n", reset);
+    
+    printf("%s│", yellow);
+    for (int i = 0; i < BOX_WIDTH - 2; i++) printf(" ");
+    printf("│%s\n", reset);
+    
     for (int i = 0; i < plan->right.line_count; i++) {
         LineMetadata meta = plan->right.line_metadata[i];
-        printf("  [%d] line=%d, type=%d (%s), filler=%s, char_hl=%d\n",
-               i, meta.line_num, meta.type,
-               meta.type == HL_LINE_DELETE ? "DELETE" : 
-               meta.type == HL_LINE_INSERT ? "INSERT" : "OTHER",
-               meta.is_filler ? "YES" : "NO",
-               meta.char_highlight_count);
+        const char* type_name = get_type_name(meta.type);
+        
+        // Determine line color based on type
+        const char* line_color = "";
+        if (meta.type == HL_LINE_DELETE || meta.type == HL_CHAR_DELETE) {
+            line_color = red;
+        } else if (meta.type == HL_LINE_INSERT || meta.type == HL_CHAR_INSERT) {
+            line_color = green;
+        }
+        
+        char line_buf[200];
+        snprintf(line_buf, sizeof(line_buf),
+                "  [%d] line_num=%-3d type=%-11s filler=%-3s char_hl=%d",
+                i, meta.line_num, type_name,
+                meta.is_filler ? "YES" : "NO",
+                meta.char_highlight_count);
+        
+        printf("%s│%s%s", yellow, line_color, line_buf);
+        int content_len = strlen(line_buf);
+        for (int j = 0; j < BOX_WIDTH - content_len - 2; j++) printf(" ");
+        printf("%s│%s\n", yellow, reset);
+        
+        // Character highlights
         for (int j = 0; j < meta.char_highlight_count; j++) {
             CharHighlight hl = meta.char_highlights[j];
-            printf("      char[%d-%d] type=%d\n", hl.start_col, hl.end_col, hl.type);
+            const char* hl_type = get_type_name(hl.type);
+            
+            char char_buf[200];
+            snprintf(char_buf, sizeof(char_buf),
+                    "      ↳ char[%d-%d] type=%s",
+                    hl.start_col, hl.end_col, hl_type);
+            
+            printf("%s│%s%s", yellow, cyan, char_buf);
+            // UTF-8 arrow ↳ is 3 bytes but displays as 1 char, so subtract 2 for visual width
+            int char_len = strlen(char_buf) - 2;
+            for (int k = 0; k < BOX_WIDTH - char_len - 2; k++) printf(" ");
+            printf("%s│%s\n", yellow, reset);
+        }
+        
+        if (i < plan->right.line_count - 1) {
+            printf("%s│", yellow);
+            for (int j = 0; j < BOX_WIDTH - 2; j++) printf(" ");
+            printf("│%s\n", reset);
         }
     }
-    printf("=== END RENDER PLAN ===\n\n");
+    
+    printf("%s│", yellow);
+    for (int i = 0; i < BOX_WIDTH - 2; i++) printf(" ");
+    printf("│%s\n", reset);
+    
+    printf("%s└", yellow);
+    for (int i = 0; i < BOX_WIDTH - 2; i++) printf("─");
+    printf("┘%s\n", reset);
+    printf("\n");
+    
+    #undef BOX_WIDTH
 }
 
 // ============================================================================
@@ -260,20 +400,6 @@ static DiffOp* compute_line_diff(const char** lines_a, int count_a,
         }
     }
     
-    if (g_verbose) {
-        printf("LCS table (line-level):\n");
-        for (int i = 0; i <= count_a && i <= 10; i++) {
-            printf("  ");
-            for (int j = 0; j <= count_b && j <= 10; j++) {
-                printf("%2d ", lcs[i][j]);
-            }
-            if (count_b > 10) printf("...");
-            printf("\n");
-        }
-        if (count_a > 10) printf("  ...\n");
-        printf("\n");
-    }
-    
     // Backtrack to build operations
     DiffOp* ops = malloc(sizeof(DiffOp) * (count_a + count_b + 2));
     *op_count = 0;
@@ -366,33 +492,9 @@ RenderPlan* compute_diff(const char** lines_a, int count_a,
                          const char** lines_b, int count_b) {
     RenderPlan* plan = malloc(sizeof(RenderPlan));
     
-    if (g_verbose) {
-        printf("\n=== DIFF COMPUTATION DEBUG ===\n");
-        printf("Input A (%d lines):\n", count_a);
-        for (int i = 0; i < count_a; i++) {
-            printf("  [%d] %s\n", i+1, lines_a[i]);
-        }
-        printf("Input B (%d lines):\n", count_b);
-        for (int i = 0; i < count_b; i++) {
-            printf("  [%d] %s\n", i+1, lines_b[i]);
-        }
-        printf("==============================\n\n");
-    }
-    
     // Compute line-level diff
     int op_count;
     DiffOp* ops = compute_line_diff(lines_a, count_a, lines_b, count_b, &op_count);
-    
-    if (g_verbose) {
-        printf("Diff Operations (%d):\n", op_count);
-        for (int i = 0; i < op_count; i++) {
-            const char* type_str[] = {"EQUAL", "DELETE", "INSERT", "MODIFY"};
-            printf("  [%d] type=%s, orig[%d:%d], mod[%d:%d]\n",
-                   i, type_str[ops[i].type], ops[i].orig_start, ops[i].orig_len,
-                   ops[i].mod_start, ops[i].mod_len);
-        }
-        printf("\n");
-    }
     
     // Calculate total line count for each side (including filler lines)
     int max_lines = count_a > count_b ? count_a : count_b;

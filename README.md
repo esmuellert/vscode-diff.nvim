@@ -123,20 +123,21 @@ make clean && make
 
 ### Testing
 
-Run C tests:
+Run all tests:
 ```bash
-make test
+make test              # Run all tests (C + Lua unit + E2E)
+make test-verbose      # Run all tests with verbose C core output
 ```
 
-Run Lua tests:
+Run specific test suites:
 ```bash
-nvim --headless -c "luafile tests/test_render.lua" -c "quit"
+make test-c            # C unit tests only
+make test-unit         # Lua unit tests only
+make test-e2e          # E2E tests only
+make test-e2e-verbose  # E2E tests with verbose output
 ```
 
-Run E2E tests:
-```bash
-nvim --headless -c "luafile tests/e2e_test.lua"
-```
+For more details on the test structure, see [`tests/README.md`](tests/README.md).
 
 ### Project Structure
 
@@ -152,10 +153,12 @@ vscode-diff.nvim/
 │   └── render.lua        # Buffer rendering
 ├── plugin/               # Plugin entry point
 │   └── vscode-diff.lua   # Auto-loaded on startup
-├── tests/                # Test files
-│   ├── test_render.lua   # Lua unit tests
-│   ├── e2e_test.lua      # End-to-end tests
-│   └── fixtures/         # Test data
+├── tests/                # Test suite
+│   ├── unit/             # Lua unit tests
+│   ├── e2e/              # End-to-end tests
+│   └── README.md         # Test documentation
+├── docs/                 # Production docs
+├── dev-docs/             # Development docs
 ├── Makefile              # Build automation
 └── README.md             # This file
 ```
