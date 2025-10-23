@@ -1,5 +1,7 @@
 # vscode-diff.nvim
 
+> **⚠️ WORK IN PROGRESS**: This plugin is under active development and not ready for production use.
+
 A Neovim plugin that provides VSCode-style inline diff rendering with two-tier highlighting.
 
 ## Features
