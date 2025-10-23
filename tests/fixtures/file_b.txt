@@ -1,6 +1,6 @@
 Line 1: This is the first line
 Line 2: This line has been modified
 Line 3: This is the third line
+Line 6: This is a new line
 Line 4: This is the fourth line
 Line 5: This is the fifth line
-Line 6: This is a new line

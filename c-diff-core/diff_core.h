@@ -112,4 +112,14 @@ void free_render_plan(RenderPlan* plan);
  */
 const char* get_version(void);
 
+/**
+ * Enable/disable verbose debug output.
+ */
+void diff_core_set_verbose(bool enabled);
+
+/**
+ * Print render plan details (for debugging).
+ */
+void diff_core_print_render_plan(const RenderPlan* plan);
+
 #endif // DIFF_CORE_H

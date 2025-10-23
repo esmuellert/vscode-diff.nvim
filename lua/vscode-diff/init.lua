@@ -75,6 +75,8 @@ ffi.cdef[[
                            const char** lines_b, int count_b);
   void free_render_plan(RenderPlan* plan);
   const char* get_version(void);
+  void diff_core_set_verbose(bool enabled);
+  void diff_core_print_render_plan(const RenderPlan* plan);
 ]]
 
 -- Convert Lua table of strings to C array
@@ -154,6 +156,14 @@ end
 -- Public API
 function M.get_version()
   return ffi.string(lib.get_version())
+end
+
+function M.set_verbose(enabled)
+  lib.diff_core_set_verbose(enabled)
+end
+
+function M.print_render_plan(c_plan)
+  lib.diff_core_print_render_plan(c_plan)
 end
 
 function M.compute_diff(lines_a, lines_b)

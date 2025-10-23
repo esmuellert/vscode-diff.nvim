@@ -1,13 +1,30 @@
 -- E2E test script
 -- Run with: nvim --headless -c "luafile tests/e2e_test.lua"
+-- Run with verbose: nvim --headless -c "luafile tests/e2e_test.lua" -- -v
+
+-- Check for -v flag in args
+local verbose = false
+for _, arg in ipairs(vim.v.argv) do
+  if arg == "-v" or arg == "--verbose" then
+    verbose = true
+    break
+  end
+end
 
 print("=== E2E Test ===")
+if verbose then
+  print("*** VERBOSE MODE ENABLED ***\n")
+end
 
 vim.o.loadplugins = true
 vim.opt.rtp:prepend(".")
 
 local diff = require("vscode-diff")
 local render = require("vscode-diff.render")
+
+if verbose then
+  diff.set_verbose(true)
+end
 
 -- Test 1: Version
 print("\nTest 1: Version")
