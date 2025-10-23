@@ -6,10 +6,12 @@ This directory contains all tests for vscode-diff.nvim.
 
 ```
 tests/
-├── unit/           # Lua unit tests (specific component testing)
+├── unit/           # Lua FFI binding tests (minimal - just integration checks)
 ├── e2e/            # End-to-end tests (full diff pipeline with fixtures)
 └── run_all.sh      # Master test runner
 ```
+
+**Note:** Algorithm unit tests are written in C and located in `c-diff-core/tests/`.
 
 ## Running Tests
 
@@ -39,15 +41,12 @@ nvim --headless -c "luafile run_case.lua" -- fixtures/simple_insert/left.txt fix
 
 ## Unit Tests
 
-Unit tests validate specific components and behaviors:
+Unit tests validate the Lua FFI bindings to the C core:
 
-- **test_version.lua** - Version string validation
-- **test_constants.lua** - Highlight type constant values
-- **test_filler.lua** - Filler line insertion logic
-- **test_char_diff.lua** - Character-level diff computation
-- **test_render_plan.lua** - Render plan data structure
+- **test_version.lua** - Version string validation via FFI
+- **test_constants.lua** - Highlight type constant values exposed to Lua
 
-Unit tests use **assertions** to validate expected behavior and will fail if assertions don't pass.
+**Note:** Algorithm correctness is validated by C unit tests in `c-diff-core/`. Lua unit tests only verify FFI integration.
 
 ## E2E Tests
 
@@ -109,13 +108,16 @@ Running: test_version
 ✓ Version: 0.1.0
 ✓ Test passed
 
-Running: test_filler
-=== Unit Test: Filler Lines ===
-...
-✓ All filler tests passed
+Running: test_constants
+=== Unit Test: Highlight Constants ===
+✓ HL_LINE_INSERT = 0
+✓ HL_LINE_DELETE = 1
+✓ HL_CHAR_INSERT = 2
+✓ HL_CHAR_DELETE = 3
+✓ Test passed
 
 ═══════════════════════════════════════════════════════════════════════════
-✓ All 5 unit tests passed
+✓ All 2 unit tests passed
 ```
 
 ### E2E Tests

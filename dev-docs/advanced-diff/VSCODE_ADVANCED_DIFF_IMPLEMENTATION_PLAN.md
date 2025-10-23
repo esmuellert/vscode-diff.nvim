@@ -8,23 +8,63 @@ This document provides a comprehensive, step-by-step plan to implement VSCode's 
 
 ## Project Structure
 
+### Recommended C Project Layout (Flat Structure)
+
+C projects typically use **flat source structure** for simplicity and build efficiency. This is a best practice in C development.
+
 ```
 c-diff-core/
-├── types.h                    # All type definitions
-├── myers.h / myers.c          # Step 1: Myers diff algorithm
-├── optimize.h / optimize.c    # Steps 2-3: Diff optimization
-├── refine.h / refine.c        # Step 4: Character-level refinement
-├── mapping.h / mapping.c      # Step 5: Line range mapping construction
-├── moved_lines.h / moved_lines.c  # Step 6: Move detection (optional)
-├── render_plan.h / render_plan.c  # Final: Convert to render plan
-├── diff_core.h / diff_core.c  # Main orchestrator
-└── tests/
-    ├── test_myers.c
-    ├── test_optimize.c
-    ├── test_refine.c
-    ├── test_mapping.c
-    └── test_integration.c
+├── include/
+│   └── types.h                    # All public type definitions
+├── src/
+│   ├── myers.c                    # Step 1: Myers diff algorithm
+│   ├── optimize.c                 # Steps 2-3: Diff optimization
+│   ├── refine.c                   # Step 4: Character-level refinement
+│   ├── mapping.c                  # Step 5: Line range mapping construction
+│   ├── moved_lines.c              # Step 6: Move detection (optional)
+│   ├── render_plan.c              # Step 7: Convert to render plan (STUB FIRST)
+│   ├── utils.c                    # Utility functions (string, memory, etc.)
+│   └── diff_core.c                # Main orchestrator + Lua FFI entry point
+├── tests/
+│   ├── test_myers.c
+│   ├── test_optimize.c
+│   ├── test_refine.c
+│   ├── test_mapping.c
+│   ├── test_moved_lines.c
+│   ├── test_render_plan.c
+│   └── test_integration.c
+├── diff_core.h                    # Public API for Lua FFI
+└── Makefile                       # Build system
 ```
+
+**Why Flat Structure?**
+- Standard C practice: Most C projects (Linux kernel, SQLite, Git) use flat or minimal hierarchy
+- Easier to navigate: All source in one place
+- Simpler builds: No complex include paths
+- Better for small-to-medium projects (<50 files)
+
+**Note:** We'll use this structure for the rewrite. The current `diff_core.c` will be replaced with a clean stub implementation.
+
+---
+
+## Required Utility Functions
+
+These utilities are needed across multiple steps. VSCode implements them in various locations:
+
+| Utility Function | Purpose | VSCode Reference |
+|-----------------|---------|------------------|
+| `string_hash()` | Hash strings for move detection | `src/vs/base/common/hash.ts` - `hash()` |
+| `array_append()` | Dynamic array growth | `src/vs/base/common/arrays.ts` - `pushMany()` |
+| `line_trim()` | Trim whitespace for comparison | `src/vs/base/common/strings.ts` - `trim()` |
+| `char_at_utf8()` | Safe UTF-8 character access | `src/vs/base/common/strings.ts` - `getNextCodePoint()` |
+| `range_contains()` | Check if range contains position | `src/vs/editor/common/core/range.ts` - `containsPosition()` |
+| `range_intersect()` | Check range intersection | `src/vs/editor/common/core/range.ts` - `intersectRanges()` |
+| `line_range_contains()` | Check if line range contains line | `src/vs/editor/common/core/ranges/lineRange.ts` - `contains()` |
+| `line_range_delta()` | Shift line range by offset | `src/vs/editor/common/core/ranges/lineRange.ts` - `delta()` |
+| `mem_grow()` | Realloc with error checking | Common pattern in C (not in VSCode) |
+| `str_dup_safe()` | Safe string duplication | Common pattern in C (not in VSCode) |
+
+**Implementation Note:** Create `src/utils.c` to house these helpers. This keeps algorithm code clean and focused.
 
 ---
 
