@@ -1,4 +1,5 @@
-#include "../algorithms/myers.h"
+#include "../include/types.h"
+#include "../include/myers.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
