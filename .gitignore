@@ -4,7 +4,7 @@
 *.dylib
 *.dll
 test_diff_core
-**/build/
+**/build
 
 # Neovim
 *.swp
