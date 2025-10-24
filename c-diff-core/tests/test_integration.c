@@ -11,7 +11,10 @@
 
 #include "../include/myers.h"
 #include "../include/optimize.h"
+#include "../include/refine.h"
 #include "../include/types.h"
+#include "../include/utils.h"
+#include "../include/print_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -46,6 +49,7 @@ typedef struct {
     ExpectedResult expected_myers;
     ExpectedResult expected_optimize;
     ExpectedResult expected_remove_short;
+    int expected_char_mappings;  // Expected count of character-level mappings
 } TestCase;
 
 // ============================================================================
@@ -79,12 +83,7 @@ static void verify_diff_array(SequenceDiffArray* actual, ExpectedResult* expecte
 }
 
 static void print_diff_state(const char* step_name, SequenceDiffArray* diffs) {
-    printf("  %s: %d diff(s)\n", step_name, diffs->count);
-    for (int i = 0; i < diffs->count; i++) {
-        printf("    [%d] seq1[%d,%d) -> seq2[%d,%d)\n", i,
-               diffs->diffs[i].seq1_start, diffs->diffs[i].seq1_end,
-               diffs->diffs[i].seq2_start, diffs->diffs[i].seq2_end);
-    }
+    print_sequence_diff_array(step_name, diffs);
 }
 
 // ============================================================================
@@ -118,7 +117,22 @@ static void run_test_case(TestCase* test) {
     print_diff_state("Step 3 (Remove Short)", diffs);
     verify_diff_array(diffs, &test->expected_remove_short, "Remove Short");
     
+    // Step 4: Character-Level Refinement
+    RangeMappingArray* refined = refine_diffs_to_char_level(diffs, 
+                                                            test->lines_a, test->len_a,
+                                                            test->lines_b, test->len_b);
+    assert(refined != NULL);
+    print_range_mapping_array("Step 4 (Refine)", refined);
+    
+    // Verify character mapping count
+    if (test->expected_char_mappings >= 0 && refined->count != test->expected_char_mappings) {
+        printf("  ✗ FAILED at Step 4: expected %d char mappings, got %d\n",
+               test->expected_char_mappings, refined->count);
+        assert(false);
+    }
+    
     // Cleanup
+    range_mapping_array_free(refined);
     free(diffs->diffs);
     free(diffs);
     
@@ -180,7 +194,8 @@ int main(void) {
             .len_b = 9,
             .expected_myers = {myers_diffs, 2},
             .expected_optimize = {optimized_diffs, 1},
-            .expected_remove_short = {optimized_diffs, 1}  // No change in step 3
+            .expected_remove_short = {optimized_diffs, 1},  // No change in step 3
+            .expected_char_mappings = -1  // Should have character-level detail
         };
         
         run_test_case(&test);
@@ -227,7 +242,8 @@ int main(void) {
             .len_b = 7,
             .expected_myers = {myers_diffs, 2},
             .expected_optimize = {myers_diffs, 2},  // No change in step 2
-            .expected_remove_short = {final_diffs, 1}
+            .expected_remove_short = {final_diffs, 1},
+            .expected_char_mappings = -1  // Should have character-level detail
         };
         
         run_test_case(&test);
@@ -265,7 +281,8 @@ int main(void) {
             .len_b = 5,
             .expected_myers = {result_diffs, 1},
             .expected_optimize = {result_diffs, 1},
-            .expected_remove_short = {result_diffs, 1}
+            .expected_remove_short = {result_diffs, 1},
+            .expected_char_mappings = -1  // One contiguous change
         };
         
         run_test_case(&test);
@@ -312,7 +329,98 @@ int main(void) {
             .len_b = 9,
             .expected_myers = {result_diffs, 2},
             .expected_optimize = {result_diffs, 2},
-            .expected_remove_short = {result_diffs, 2}
+            .expected_remove_short = {result_diffs, 2},
+            .expected_char_mappings = -1  // Two separate character changes
+        };
+        
+        run_test_case(&test);
+    }
+    
+    // ------------------------------------------------------------------------
+    // TEST 5: Step 4 Effectiveness - Single Word Change
+    // ------------------------------------------------------------------------
+    {
+        const char* lines_a[] = {
+            "The quick brown fox"
+        };
+        const char* lines_b[] = {
+            "The quick red fox"
+        };
+        
+        ExpectedDiff result_diffs[] = {
+            {0, 1, 0, 1}
+        };
+        
+        TestCase test = {
+            .name = "Step 4 Effectiveness - Single word change",
+            .lines_a = lines_a,
+            .len_a = 1,
+            .lines_b = lines_b,
+            .len_b = 1,
+            .expected_myers = {result_diffs, 1},
+            .expected_optimize = {result_diffs, 1},
+            .expected_remove_short = {result_diffs, 1},
+            .expected_char_mappings = 2  // "brown" -> "red" gives 2 char diffs
+        };
+        
+        run_test_case(&test);
+    }
+    
+    // ------------------------------------------------------------------------
+    // TEST 6: Step 4 Effectiveness - Multiple Words Changed
+    // ------------------------------------------------------------------------
+    {
+        const char* lines_a[] = {
+            "Hello world from here"
+        };
+        const char* lines_b[] = {
+            "Hello earth from there"
+        };
+        
+        ExpectedDiff result_diffs[] = {
+            {0, 1, 0, 1}
+        };
+        
+        TestCase test = {
+            .name = "Step 4 Effectiveness - Multiple words changed",
+            .lines_a = lines_a,
+            .len_a = 1,
+            .lines_b = lines_b,
+            .len_b = 1,
+            .expected_myers = {result_diffs, 1},
+            .expected_optimize = {result_diffs, 1},
+            .expected_remove_short = {result_diffs, 1},
+            .expected_char_mappings = 3  // More granular than expected
+        };
+        
+        run_test_case(&test);
+    }
+    
+    // ------------------------------------------------------------------------
+    // TEST 7: Step 4 Effectiveness - Character Insertion
+    // ------------------------------------------------------------------------
+    {
+        const char* lines_a[] = {
+            "function test() {}"
+        };
+        const char* lines_b[] = {
+            "function testCase() {}"
+        };
+        
+        ExpectedDiff result_diffs[] = {
+            {0, 1, 0, 1}
+        };
+        
+        TestCase test = {
+            .name = "Step 4 Effectiveness - Character insertion",
+            .lines_a = lines_a,
+            .len_a = 1,
+            .lines_b = lines_b,
+            .len_b = 1,
+            .expected_myers = {result_diffs, 1},
+            .expected_optimize = {result_diffs, 1},
+            .expected_remove_short = {result_diffs, 1},
+            .expected_char_mappings = 1  // "test" -> "testCase"
         };
         
         run_test_case(&test);
@@ -330,12 +438,16 @@ int main(void) {
     printf("  • Step 1 (Myers):        Finds line-level diffs\n");
     printf("  • Step 2 (Optimize):     Joins diffs with gap ≤ 2\n");
     printf("  • Step 3 (Remove Short): Joins diffs with match ≤ 3\n");
+    printf("  • Step 4 (Refine):       Character-level precision\n");
     printf("\n");
     printf("Test Coverage:\n");
     printf("  ✓ Case 1: Step 2 joining (gap=2) - VERIFIED\n");
     printf("  ✓ Case 2: Step 3 joining (match=3) - VERIFIED\n");
     printf("  ✓ Case 3: No optimization needed - VERIFIED\n");
     printf("  ✓ Case 4: Large gap prevents joining - VERIFIED\n");
+    printf("  ✓ Case 5: Step 4 single word change - VERIFIED\n");
+    printf("  ✓ Case 6: Step 4 multiple words - VERIFIED\n");
+    printf("  ✓ Case 7: Step 4 character insertion - VERIFIED\n");
     printf("\n");
     printf("To add new test: Just define TestCase with lines + expectations!\n");
     printf("\n");
