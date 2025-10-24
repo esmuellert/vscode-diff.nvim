@@ -1,21 +1,10 @@
 #include "../include/types.h"
 #include "../include/myers.h"
+#include "../include/print_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-
-void print_diff_result(SequenceDiffArray* result) {
-    printf("Found %d diffs:\n", result->count);
-    for (int i = 0; i < result->count; i++) {
-        printf("  Diff %d: seq1[%d,%d) -> seq2[%d,%d)\n",
-               i,
-               result->diffs[i].seq1_start,
-               result->diffs[i].seq1_end,
-               result->diffs[i].seq2_start,
-               result->diffs[i].seq2_end);
-    }
-}
 
 void test_identical_files() {
     printf("\n=== Test: Identical Files ===\n");
@@ -23,7 +12,7 @@ void test_identical_files() {
     const char* lines_b[] = {"line1", "line2", "line3"};
     
     SequenceDiffArray* result = myers_diff_algorithm(lines_a, 3, lines_b, 3);
-    print_diff_result(result);
+    print_sequence_diff_array("Result", result);
     assert(result->count == 0);
     printf("✓ PASSED\n");
     
@@ -37,7 +26,7 @@ void test_empty_files() {
     const char** lines_b = NULL;
     
     SequenceDiffArray* result = myers_diff_algorithm(lines_a, 0, lines_b, 0);
-    print_diff_result(result);
+    print_sequence_diff_array("Result", result);
     assert(result->count == 0);
     printf("✓ PASSED\n");
     
@@ -51,7 +40,7 @@ void test_one_line_change() {
     const char* lines_b[] = {"line1", "CHANGED", "line3"};
     
     SequenceDiffArray* result = myers_diff_algorithm(lines_a, 3, lines_b, 3);
-    print_diff_result(result);
+    print_sequence_diff_array("Result", result);
     assert(result->count == 1);
     assert(result->diffs[0].seq1_start == 1);
     assert(result->diffs[0].seq1_end == 2);
@@ -69,7 +58,7 @@ void test_insert_line() {
     const char* lines_b[] = {"line1", "line2", "line3"};
     
     SequenceDiffArray* result = myers_diff_algorithm(lines_a, 2, lines_b, 3);
-    print_diff_result(result);
+    print_sequence_diff_array("Result", result);
     assert(result->count == 1);
     assert(result->diffs[0].seq1_start == 1);
     assert(result->diffs[0].seq1_end == 1);  // Empty range in A
@@ -87,7 +76,7 @@ void test_delete_line() {
     const char* lines_b[] = {"line1", "line3"};
     
     SequenceDiffArray* result = myers_diff_algorithm(lines_a, 3, lines_b, 2);
-    print_diff_result(result);
+    print_sequence_diff_array("Result", result);
     assert(result->count == 1);
     assert(result->diffs[0].seq1_start == 1);
     assert(result->diffs[0].seq1_end == 2);  // One line in A
@@ -105,7 +94,7 @@ void test_completely_different() {
     const char* lines_b[] = {"x", "y", "z"};
     
     SequenceDiffArray* result = myers_diff_algorithm(lines_a, 3, lines_b, 3);
-    print_diff_result(result);
+    print_sequence_diff_array("Result", result);
     assert(result->count == 1);
     assert(result->diffs[0].seq1_start == 0);
     assert(result->diffs[0].seq1_end == 3);

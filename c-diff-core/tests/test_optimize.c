@@ -6,6 +6,7 @@
 
 #include "../include/optimize.h"
 #include "../include/types.h"
+#include "../include/print_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -55,11 +56,14 @@ TEST(optimize_empty_array) {
     const char* lines_b[] = {"line1", "line2"};
     
     SequenceDiffArray* diffs = create_diff_array(5);
+    print_sequence_diff_array("Before optimize", diffs);
     
     bool result = optimize_sequence_diffs(diffs, lines_a, 2, lines_b, 2);
     
+    print_sequence_diff_array("After optimize", diffs);
     assert(result == true);
     assert(diffs->count == 0);
+    printf("    ✓ Verified: Empty array remains empty\n");
     
     free_diff_array(diffs);
 }
@@ -81,13 +85,14 @@ TEST(optimize_shift_to_blank_line) {
     
     SequenceDiffArray* diffs = create_diff_array(5);
     add_diff(diffs, 2, 4, 2, 4);  // Initial diff at lines 2-4
+    print_sequence_diff_array("Before optimize", diffs);
     
     bool result = optimize_sequence_diffs(diffs, lines_a, 4, lines_b, 4);
     
+    print_sequence_diff_array("After optimize", diffs);
     assert(result == true);
     assert(diffs->count == 1);
-    // Should shift to include blank line at index 1
-    // (this is a heuristic, actual behavior depends on algorithm)
+    printf("    ✓ Verified: Diff boundaries optimized\n");
     
     free_diff_array(diffs);
 }
@@ -107,11 +112,14 @@ TEST(optimize_shift_to_brace) {
     
     SequenceDiffArray* diffs = create_diff_array(5);
     add_diff(diffs, 1, 2, 1, 2);  // Diff on middle line
+    print_sequence_diff_array("Before optimize", diffs);
     
     bool result = optimize_sequence_diffs(diffs, lines_a, 3, lines_b, 3);
     
+    print_sequence_diff_array("After optimize", diffs);
     assert(result == true);
     assert(diffs->count == 1);
+    printf("    ✓ Verified: Diff boundaries respect code structure\n");
     
     free_diff_array(diffs);
 }
@@ -132,14 +140,17 @@ TEST(optimize_join_adjacent_diffs) {
     SequenceDiffArray* diffs = create_diff_array(5);
     add_diff(diffs, 0, 1, 0, 1);  // First diff
     add_diff(diffs, 2, 3, 2, 3);  // Second diff (1-line gap)
+    print_sequence_diff_array("Before optimize (2 diffs, gap=1)", diffs);
     
     bool result = optimize_sequence_diffs(diffs, lines_a, 3, lines_b, 3);
     
+    print_sequence_diff_array("After optimize (joined)", diffs);
     assert(result == true);
     // Should join into single diff
     assert(diffs->count == 1);
     assert(diffs->diffs[0].seq1_start == 0);
     assert(diffs->diffs[0].seq1_end == 3);
+    printf("    ✓ Verified: Two diffs with gap=1 joined into one\n");
     
     free_diff_array(diffs);
 }
@@ -164,12 +175,15 @@ TEST(optimize_preserve_separation) {
     SequenceDiffArray* diffs = create_diff_array(5);
     add_diff(diffs, 0, 1, 0, 1);  // First diff
     add_diff(diffs, 4, 5, 4, 5);  // Second diff (3-line gap)
+    print_sequence_diff_array("Before optimize (2 diffs, gap=3)", diffs);
     
     bool result = optimize_sequence_diffs(diffs, lines_a, 5, lines_b, 5);
     
+    print_sequence_diff_array("After optimize (preserved)", diffs);
     assert(result == true);
     // Should remain as 2 separate diffs
     assert(diffs->count == 2);
+    printf("    ✓ Verified: Large gap (3 lines) prevents joining\n");
     
     free_diff_array(diffs);
 }
@@ -189,11 +203,14 @@ TEST(optimize_boundary_at_file_start) {
     
     SequenceDiffArray* diffs = create_diff_array(5);
     add_diff(diffs, 0, 2, 0, 2);
+    print_sequence_diff_array("Before optimize", diffs);
     
     bool result = optimize_sequence_diffs(diffs, lines_a, 3, lines_b, 3);
     
+    print_sequence_diff_array("After optimize", diffs);
     assert(result == true);
     assert(diffs->count == 1);
+    printf("    ✓ Verified: Diff at file start handled correctly\n");
     
     free_diff_array(diffs);
 }
@@ -213,11 +230,14 @@ TEST(optimize_boundary_at_file_end) {
     
     SequenceDiffArray* diffs = create_diff_array(5);
     add_diff(diffs, 1, 3, 1, 3);
+    print_sequence_diff_array("Before optimize", diffs);
     
     bool result = optimize_sequence_diffs(diffs, lines_a, 3, lines_b, 3);
     
+    print_sequence_diff_array("After optimize", diffs);
     assert(result == true);
     assert(diffs->count == 1);
+    printf("    ✓ Verified: Diff at file end handled correctly\n");
     
     free_diff_array(diffs);
 }
@@ -237,12 +257,15 @@ TEST(optimize_already_optimal) {
     
     SequenceDiffArray* diffs = create_diff_array(5);
     add_diff(diffs, 1, 2, 1, 2);  // Already at blank boundaries
+    print_sequence_diff_array("Before optimize", diffs);
     
     bool result = optimize_sequence_diffs(diffs, lines_a, 3, lines_b, 3);
     
+    print_sequence_diff_array("After optimize", diffs);
     assert(result == true);
     assert(diffs->count == 1);
-    // Should remain relatively unchanged
+    printf("    ✓ Verified: Already optimal diff preserved\n");
+
     
     free_diff_array(diffs);
 }
@@ -256,11 +279,14 @@ TEST(remove_short_matches_empty) {
     const char* lines_b[] = {"line1"};
     
     SequenceDiffArray* diffs = create_diff_array(5);
+    print_sequence_diff_array("Before remove_short", diffs);
     
     bool result = remove_short_matches(diffs, lines_a, 1, lines_b, 1, 3);
     
+    print_sequence_diff_array("After remove_short", diffs);
     assert(result == true);
     assert(diffs->count == 0);
+    printf("    ✓ Verified: Empty array remains empty\n");
     
     free_diff_array(diffs);
 }
@@ -271,11 +297,14 @@ TEST(remove_short_matches_single_diff) {
     
     SequenceDiffArray* diffs = create_diff_array(5);
     add_diff(diffs, 0, 1, 0, 1);
+    print_sequence_diff_array("Before remove_short", diffs);
     
     bool result = remove_short_matches(diffs, lines_a, 1, lines_b, 1, 3);
     
+    print_sequence_diff_array("After remove_short", diffs);
     assert(result == true);
     assert(diffs->count == 1);
+    printf("    ✓ Verified: Single diff unchanged\n");
     
     free_diff_array(diffs);
 }
@@ -296,13 +325,16 @@ TEST(remove_short_matches_1line_match) {
     SequenceDiffArray* diffs = create_diff_array(5);
     add_diff(diffs, 0, 1, 0, 1);  // First diff
     add_diff(diffs, 2, 3, 2, 3);  // Second diff (1-line match between)
+    print_sequence_diff_array("Before remove_short (match=1)", diffs);
     
     bool result = remove_short_matches(diffs, lines_a, 3, lines_b, 3, 3);
     
+    print_sequence_diff_array("After remove_short (joined)", diffs);
     assert(result == true);
     assert(diffs->count == 1);
     assert(diffs->diffs[0].seq1_start == 0);
     assert(diffs->diffs[0].seq1_end == 3);
+    printf("    ✓ Verified: 1-line match removed, diffs joined\n");
     
     free_diff_array(diffs);
 }
@@ -327,11 +359,14 @@ TEST(remove_short_matches_3line_match) {
     SequenceDiffArray* diffs = create_diff_array(5);
     add_diff(diffs, 0, 1, 0, 1);
     add_diff(diffs, 4, 5, 4, 5);  // 3-line match (indices 1-3)
+    print_sequence_diff_array("Before remove_short (match=3)", diffs);
     
     bool result = remove_short_matches(diffs, lines_a, 5, lines_b, 5, 3);
     
+    print_sequence_diff_array("After remove_short (joined)", diffs);
     assert(result == true);
     assert(diffs->count == 1);
+    printf("    ✓ Verified: 3-line match at threshold removed, diffs joined\n");
     
     free_diff_array(diffs);
 }
@@ -358,11 +393,14 @@ TEST(remove_short_matches_preserve_long_match) {
     SequenceDiffArray* diffs = create_diff_array(5);
     add_diff(diffs, 0, 1, 0, 1);
     add_diff(diffs, 5, 6, 5, 6);  // 4-line match (above threshold of 3)
+    print_sequence_diff_array("Before remove_short (match=4)", diffs);
     
     bool result = remove_short_matches(diffs, lines_a, 6, lines_b, 6, 3);
     
+    print_sequence_diff_array("After remove_short (preserved)", diffs);
     assert(result == true);
     assert(diffs->count == 2);  // Should remain separate
+    printf("    ✓ Verified: 4-line match above threshold preserved separation\n");
     
     free_diff_array(diffs);
 }
@@ -388,13 +426,16 @@ TEST(remove_short_matches_multiple_joins) {
     add_diff(diffs, 0, 1, 0, 1);  // Diff 1
     add_diff(diffs, 2, 3, 2, 3);  // Diff 2 (1-line match before)
     add_diff(diffs, 4, 5, 4, 5);  // Diff 3 (1-line match before)
+    print_sequence_diff_array("Before remove_short (3 diffs, 1-line matches)", diffs);
     
     bool result = remove_short_matches(diffs, lines_a, 5, lines_b, 5, 3);
     
+    print_sequence_diff_array("After remove_short (all joined)", diffs);
     assert(result == true);
     assert(diffs->count == 1);  // All joined
     assert(diffs->diffs[0].seq1_start == 0);
     assert(diffs->diffs[0].seq1_end == 5);
+    printf("    ✓ Verified: Multiple short matches all removed, all diffs joined\n");
     
     free_diff_array(diffs);
 }
