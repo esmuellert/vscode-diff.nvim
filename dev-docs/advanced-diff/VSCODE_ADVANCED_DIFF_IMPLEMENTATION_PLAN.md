@@ -18,7 +18,7 @@ c-diff-core/
 │   └── types.h                    # All public type definitions
 ├── src/
 │   ├── myers.c                    # Step 1: Myers diff algorithm
-│   ├── optimize.c                 # Steps 2-3: Diff optimization
+│   ├── optimize.c                 # Steps 2-3: Diff optimization (generic, used by both line & char)
 │   ├── refine.c                   # Step 4: Character-level refinement
 │   ├── mapping.c                  # Step 5: Line range mapping construction
 │   ├── moved_lines.c              # Step 6: Move detection (optional)
@@ -99,11 +99,16 @@ Input: lines_a[], lines_b[]
   ↓
 [Step 1: Myers Algorithm] → SequenceDiffArray (line-level)
   ↓
-[Step 2: Optimize Diffs] → SequenceDiffArray (optimized)
+[Step 2: Optimize Diffs] → SequenceDiffArray (shifted & joined via boundary analysis)
   ↓
-[Step 3: Remove Short Matches] → SequenceDiffArray (cleaned)
+[Step 3: Remove Short Matches] → SequenceDiffArray (merged if gap ≤ 2 lines)
   ↓
-[Step 4: Refine to Chars] → RangeMappingArray (char-level)
+[Step 4: Refine to Chars] → For EACH line diff:
+  │  ├─> Myers on chars → SequenceDiff[] (char offsets)
+  │  ├─> Optimize chars (REUSES Step 2 algorithm)
+  │  ├─> Extend to word boundaries
+  │  ├─> Remove short matches (REUSES Step 3 concept)
+  │  └─> Translate to (line,col) → RangeMapping[]
   ↓
 [Step 5: Build Line Mappings] → DetailedLineRangeMappingArray
   ↓
@@ -111,6 +116,8 @@ Input: lines_a[], lines_b[]
   ↓
 [Final: Create Render Plan] → RenderPlan
 ```
+
+**Key Insight:** Steps 2-3 optimization algorithms are GENERIC and reused for both line-level (Steps 2-3) and character-level (within Step 4) sequences.
 
 ---
 
@@ -153,26 +160,26 @@ Computes the shortest edit sequence using Myers' O(ND) algorithm. Produces a min
 - **Output:** `SequenceDiffArray*` (optimized - modified in-place)
 
 ### What It Does
-Shifts diff boundaries to more intuitive positions (e.g., moving changes to blank lines or natural code boundaries). Joins adjacent diffs when beneficial for readability.
+Applies sophisticated optimization to diffs. First, shifts insertions/deletions left then right to find mergeable diffs (via `joinSequenceDiffsByShifting` - called twice). Then, shifts diff boundaries to preferred positions using boundary scores (`shiftSequenceDiffs`). **Note:** This is a generic algorithm reused for both line-level and character-level sequences in VSCode.
 
 ### VSCode Implementation Reference
-- **Source:** `src/vs/editor/common/diff/defaultLinesDiffComputer/algorithms/diffAlgorithm.ts`
+- **Source:** `src/vs/editor/common/diff/defaultLinesDiffComputer/heuristicSequenceOptimizations.ts`
 - **Key Functions:**
-  - `optimizeSequenceDiffs()`
-  - `shiftSequenceDiffs()` - Shift to better boundaries
-  - `removeShortMatches()` - Preview of step 3
+  - `optimizeSequenceDiffs()` - Main entry point, calls sub-functions
+  - `joinSequenceDiffsByShifting()` - Shifts empty ranges left/right to merge with neighbors
+  - `shiftSequenceDiffs()` - Uses `getBoundaryScore()` for smart boundary placement
 
 ### Unit Tests to Implement
 - **Note:** VSCode doesn't have isolated tests for this step. The following are our test cases:
 - **Test Cases:**
   1. Shift diff to blank line
   2. Shift diff to brace boundary
-  3. Join adjacent diffs with 1-line gap
-  4. Preserve meaningful separation
+  3. Join two diffs via shifting empty ranges
+  4. Keep two diffs with incompatible positions
   5. Optimize at file start (boundary case)
   6. Optimize at file end (boundary case)
   7. No optimization needed (already optimal)
-  8. Comment boundary shift
+  8. Multiple diffs, some joinable via shifting
 
 ---
 
@@ -183,23 +190,24 @@ Shifts diff boundaries to more intuitive positions (e.g., moving changes to blan
 - **Output:** `SequenceDiffArray*` (cleaned - modified in-place)
 
 ### What It Does
-Merges diff regions separated by very short unchanged sequences (typically 1-2 lines). Improves visual coherence by treating closely related changes as single units.
+For line-level: Joins diffs separated by very short unchanged regions (gap ≤ 2 lines in either sequence) using `removeVeryShortMatchingLinesBetweenDiffs()`. Iterates up to 10 times until no more joins occur. For character-level: Uses different variants (`removeShortMatches()` and `removeVeryShortMatchingTextBetweenLongDiffs()`). Improves visual coherence by treating closely related changes as single units.
 
 ### VSCode Implementation Reference
-- **Source:** `src/vs/editor/common/diff/defaultLinesDiffComputer/algorithms/diffAlgorithm.ts`
+- **Source:** `src/vs/editor/common/diff/defaultLinesDiffComputer/heuristicSequenceOptimizations.ts`
 - **Key Functions:**
-  - `removeVeryShortMatchingLinesBetweenDiffs()`
-  - `removeVeryShortMatchingTextBetweenDiffs()` - Character-level version
+  - `removeVeryShortMatchingLinesBetweenDiffs()` - Line-level variant, gap ≤ 2
+  - `removeShortMatches()` - Character-level variant, different logic
+  - `removeVeryShortMatchingTextBetweenLongDiffs()` - Character-level for long diffs
 
 ### Unit Tests to Implement
 - **Note:** VSCode doesn't have isolated tests for this step. The following are our test cases:
 - **Test Cases:**
   1. Merge diffs with 1-line gap
-  2. Keep diffs with 3+ line gap
-  3. Edge case: start/end of file
-  4. Multiple consecutive short matches
-  5. Exactly 2-line gap (threshold boundary)
-  6. All gaps are short (stress merge logic)
+  2. Merge diffs with 2-line gap (threshold)
+  3. Keep diffs with 3+ line gap
+  4. Edge case: start/end of file
+  5. Multiple consecutive short matches
+  6. Iterative merging (requires multiple passes)
   7. Cascading merges (A+B, then (A+B)+C)
   8. Zero-line gap (adjacent diffs)
 
@@ -212,28 +220,28 @@ Merges diff regions separated by very short unchanged sequences (typically 1-2 l
 - **Output:** `RangeMappingArray*` (character-level differences within changed lines)
 
 ### What It Does
-For each line-level diff region, computes character-by-character differences using Myers algorithm again. This enables precise highlighting of changed text within lines.
+For each line-level diff region: (1) Creates character sequences with line boundary tracking (via `LinesSliceCharSequence`), (2) Runs Myers on characters, (3) Applies SAME optimization pipeline as Steps 2-3 but on character sequences: `optimizeSequenceDiffs()`, `extendDiffsToEntireWordIfAppropriate()` for word boundaries, `removeShortMatches()`, and `removeVeryShortMatchingTextBetweenLongDiffs()`, (4) Translates character offsets to (line, column) positions using boundary tracking. Enables precise word-aligned inline highlighting.
 
 ### VSCode Implementation Reference
 - **Source:** `src/vs/editor/common/diff/defaultLinesDiffComputer/defaultLinesDiffComputer.ts`
 - **Key Functions:**
-  - `computeMovedLines()` (contains refinement logic)
-  - `MyersDiffAlgorithm.compute()` - Reused for character-level
-  - Character sequence handling in `DiffAlgorithmResult`
+  - `refineDiff()` - Main character refinement function (lines 144-173)
+  - `LinesSliceCharSequence` - Tracks line boundaries, implements `getBoundaryScore()`, `translateOffset()`
+  - Post-processing: `optimizeSequenceDiffs()`, `extendDiffsToEntireWordIfAppropriate()`, `removeShortMatches()`, `removeVeryShortMatchingTextBetweenLongDiffs()`
 
 ### Unit Tests to Implement
 - **Note:** VSCode doesn't have isolated tests for this step. The following are our test cases:
 - **Test Cases:**
-  1. Single word change in line
+  1. Single word change in line (verify word boundary extension)
   2. Multiple changes in one line
-  3. Whitespace-only changes
-  4. Empty line vs content line
-  5. Full line replacement
-  6. UTF-8 multibyte characters (e.g., "café" → "cafe")
-  7. Emoji changes (e.g., "hello👋" → "hello")
-  8. Tab vs spaces (e.g., "\t" vs "    ")
-  9. Very long line (10k+ characters)
-  10. Line ending changes (LF vs CRLF)
+  3. Multi-line diff (verify line boundary tracking)
+  4. Whitespace-only changes (with/without considerWhitespaceChanges)
+  5. Empty line vs content line
+  6. Full line replacement
+  7. UTF-8 multibyte characters (e.g., "café" → "cafe")
+  8. Emoji changes (e.g., "hello👋" → "hello")
+  9. Tab vs spaces (e.g., "\t" vs "    ")
+  10. CamelCase subword extension (if extendToSubwords enabled)
 
 ---
 
@@ -395,10 +403,11 @@ Each module has isolated tests verifying correctness:
 
 ### VSCode Source Files
 1. **Myers Algorithm:** `src/vs/editor/common/diff/defaultLinesDiffComputer/algorithms/myersDiffAlgorithm.ts`
-2. **Optimization:** `src/vs/editor/common/diff/defaultLinesDiffComputer/algorithms/diffAlgorithm.ts`
-3. **Types:** `src/vs/editor/common/diff/rangeMapping.ts`
-4. **Main Computer:** `src/vs/editor/common/diff/defaultLinesDiffComputer/defaultLinesDiffComputer.ts`
-5. **Tests:** `src/vs/editor/test/common/diff/diffComputer.test.ts`
+2. **Optimization (Steps 2-3):** `src/vs/editor/common/diff/defaultLinesDiffComputer/heuristicSequenceOptimizations.ts`
+3. **Main Computer (Step 4):** `src/vs/editor/common/diff/defaultLinesDiffComputer/defaultLinesDiffComputer.ts`
+4. **Character Sequences:** `src/vs/editor/common/diff/defaultLinesDiffComputer/linesSliceCharSequence.ts`
+5. **Types:** `src/vs/editor/common/diff/rangeMapping.ts`
+6. **Tests:** `src/vs/editor/test/common/diff/diffComputer.test.ts`
 
 ### Key Insights
 - VSCode's algorithm is highly optimized for **human-readable diffs**
