@@ -49,7 +49,7 @@ test-infrastructure: $(BUILD_DIR)
 
 # Build and run Optimize tests (Step 2 & 3)
 test-optimize: $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(TEST_DIR)/test_optimize.c $(OPTIMIZE_SRC) $(PRINT_UTILS_SRC) -o $(TEST_OPTIMIZE)
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_optimize.c $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_OPTIMIZE)
 	@echo ""
 	@echo "Running Optimize diff tests (Step 2 & 3)..."
 	@echo ""

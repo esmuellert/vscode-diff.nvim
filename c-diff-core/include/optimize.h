@@ -2,48 +2,64 @@
 #define OPTIMIZE_H
 
 #include "types.h"
+#include "sequence.h"
 
 /**
- * Step 2: Optimize Sequence Diffs
+ * Steps 2-3: Sequence Diff Optimization - FULL VSCODE PARITY
  * 
- * Shifts diff boundaries to more intuitive positions (blank lines, braces, etc.)
- * and joins adjacent diffs when beneficial for readability.
+ * Implements VSCode's heuristic sequence optimizations:
+ * - joinSequenceDiffsByShifting() (called 2x)
+ * - shiftSequenceDiffs() (boundary scoring)
+ * - removeShortMatches() (join if gap ≤ 2)
  * 
- * VSCode Reference: src/vs/editor/common/diff/defaultLinesDiffComputer/algorithms/diffAlgorithm.ts
- * - optimizeSequenceDiffs()
- * - shiftSequenceDiffs()
+ * REUSED BY: Step 4 (character-level optimization uses same functions)
+ * 
+ * VSCode Reference:
+ * src/vs/editor/common/diff/defaultLinesDiffComputer/heuristicSequenceOptimizations.ts
  */
 
 /**
- * Optimize sequence diffs by shifting boundaries and joining adjacent diffs.
+ * Main optimization function - VSCode Parity
  * 
- * @param diffs Input/output array of sequence diffs (modified in-place)
- * @param lines_a Original sequence lines
- * @param len_a Length of sequence A
- * @param lines_b Modified sequence lines
- * @param len_b Length of sequence B
- * @return true on success, false on error
+ * Applies all optimization heuristics:
+ * 1. joinSequenceDiffsByShifting() - twice for better results
+ * 2. shiftSequenceDiffs() - align at word/whitespace boundaries
+ * 
+ * @param seq1 First sequence (ISequence interface)
+ * @param seq2 Second sequence (ISequence interface)
+ * @param diffs Input/output array of diffs (modified in-place)
+ * @return Optimized diff array (same pointer as input)
+ * 
+ * REUSED BY: Step 4 for character-level optimization
  */
-bool optimize_sequence_diffs(SequenceDiffArray* diffs, 
-                             const char** lines_a, int len_a,
-                             const char** lines_b, int len_b);
+SequenceDiffArray* optimize_sequence_diffs(const ISequence* seq1, const ISequence* seq2,
+                                          SequenceDiffArray* diffs);
 
 /**
- * Step 3: Remove Very Short Matches
+ * Remove short matching regions between diffs - VSCode Parity
  * 
- * Removes short matching regions between diffs and joins them into larger diffs.
+ * Joins diffs if gap ≤ 2 in EITHER sequence.
+ * VSCode: "if (gap1 <= 2 || gap2 <= 2)"
  * 
- * @param diffs Input/output array of sequence diffs (modified in-place)
- * @param lines_a Original sequence lines
- * @param len_a Length of sequence A
- * @param lines_b Modified sequence lines
- * @param len_b Length of sequence B
- * @param max_match_length Maximum length of match to remove (typically 3)
- * @return true on success, false on error
+ * @param seq1 First sequence (can be NULL, not used in current impl)
+ * @param seq2 Second sequence (can be NULL, not used in current impl)
+ * @param diffs Input/output array of diffs (modified in-place)
+ * @return Modified diff array (same pointer as input)
+ * 
+ * REUSED BY: Step 4 for character-level short match removal
  */
-bool remove_short_matches(SequenceDiffArray* diffs,
-                         const char** lines_a, int len_a,
-                         const char** lines_b, int len_b,
-                         int max_match_length);
+SequenceDiffArray* remove_short_matches(const ISequence* seq1, const ISequence* seq2,
+                                       SequenceDiffArray* diffs);
+
+/**
+ * Legacy wrapper for backward compatibility
+ * 
+ * Creates LineSequence wrappers and calls ISequence version.
+ * 
+ * @deprecated Use optimize_sequence_diffs() with ISequence instead
+ */
+bool optimize_sequence_diffs_legacy(SequenceDiffArray* diffs,
+                                   const char** lines_a, int len_a,
+                                   const char** lines_b, int len_b);
 
 #endif // OPTIMIZE_H
