@@ -12,17 +12,19 @@ BUILD_DIR = build
 # Source files
 UTILS_SRC = $(SRC_DIR)/utils.c
 PRINT_UTILS_SRC = $(SRC_DIR)/print_utils.c
+SEQUENCE_SRC = $(SRC_DIR)/sequence.c
 MYERS_SRC = $(SRC_DIR)/myers.c
 OPTIMIZE_SRC = $(SRC_DIR)/optimize.c
 REFINE_SRC = $(SRC_DIR)/refine.c
 
 # Test executables
 TEST_MYERS = $(BUILD_DIR)/test_myers
+TEST_INFRASTRUCTURE = $(BUILD_DIR)/test_infrastructure
 TEST_OPTIMIZE = $(BUILD_DIR)/test_optimize
 TEST_REFINE = $(BUILD_DIR)/test_refine
 TEST_INTEGRATION = $(BUILD_DIR)/test_integration
 
-.PHONY: all clean test test-myers test-optimize test-refine test-integration
+.PHONY: all clean test test-myers test-infrastructure test-optimize test-refine test-integration
 
 all: $(BUILD_DIR)
 
@@ -31,11 +33,19 @@ $(BUILD_DIR):
 
 # Build and run Myers tests
 test-myers: $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(TEST_DIR)/test_myers.c $(MYERS_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_MYERS)
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_myers.c $(MYERS_SRC) $(SEQUENCE_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_MYERS)
 	@echo ""
 	@echo "Running Myers diff tests..."
 	@echo ""
 	@$(TEST_MYERS)
+
+# Build and run Infrastructure tests (ISequence, LineSequence, CharSequence)
+test-infrastructure: $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_infrastructure.c $(MYERS_SRC) $(SEQUENCE_SRC) $(UTILS_SRC) -o $(TEST_INFRASTRUCTURE)
+	@echo ""
+	@echo "Running Infrastructure tests..."
+	@echo ""
+	@$(TEST_INFRASTRUCTURE)
 
 # Build and run Optimize tests (Step 2 & 3)
 test-optimize: $(BUILD_DIR)

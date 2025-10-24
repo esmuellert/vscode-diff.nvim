@@ -1,0 +1,161 @@
+#ifndef SEQUENCE_H
+#define SEQUENCE_H
+
+#include <stdint.h>
+#include <stdbool.h>
+
+/**
+ * Generic Sequence Interface
+ * 
+ * Maps to VSCode's ISequence interface.
+ * This abstraction allows the Myers algorithm and optimization functions
+ * to work on any sequence type (lines, characters, etc.) without modification.
+ * 
+ * REUSED BY:
+ * - Step 1 (myers.c): Myers algorithm operates on ISequence
+ * - Step 2-3 (optimize.c): Optimization functions use getBoundaryScore()
+ * - Step 4 (refine.c): Character sequences implement this interface
+ * 
+ * VSCode Reference: src/vs/editor/common/diff/defaultLinesDiffComputer/algorithms/diffAlgorithm.ts
+ */
+typedef struct ISequence ISequence;
+
+struct ISequence {
+    // Opaque data pointer - actual sequence implementation
+    void* data;
+    
+    // Function pointers (vtable pattern)
+    
+    /**
+     * Get element at offset (typically returns hash/code for fast comparison)
+     * 
+     * For LineSequence: Returns hash of trimmed line
+     * For CharSequence: Returns character code
+     * 
+     * REUSED BY: Step 1 (Myers), Step 2-3 (optimize), Step 4 (refine)
+     */
+    uint32_t (*getElement)(const ISequence* self, int offset);
+    
+    /**
+     * Get length of sequence
+     * 
+     * REUSED BY: Step 1 (Myers), Step 2-3 (optimize), Step 4 (refine)
+     */
+    int (*getLength)(const ISequence* self);
+    
+    /**
+     * Check if two elements are strongly equal (exact comparison)
+     * 
+     * For LineSequence: Compares original lines including whitespace
+     * For CharSequence: Compares character codes exactly
+     * 
+     * This is used when getElement() returns hashes - we need to verify
+     * that hash collision didn't occur.
+     * 
+     * REUSED BY: Step 2 (joinSequenceDiffsByShifting)
+     */
+    bool (*isStronglyEqual)(const ISequence* self, int offset1, int offset2);
+    
+    /**
+     * Get boundary score at position (higher = better boundary)
+     * 
+     * Used by optimization to shift diffs to natural boundaries like:
+     * - Blank lines (score: high)
+     * - Structural characters: {, }, [, ] (score: medium)
+     * - Whitespace (score: low)
+     * - Line breaks (score: very high)
+     * 
+     * REUSED BY: Step 2 (shiftSequenceDiffs), Step 4 (character optimization)
+     * 
+     * Optional: Can be NULL if sequence doesn't support boundary scoring
+     */
+    int (*getBoundaryScore)(const ISequence* self, int length);
+    
+    /**
+     * Cleanup function - called when sequence is destroyed
+     */
+    void (*destroy)(ISequence* self);
+};
+
+/**
+ * LineSequence - Sequence of lines with hash-based comparison
+ * 
+ * Implements ISequence for line-level diffing.
+ * Uses hash of trimmed lines for fast comparison while preserving
+ * original lines for exact comparison when needed.
+ * 
+ * REUSED BY: Step 1 (Myers on lines), Step 2-3 (line optimization)
+ * 
+ * VSCode Reference: src/vs/editor/common/diff/defaultLinesDiffComputer/lineSequence.ts
+ */
+typedef struct {
+    const char** lines;      // Original lines (NOT owned - just a reference)
+    uint32_t* trimmed_hash;  // Hash of each line after trimming
+    int length;
+    bool ignore_whitespace;  // If true, getElement returns hash of trimmed line
+} LineSequence;
+
+/**
+ * Create a LineSequence from array of lines
+ * 
+ * @param lines Array of line strings (must remain valid for lifetime of sequence)
+ * @param length Number of lines
+ * @param ignore_whitespace If true, trim whitespace before hashing
+ * @return ISequence* that wraps the LineSequence
+ * 
+ * REUSED BY: Step 1 entry point, Step 2-3 optimization
+ */
+ISequence* line_sequence_create(const char** lines, int length, bool ignore_whitespace);
+
+/**
+ * CharSequence - Sequence of characters with line boundary tracking
+ * 
+ * Implements ISequence for character-level diffing within line ranges.
+ * Tracks line boundaries to enable proper position translation.
+ * 
+ * REUSED BY: Step 4 (character refinement)
+ * 
+ * VSCode Reference: src/vs/editor/common/diff/defaultLinesDiffComputer/linesSliceCharSequence.ts
+ */
+typedef struct {
+    uint32_t* elements;              // Character codes
+    int length;
+    int* line_start_offsets;         // Offset where each line starts in elements array
+    int line_count;                  // Number of lines tracked
+    bool consider_whitespace;        // If false, whitespace is trimmed before diffing
+} CharSequence;
+
+/**
+ * Create a CharSequence from line range
+ * 
+ * Concatenates lines from [start_line, end_line) range with '\n' separators,
+ * tracking line boundaries for position translation.
+ * 
+ * @param lines Array of line strings
+ * @param start_line Start line index (inclusive, 0-based)
+ * @param end_line End line index (exclusive, 0-based)
+ * @param consider_whitespace If false, trim whitespace before creating sequence
+ * @return ISequence* that wraps the CharSequence
+ * 
+ * REUSED BY: Step 4 (character refinement for each line diff)
+ */
+ISequence* char_sequence_create(const char** lines, int start_line, int end_line, 
+                                bool consider_whitespace);
+
+/**
+ * Translate character offset to (line, column) position
+ * 
+ * Used by Step 4 to convert character-level SequenceDiff offsets
+ * back to (line, column) positions for RangeMapping.
+ * 
+ * @param seq CharSequence (cast from ISequence)
+ * @param offset Character offset in the sequence
+ * @param out_line Output: 0-based line number
+ * @param out_col Output: 0-based column number
+ * 
+ * REUSED BY: Step 4 (refine.c) when building RangeMapping
+ */
+void char_sequence_translate_offset(const CharSequence* seq, int offset, 
+                                    int* out_line, int* out_col);
+
+#endif // SEQUENCE_H

@@ -1,11 +1,28 @@
-#include "../include/types.h"
+/**
+ * Myers O(ND) Diff Algorithm - ISequence Version
+ * 
+ * This implementation uses the ISequence abstraction layer for maximum
+ * flexibility and to enable advanced optimizations.
+ * 
+ * INFRASTRUCTURE IMPROVEMENTS:
+ * 1. ISequence interface - works with any sequence type (lines, chars)
+ * 2. Hash-based comparison - fast element matching via getElement()
+ * 3. Strong equality check - prevents hash collision issues
+ * 4. Boundary scoring support - enables optimization in Steps 2-3
+ * 5. Timeout protection - prevents hanging on massive diffs
+ * 
+ * VSCode Reference: myersDiffAlgorithm.ts
+ */
+
+#include "../include/myers.h"
+#include "../include/sequence.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 // Forward declarations
-static int myers_get_x_after_snake(const char** seq_a, int len_a,
-                                   const char** seq_b, int len_b,
+static int myers_get_x_after_snake(const ISequence* seq_a, const ISequence* seq_b,
                                    int x, int y);
 
 // Simple dynamic array for storing integers (supports negative indices)
@@ -151,10 +168,14 @@ static void patharray_set(PathArray* arr, int idx, SnakePath* value) {
 }
 
 // Helper: Get X position after following snake (diagonal matches)
-static int myers_get_x_after_snake(const char** seq_a, int len_a,
-                                   const char** seq_b, int len_b,
+// Now uses ISequence.getElement() for hash-based comparison
+static int myers_get_x_after_snake(const ISequence* seq_a, const ISequence* seq_b,
                                    int x, int y) {
-    while (x < len_a && y < len_b && strcmp(seq_a[x], seq_b[y]) == 0) {
+    int len_a = seq_a->getLength(seq_a);
+    int len_b = seq_b->getLength(seq_b);
+    
+    while (x < len_a && y < len_b && 
+           seq_a->getElement(seq_a, x) == seq_b->getElement(seq_b, y)) {
         x++;
         y++;
     }
@@ -165,9 +186,14 @@ static int myers_get_x_after_snake(const char** seq_a, int len_a,
 static int min_int(int a, int b) { return a < b ? a : b; }
 static int max_int(int a, int b) { return a > b ? a : b; }
 
-// Main Myers Diff Algorithm (Forward-only, following VSCode's implementation)
-SequenceDiffArray* myers_diff_algorithm(const char** seq_a, int len_a,
-                                        const char** seq_b, int len_b) {
+// Main Myers Diff Algorithm (Forward-only, with ISequence and timeout support)
+SequenceDiffArray* myers_diff_algorithm(const ISequence* seq1, const ISequence* seq2,
+                                        int timeout_ms, bool* hit_timeout) {
+    if (hit_timeout) *hit_timeout = false;
+    
+    int len_a = seq1->getLength(seq1);
+    int len_b = seq2->getLength(seq2);
+    
     // Handle trivial cases
     if (len_a == 0 || len_b == 0) {
         SequenceDiffArray* result = (SequenceDiffArray*)malloc(sizeof(SequenceDiffArray));
@@ -188,7 +214,7 @@ SequenceDiffArray* myers_diff_algorithm(const char** seq_a, int len_a,
     IntArray* V = intarray_create();
     PathArray* paths = patharray_create();
     
-    int initial_x = myers_get_x_after_snake(seq_a, len_a, seq_b, len_b, 0, 0);
+    int initial_x = myers_get_x_after_snake(seq1, seq2, 0, 0);
     intarray_set(V, 0, initial_x);
     patharray_set(paths, 0, 
                   initial_x == 0 ? NULL : snakepath_create(NULL, 0, 0, initial_x));
@@ -196,10 +222,36 @@ SequenceDiffArray* myers_diff_algorithm(const char** seq_a, int len_a,
     int d = 0;
     int k = 0;
     int found = 0;
+    
+    // Timeout tracking
+    clock_t start_time = clock();
+    double timeout_seconds = timeout_ms / 1000.0;
 
     // Main loop: increase edit distance until we reach the end
     while (!found) {
         d++;
+        
+        // Check timeout (VSCode's timeout support)
+        if (timeout_ms > 0) {
+            clock_t current_time = clock();
+            double elapsed = (double)(current_time - start_time) / CLOCKS_PER_SEC;
+            if (elapsed > timeout_seconds) {
+                if (hit_timeout) *hit_timeout = true;
+                
+                // Return trivial diff (entire range changed)
+                intarray_free(V);
+                patharray_free(paths);
+                
+                SequenceDiffArray* result = (SequenceDiffArray*)malloc(sizeof(SequenceDiffArray));
+                result->diffs = (SequenceDiff*)malloc(sizeof(SequenceDiff));
+                result->diffs[0].seq1_start = 0;
+                result->diffs[0].seq1_end = len_a;
+                result->diffs[0].seq2_start = 0;
+                result->diffs[0].seq2_end = len_b;
+                result->count = 1;
+                return result;
+            }
+        }
         
         // Bounds for diagonals we need to consider
         int lower_bound = -min_int(d, len_b + (d % 2));
@@ -219,7 +271,7 @@ SequenceDiffArray* myers_diff_algorithm(const char** seq_a, int len_a,
             }
             
             // Follow snake (diagonal matches)
-            int new_max_x = myers_get_x_after_snake(seq_a, len_a, seq_b, len_b, x, y);
+            int new_max_x = myers_get_x_after_snake(seq1, seq2, x, y);
             intarray_set(V, k, new_max_x);
             
             // Track path
@@ -298,6 +350,29 @@ SequenceDiffArray* myers_diff_algorithm(const char** seq_a, int len_a,
     
     intarray_free(V);
     patharray_free(paths);
+    
+    return result;
+}
+
+/**
+ * Legacy wrapper for backward compatibility
+ * 
+ * Creates LineSequence wrappers and calls ISequence version.
+ * This allows existing tests to continue working without modification.
+ */
+SequenceDiffArray* myers_diff_lines(const char** lines_a, int len_a,
+                                    const char** lines_b, int len_b) {
+    // Create LineSequence wrappers (no whitespace trimming for backward compat)
+    ISequence* seq_a = line_sequence_create(lines_a, len_a, false);
+    ISequence* seq_b = line_sequence_create(lines_b, len_b, false);
+    
+    // Run Myers algorithm
+    bool hit_timeout = false;
+    SequenceDiffArray* result = myers_diff_algorithm(seq_a, seq_b, 0, &hit_timeout);
+    
+    // Cleanup sequences
+    seq_a->destroy(seq_a);
+    seq_b->destroy(seq_b);
     
     return result;
 }

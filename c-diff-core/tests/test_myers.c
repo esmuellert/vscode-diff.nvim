@@ -11,7 +11,7 @@ void test_identical_files() {
     const char* lines_a[] = {"line1", "line2", "line3"};
     const char* lines_b[] = {"line1", "line2", "line3"};
     
-    SequenceDiffArray* result = myers_diff_algorithm(lines_a, 3, lines_b, 3);
+    SequenceDiffArray* result = myers_diff_lines(lines_a, 3, lines_b, 3);
     print_sequence_diff_array("Result", result);
     assert(result->count == 0);
     printf("✓ PASSED\n");
@@ -25,7 +25,7 @@ void test_empty_files() {
     const char** lines_a = NULL;
     const char** lines_b = NULL;
     
-    SequenceDiffArray* result = myers_diff_algorithm(lines_a, 0, lines_b, 0);
+    SequenceDiffArray* result = myers_diff_lines(lines_a, 0, lines_b, 0);
     print_sequence_diff_array("Result", result);
     assert(result->count == 0);
     printf("✓ PASSED\n");
@@ -39,7 +39,7 @@ void test_one_line_change() {
     const char* lines_a[] = {"line1", "line2", "line3"};
     const char* lines_b[] = {"line1", "CHANGED", "line3"};
     
-    SequenceDiffArray* result = myers_diff_algorithm(lines_a, 3, lines_b, 3);
+    SequenceDiffArray* result = myers_diff_lines(lines_a, 3, lines_b, 3);
     print_sequence_diff_array("Result", result);
     assert(result->count == 1);
     assert(result->diffs[0].seq1_start == 1);
@@ -57,7 +57,7 @@ void test_insert_line() {
     const char* lines_a[] = {"line1", "line3"};
     const char* lines_b[] = {"line1", "line2", "line3"};
     
-    SequenceDiffArray* result = myers_diff_algorithm(lines_a, 2, lines_b, 3);
+    SequenceDiffArray* result = myers_diff_lines(lines_a, 2, lines_b, 3);
     print_sequence_diff_array("Result", result);
     assert(result->count == 1);
     assert(result->diffs[0].seq1_start == 1);
@@ -75,7 +75,7 @@ void test_delete_line() {
     const char* lines_a[] = {"line1", "line2", "line3"};
     const char* lines_b[] = {"line1", "line3"};
     
-    SequenceDiffArray* result = myers_diff_algorithm(lines_a, 3, lines_b, 2);
+    SequenceDiffArray* result = myers_diff_lines(lines_a, 3, lines_b, 2);
     print_sequence_diff_array("Result", result);
     assert(result->count == 1);
     assert(result->diffs[0].seq1_start == 1);
@@ -93,7 +93,7 @@ void test_completely_different() {
     const char* lines_a[] = {"a", "b", "c"};
     const char* lines_b[] = {"x", "y", "z"};
     
-    SequenceDiffArray* result = myers_diff_algorithm(lines_a, 3, lines_b, 3);
+    SequenceDiffArray* result = myers_diff_lines(lines_a, 3, lines_b, 3);
     print_sequence_diff_array("Result", result);
     assert(result->count == 1);
     assert(result->diffs[0].seq1_start == 0);
