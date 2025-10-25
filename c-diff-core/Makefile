@@ -15,18 +15,16 @@ PRINT_UTILS_SRC = $(SRC_DIR)/print_utils.c
 SEQUENCE_SRC = $(SRC_DIR)/sequence.c
 MYERS_SRC = $(SRC_DIR)/myers.c
 OPTIMIZE_SRC = $(SRC_DIR)/optimize.c
-REFINE_SRC = $(SRC_DIR)/refine.c
 CHAR_LEVEL_SRC = $(SRC_DIR)/char_level.c
 
 # Test executables
 TEST_MYERS = $(BUILD_DIR)/test_myers
 TEST_INFRASTRUCTURE = $(BUILD_DIR)/test_infrastructure
 TEST_LINE_OPT = $(BUILD_DIR)/test_line_optimization
-TEST_REFINE = $(BUILD_DIR)/test_refine
 TEST_CHAR_LEVEL = $(BUILD_DIR)/test_char_level
 TEST_INTEGRATION = $(BUILD_DIR)/test_integration
 
-.PHONY: all clean test test-myers test-infrastructure test-line-opt test-refine test-char-level test-integration
+.PHONY: all clean test test-myers test-infrastructure test-line-opt test-char-level test-integration
 
 all: $(BUILD_DIR)
 
@@ -57,15 +55,7 @@ test-line-opt: $(BUILD_DIR)
 	@echo ""
 	@$(TEST_LINE_OPT)
 
-# Build and run Refine tests (Step 4 - old implementation)
-test-refine: $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(TEST_DIR)/test_refine.c $(REFINE_SRC) $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_REFINE)
-	@echo ""
-	@echo "Running Character Refinement tests (Old implementation)..."
-	@echo ""
-	@$(TEST_REFINE)
-
-# Build and run Character-Level tests (Step 4 - NEW VSCODE PARITY)
+# Build and run Character-Level tests (Step 4 - VSCODE PARITY)
 test-char-level: $(BUILD_DIR)
 	$(CC) $(CFLAGS) $(TEST_DIR)/test_char_level.c $(CHAR_LEVEL_SRC) $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_CHAR_LEVEL) -lm
 	@echo ""
@@ -75,7 +65,7 @@ test-char-level: $(BUILD_DIR)
 
 # Build and run Integration test (Full Pipeline: Steps 1-4)
 test-integration: $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(TEST_DIR)/test_integration.c $(MYERS_SRC) $(OPTIMIZE_SRC) $(REFINE_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_INTEGRATION)
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_integration.c $(CHAR_LEVEL_SRC) $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_INTEGRATION) -lm
 	@$(TEST_INTEGRATION)
 
 # Run all tests

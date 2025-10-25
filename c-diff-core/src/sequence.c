@@ -294,7 +294,7 @@ static void char_seq_destroy(ISequence* self) {
  * 
  * Concatenates lines with '\n' and tracks line boundaries
  * 
- * REUSED BY: Step 4 (refine.c) for each line-level diff
+ * REUSED BY: Step 4 (char_level.c) for each line-level diff
  */
 ISequence* char_sequence_create(const char** lines, int start_line, int end_line, 
                                 bool consider_whitespace) {

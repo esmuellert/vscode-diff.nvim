@@ -14,7 +14,7 @@
  * REUSED BY:
  * - Step 1 (myers.c): Myers algorithm operates on ISequence
  * - Step 2-3 (optimize.c): Optimization functions use getBoundaryScore()
- * - Step 4 (refine.c): Character sequences implement this interface
+ * - Step 4 (char_level.c): Character sequences implement this interface
  * 
  * VSCode Reference: src/vs/editor/common/diff/defaultLinesDiffComputer/algorithms/diffAlgorithm.ts
  */
@@ -32,14 +32,14 @@ struct ISequence {
      * For LineSequence: Returns hash of trimmed line
      * For CharSequence: Returns character code
      * 
-     * REUSED BY: Step 1 (Myers), Step 2-3 (optimize), Step 4 (refine)
+     * REUSED BY: Step 1 (Myers), Step 2-3 (optimize), Step 4 (char_level)
      */
     uint32_t (*getElement)(const ISequence* self, int offset);
     
     /**
      * Get length of sequence
      * 
-     * REUSED BY: Step 1 (Myers), Step 2-3 (optimize), Step 4 (refine)
+     * REUSED BY: Step 1 (Myers), Step 2-3 (optimize), Step 4 (char_level)
      */
     int (*getLength)(const ISequence* self);
     
@@ -153,7 +153,7 @@ ISequence* char_sequence_create(const char** lines, int start_line, int end_line
  * @param out_line Output: 0-based line number
  * @param out_col Output: 0-based column number
  * 
- * REUSED BY: Step 4 (refine.c) when building RangeMapping
+ * REUSED BY: Step 4 (char_level.c) when building RangeMapping
  */
 void char_sequence_translate_offset(const CharSequence* seq, int offset, 
                                     int* out_line, int* out_col);
