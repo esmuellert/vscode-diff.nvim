@@ -586,9 +586,20 @@ RangeMappingArray* refine_diff_char_level(
     CharSequence* seq2 = (CharSequence*)seq2_iface->data;
     
     // Step 2: Run Myers on characters
-    // VSCode uses DynamicProgramming if length < 500, but we'll use Myers for now
+    // VSCode uses DP if length < 500, otherwise Myers O(ND)
+    // We now have automatic selection based on size
+    int len1 = seq1_iface->getLength(seq1_iface);
+    int len2 = seq2_iface->getLength(seq2_iface);
     bool hit_timeout = false;
-    SequenceDiffArray* diffs = myers_diff_algorithm(seq1_iface, seq2_iface, 0, &hit_timeout);
+    SequenceDiffArray* diffs;
+    
+    if (len1 + len2 < 500) {
+        // Use DP algorithm for small character sequences
+        diffs = myers_dp_diff_algorithm(seq1_iface, seq2_iface, 0, &hit_timeout, NULL, NULL);
+    } else {
+        // Use O(ND) algorithm for large character sequences
+        diffs = myers_nd_diff_algorithm(seq1_iface, seq2_iface, 0, &hit_timeout);
+    }
     
     if (!diffs) {
         seq1_iface->destroy(seq1_iface);

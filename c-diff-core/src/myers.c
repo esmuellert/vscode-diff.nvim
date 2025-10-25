@@ -1,8 +1,13 @@
 /**
- * Myers O(ND) Diff Algorithm - ISequence Version
+ * Myers Diff Algorithms - ISequence Version
  * 
- * This implementation uses the ISequence abstraction layer for maximum
- * flexibility and to enable advanced optimizations.
+ * This implementation provides two algorithms with automatic selection:
+ * 1. O(MN) DP algorithm - for small sequences (exact LCS with optional scoring)
+ * 2. O(ND) Myers algorithm - for large sequences (space-efficient)
+ * 
+ * Algorithm selection matches VSCode exactly:
+ * - Lines: DP if total < 1700, otherwise Myers O(ND)
+ * - Chars: DP if total < 500, otherwise Myers O(ND)
  * 
  * INFRASTRUCTURE IMPROVEMENTS:
  * 1. ISequence interface - works with any sequence type (lines, chars)
@@ -10,8 +15,12 @@
  * 3. Strong equality check - prevents hash collision issues
  * 4. Boundary scoring support - enables optimization in Steps 2-3
  * 5. Timeout protection - prevents hanging on massive diffs
+ * 6. Size-based algorithm selection - matches VSCode behavior
  * 
- * VSCode Reference: myersDiffAlgorithm.ts
+ * VSCode Reference: 
+ * - myersDiffAlgorithm.ts
+ * - dynamicProgrammingDiffing.ts
+ * - defaultLinesDiffComputer.ts
  */
 
 #include "../include/myers.h"
@@ -20,10 +29,269 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <math.h>
 
 // Forward declarations
 static int myers_get_x_after_snake(const ISequence* seq_a, const ISequence* seq_b,
                                    int x, int y);
+
+// Helper: Min/Max functions
+static int min_int(int a, int b) { return a < b ? a : b; }
+static int max_int(int a, int b) { return a > b ? a : b; }
+
+static double max_double(double a, double b) { return a > b ? a : b; }
+
+//==============================================================================
+// 2D Array Helper (for DP algorithm)
+//==============================================================================
+
+typedef struct {
+    double* data;
+    int rows;
+    int cols;
+} Array2D;
+
+static Array2D* array2d_create(int rows, int cols) {
+    Array2D* arr = (Array2D*)malloc(sizeof(Array2D));
+    arr->rows = rows;
+    arr->cols = cols;
+    arr->data = (double*)calloc(rows * cols, sizeof(double));
+    return arr;
+}
+
+static void array2d_free(Array2D* arr) {
+    free(arr->data);
+    free(arr);
+}
+
+static double array2d_get(const Array2D* arr, int row, int col) {
+    return arr->data[row * arr->cols + col];
+}
+
+static void array2d_set(Array2D* arr, int row, int col, double value) {
+    arr->data[row * arr->cols + col] = value;
+}
+
+//==============================================================================
+// O(MN) Dynamic Programming Diff Algorithm
+// VSCode Reference: dynamicProgrammingDiffing.ts
+//==============================================================================
+
+/**
+ * Myers O(MN) DP-based Diff Algorithm
+ * 
+ * A O(MN) diffing algorithm that supports a score function.
+ * Uses dynamic programming to find the longest common subsequence (LCS).
+ * 
+ * This implementation matches VSCode's DynamicProgrammingDiffing exactly:
+ * - Uses 3 matrices: lcsLengths, directions, lengths
+ * - Supports optional equality scoring
+ * - Prefers consecutive diagonals for better diff quality
+ * - Backtracks to build SequenceDiff array
+ * 
+ * VSCode uses this for small sequences:
+ * - Line-level: when total lines < 1700
+ * - Char-level: when total chars < 500
+ */
+SequenceDiffArray* myers_dp_diff_algorithm(const ISequence* seq1, const ISequence* seq2,
+                                           int timeout_ms, bool* hit_timeout,
+                                           EqualityScoreFn score_fn, void* user_data) {
+    if (hit_timeout) *hit_timeout = false;
+    
+    int len1 = seq1->getLength(seq1);
+    int len2 = seq2->getLength(seq2);
+    
+    // Handle trivial cases
+    if (len1 == 0 || len2 == 0) {
+        SequenceDiffArray* result = (SequenceDiffArray*)malloc(sizeof(SequenceDiffArray));
+        if (len1 == 0 && len2 == 0) {
+            result->diffs = NULL;
+            result->count = 0;
+            result->capacity = 0;
+        } else {
+            result->diffs = (SequenceDiff*)malloc(sizeof(SequenceDiff));
+            result->diffs[0].seq1_start = 0;
+            result->diffs[0].seq1_end = len1;
+            result->diffs[0].seq2_start = 0;
+            result->diffs[0].seq2_end = len2;
+            result->count = 1;
+            result->capacity = 1;
+        }
+        return result;
+    }
+    
+    // Create 3 matrices as in VSCode's implementation
+    Array2D* lcs_lengths = array2d_create(len1, len2);   // LCS length at each position
+    Array2D* directions = array2d_create(len1, len2);     // Direction taken (1=horizontal, 2=vertical, 3=diagonal)
+    Array2D* lengths = array2d_create(len1, len2);        // Length of consecutive diagonals
+    
+    // Timeout tracking
+    clock_t start_time = clock();
+    double timeout_seconds = timeout_ms / 1000.0;
+    
+    // Fill matrices (VSCode's algorithm)
+    for (int s1 = 0; s1 < len1; s1++) {
+        for (int s2 = 0; s2 < len2; s2++) {
+            // Check timeout
+            if (timeout_ms > 0) {
+                clock_t current_time = clock();
+                double elapsed = (double)(current_time - start_time) / CLOCKS_PER_SEC;
+                if (elapsed > timeout_seconds) {
+                    if (hit_timeout) *hit_timeout = true;
+                    
+                    // Return trivial diff
+                    array2d_free(lcs_lengths);
+                    array2d_free(directions);
+                    array2d_free(lengths);
+                    
+                    SequenceDiffArray* result = (SequenceDiffArray*)malloc(sizeof(SequenceDiffArray));
+                    result->diffs = (SequenceDiff*)malloc(sizeof(SequenceDiff));
+                    result->diffs[0].seq1_start = 0;
+                    result->diffs[0].seq1_end = len1;
+                    result->diffs[0].seq2_start = 0;
+                    result->diffs[0].seq2_end = len2;
+                    result->count = 1;
+                    result->capacity = 1;
+                    return result;
+                }
+            }
+            
+            // Get values from previous cells
+            double horizontal_len = (s1 == 0) ? 0 : array2d_get(lcs_lengths, s1 - 1, s2);
+            double vertical_len = (s2 == 0) ? 0 : array2d_get(lcs_lengths, s1, s2 - 1);
+            
+            // Calculate diagonal score
+            double extended_seq_score;
+            if (seq1->getElement(seq1, s1) == seq2->getElement(seq2, s2)) {
+                if (s1 == 0 || s2 == 0) {
+                    extended_seq_score = 0;
+                } else {
+                    extended_seq_score = array2d_get(lcs_lengths, s1 - 1, s2 - 1);
+                }
+                
+                // Prefer consecutive diagonals (VSCode optimization)
+                if (s1 > 0 && s2 > 0 && array2d_get(directions, s1 - 1, s2 - 1) == 3) {
+                    extended_seq_score += array2d_get(lengths, s1 - 1, s2 - 1);
+                }
+                
+                // Add equality score
+                if (score_fn) {
+                    extended_seq_score += score_fn(seq1, seq2, s1, s2, user_data);
+                } else {
+                    extended_seq_score += 1.0;
+                }
+            } else {
+                extended_seq_score = -1;
+            }
+            
+            // Choose best direction
+            double new_value = max_double(max_double(horizontal_len, vertical_len), extended_seq_score);
+            
+            if (new_value == extended_seq_score) {
+                // Prefer diagonals (matching elements)
+                double prev_len = (s1 > 0 && s2 > 0) ? array2d_get(lengths, s1 - 1, s2 - 1) : 0;
+                array2d_set(lengths, s1, s2, prev_len + 1);
+                array2d_set(directions, s1, s2, 3);  // Diagonal
+            } else if (new_value == horizontal_len) {
+                array2d_set(lengths, s1, s2, 0);
+                array2d_set(directions, s1, s2, 1);  // Horizontal (delete from seq1)
+            } else if (new_value == vertical_len) {
+                array2d_set(lengths, s1, s2, 0);
+                array2d_set(directions, s1, s2, 2);  // Vertical (insert into seq1)
+            }
+            
+            array2d_set(lcs_lengths, s1, s2, new_value);
+        }
+    }
+    
+    // Backtrack to build diffs (VSCode's algorithm)
+    // First pass: count diffs
+    int diff_count = 0;
+    int s1 = len1 - 1;
+    int s2 = len2 - 1;
+    int last_align_s1 = len1;
+    int last_align_s2 = len2;
+    
+    while (s1 >= 0 && s2 >= 0) {
+        int dir = (int)array2d_get(directions, s1, s2);
+        if (dir == 3) {
+            // Diagonal - this is a match, emit diff if needed
+            if (s1 + 1 != last_align_s1 || s2 + 1 != last_align_s2) {
+                diff_count++;
+            }
+            last_align_s1 = s1;
+            last_align_s2 = s2;
+            s1--;
+            s2--;
+        } else if (dir == 1) {
+            // Horizontal
+            s1--;
+        } else {
+            // Vertical
+            s2--;
+        }
+    }
+    
+    // Final diff if needed
+    if (0 != last_align_s1 || 0 != last_align_s2) {
+        diff_count++;
+    }
+    
+    // Second pass: build result
+    SequenceDiffArray* result = (SequenceDiffArray*)malloc(sizeof(SequenceDiffArray));
+    result->count = diff_count;
+    result->capacity = diff_count;
+    result->diffs = diff_count > 0 ? 
+                    (SequenceDiff*)malloc(diff_count * sizeof(SequenceDiff)) : NULL;
+    
+    s1 = len1 - 1;
+    s2 = len2 - 1;
+    last_align_s1 = len1;
+    last_align_s2 = len2;
+    int idx = diff_count - 1;
+    
+    while (s1 >= 0 && s2 >= 0) {
+        int dir = (int)array2d_get(directions, s1, s2);
+        if (dir == 3) {
+            // Diagonal - emit diff if there was a gap
+            if (s1 + 1 != last_align_s1 || s2 + 1 != last_align_s2) {
+                result->diffs[idx].seq1_start = s1 + 1;
+                result->diffs[idx].seq1_end = last_align_s1;
+                result->diffs[idx].seq2_start = s2 + 1;
+                result->diffs[idx].seq2_end = last_align_s2;
+                idx--;
+            }
+            last_align_s1 = s1;
+            last_align_s2 = s2;
+            s1--;
+            s2--;
+        } else if (dir == 1) {
+            s1--;
+        } else {
+            s2--;
+        }
+    }
+    
+    // Final diff
+    if (0 != last_align_s1 || 0 != last_align_s2) {
+        result->diffs[idx].seq1_start = 0;
+        result->diffs[idx].seq1_end = last_align_s1;
+        result->diffs[idx].seq2_start = 0;
+        result->diffs[idx].seq2_end = last_align_s2;
+    }
+    
+    // Cleanup
+    array2d_free(lcs_lengths);
+    array2d_free(directions);
+    array2d_free(lengths);
+    
+    return result;
+}
+
+//==============================================================================
+// O(ND) Myers Forward Algorithm
+// VSCode Reference: myersDiffAlgorithm.ts
+//==============================================================================
 
 // Simple dynamic array for storing integers (supports negative indices)
 typedef struct {
@@ -182,13 +450,10 @@ static int myers_get_x_after_snake(const ISequence* seq_a, const ISequence* seq_
     return x;
 }
 
-// Helper: Min/Max functions
-static int min_int(int a, int b) { return a < b ? a : b; }
-static int max_int(int a, int b) { return a > b ? a : b; }
-
-// Main Myers Diff Algorithm (Forward-only, with ISequence and timeout support)
-SequenceDiffArray* myers_diff_algorithm(const ISequence* seq1, const ISequence* seq2,
-                                        int timeout_ms, bool* hit_timeout) {
+// Main Myers O(ND) Forward Algorithm
+// (Renamed from myers_diff_algorithm to myers_nd_diff_algorithm)
+SequenceDiffArray* myers_nd_diff_algorithm(const ISequence* seq1, const ISequence* seq2,
+                                           int timeout_ms, bool* hit_timeout) {
     if (hit_timeout) *hit_timeout = false;
     
     int len_a = seq1->getLength(seq1);
@@ -356,6 +621,43 @@ SequenceDiffArray* myers_diff_algorithm(const ISequence* seq1, const ISequence* 
     patharray_free(paths);
     
     return result;
+}
+
+//==============================================================================
+// Main Entry Point: Automatic Algorithm Selection
+// VSCode Reference: defaultLinesDiffComputer.ts (line 66-87, 224-226)
+//==============================================================================
+
+/**
+ * Myers Diff Algorithm with Automatic Selection
+ * 
+ * Automatically chooses between DP and O(ND) based on input size.
+ * This matches VSCode's behavior exactly:
+ * 
+ * The threshold is context-dependent:
+ * - For line-level diffs: typically < 1700 total lines uses DP
+ * - For char-level diffs: typically < 500 total chars uses DP
+ * 
+ * Since we can't determine context here, we use a conservative threshold
+ * that works well for both cases. Callers can override by calling
+ * myers_dp_diff_algorithm() or myers_nd_diff_algorithm() directly.
+ */
+SequenceDiffArray* myers_diff_algorithm(const ISequence* seq1, const ISequence* seq2,
+                                        int timeout_ms, bool* hit_timeout) {
+    int len1 = seq1->getLength(seq1);
+    int len2 = seq2->getLength(seq2);
+    int total = len1 + len2;
+    
+    // VSCode uses 1700 for lines, 500 for chars
+    // We use 1700 as the default threshold since this is the line-level entry point
+    // Char-level code in char_level.c uses 500 threshold
+    if (total < 1700) {
+        // Use DP algorithm for small inputs
+        return myers_dp_diff_algorithm(seq1, seq2, timeout_ms, hit_timeout, NULL, NULL);
+    } else {
+        // Use O(ND) algorithm for large inputs
+        return myers_nd_diff_algorithm(seq1, seq2, timeout_ms, hit_timeout);
+    }
 }
 
 /**

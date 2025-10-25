@@ -23,8 +23,9 @@ TEST_INFRASTRUCTURE = $(BUILD_DIR)/test_infrastructure
 TEST_LINE_OPT = $(BUILD_DIR)/test_line_optimization
 TEST_CHAR_LEVEL = $(BUILD_DIR)/test_char_level
 TEST_INTEGRATION = $(BUILD_DIR)/test_integration
+TEST_DP = $(BUILD_DIR)/test_dp_algorithm
 
-.PHONY: all clean test test-myers test-infrastructure test-line-opt test-char-level test-integration
+.PHONY: all clean test test-myers test-infrastructure test-line-opt test-char-level test-integration test-dp
 
 all: $(BUILD_DIR)
 
@@ -68,8 +69,16 @@ test-integration: $(BUILD_DIR)
 	$(CC) $(CFLAGS) $(TEST_DIR)/test_integration.c $(CHAR_LEVEL_SRC) $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_INTEGRATION) -lm
 	@$(TEST_INTEGRATION)
 
+# Build and run DP Algorithm tests
+test-dp: $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_dp_algorithm.c $(MYERS_SRC) $(SEQUENCE_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_DP) -lm
+	@echo ""
+	@echo "Running DP Algorithm Selection tests..."
+	@echo ""
+	@$(TEST_DP)
+
 # Run all tests
-test: test-myers test-line-opt test-char-level
+test: test-myers test-line-opt test-char-level test-dp
 
 # Clean build artifacts
 clean:
