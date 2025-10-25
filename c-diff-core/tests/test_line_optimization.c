@@ -44,30 +44,31 @@ TEST(line_opt_simple_addition) {
     ISequence* seq2 = line_sequence_create(lines_b, 4, false);
     bool timeout = false;
     SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
+    print_sequence_diff_array("After Step 1 (Myers)", myers);
     printf("  Step 1 (Myers): ");
     assert_diffs_equal(myers, after_step1);
     printf("verified\n");
-    free_diff_array(myers);
     
     // 3. AFTER STEP 2 (optimize)
     // No change expected (single insertion, nothing to optimize)
     SequenceDiffArray* after_step2 = create_diff_array(10);
     add_diff(after_step2, 2, 2, 2, 3);
     
-    SequenceDiffArray* step2_actual = copy_diff_array(after_step1);
+    SequenceDiffArray* step2_actual = copy_diff_array(myers);
     optimize_sequence_diffs(seq1, seq2, step2_actual);
+    print_sequence_diff_array("After Step 2 (optimize)", step2_actual);
     printf("  Step 2 (optimize): ");
     assert_diffs_equal(step2_actual, after_step2);
     printf("verified\n");
-    free_diff_array(step2_actual);
     
     // 4. AFTER STEP 3 (removeVeryShort)
     // No change expected (single diff, nothing to join)
     SequenceDiffArray* expected_final = create_diff_array(10);
     add_diff(expected_final, 2, 2, 2, 3);
     
-    SequenceDiffArray* actual_final = copy_diff_array(after_step2);
+    SequenceDiffArray* actual_final = copy_diff_array(step2_actual);
     remove_very_short_matching_lines_between_diffs(seq1, seq2, actual_final);
+    print_sequence_diff_array("After Step 3 (removeVeryShort)", actual_final);
     printf("  Step 3 (removeVeryShort): ");
     assert_diffs_equal(actual_final, expected_final);
     printf("verified\n");
@@ -77,10 +78,12 @@ TEST(line_opt_simple_addition) {
     // 5. CLEANUP
     seq1->destroy(seq1);
     seq2->destroy(seq2);
+    free_diff_array(myers);
     free_diff_array(after_step1);
+    free_diff_array(step2_actual);
     free_diff_array(after_step2);
-    free_diff_array(expected_final);
     free_diff_array(actual_final);
+    free_diff_array(expected_final);
 }
 
 // ============================================================================
@@ -103,10 +106,10 @@ TEST(line_opt_small_gap_join) {
     ISequence* seq2 = line_sequence_create(lines_b, 3, false);
     bool timeout = false;
     SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
+    print_sequence_diff_array("After Step 1 (Myers)", myers);
     printf("  Step 1 (Myers): ");
     assert_diffs_equal(myers, after_step1);
     printf("verified\n");
-    free_diff_array(myers);
     
     // 3. AFTER STEP 2 (optimize)
     // No change (modifications are skipped by Step 2)
@@ -114,12 +117,12 @@ TEST(line_opt_small_gap_join) {
     add_diff(after_step2, 0, 1, 0, 1);
     add_diff(after_step2, 2, 3, 2, 3);
     
-    SequenceDiffArray* step2_actual = copy_diff_array(after_step1);
+    SequenceDiffArray* step2_actual = copy_diff_array(myers);
     optimize_sequence_diffs(seq1, seq2, step2_actual);
+    print_sequence_diff_array("After Step 2 (optimize)", step2_actual);
     printf("  Step 2 (optimize): ");
     assert_diffs_equal(step2_actual, after_step2);
     printf("verified\n");
-    free_diff_array(step2_actual);
     
     // 4. AFTER STEP 3 (removeVeryShort)
     // NOT JOINED! Even though gap="x" has 1 char (≤4),
@@ -129,8 +132,9 @@ TEST(line_opt_small_gap_join) {
     add_diff(expected_final, 0, 1, 0, 1);
     add_diff(expected_final, 2, 3, 2, 3);
     
-    SequenceDiffArray* actual_final = copy_diff_array(after_step2);
+    SequenceDiffArray* actual_final = copy_diff_array(step2_actual);
     remove_very_short_matching_lines_between_diffs(seq1, seq2, actual_final);
+    print_sequence_diff_array("After Step 3 (removeVeryShort)", actual_final);
     printf("  Step 3 (removeVeryShort): ");
     assert_diffs_equal(actual_final, expected_final);
     printf("verified\n");
@@ -141,10 +145,12 @@ TEST(line_opt_small_gap_join) {
     // 5. CLEANUP
     seq1->destroy(seq1);
     seq2->destroy(seq2);
+    free_diff_array(myers);
     free_diff_array(after_step1);
+    free_diff_array(step2_actual);
     free_diff_array(after_step2);
-    free_diff_array(expected_final);
     free_diff_array(actual_final);
+    free_diff_array(expected_final);
 }
 
 // ============================================================================
@@ -175,22 +181,22 @@ TEST(line_opt_large_gap_no_join) {
     ISequence* seq2 = line_sequence_create(lines_b, 3, false);
     bool timeout = false;
     SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
+    print_sequence_diff_array("After Step 1 (Myers)", myers);
     printf("  Step 1 (Myers): ");
     assert_diffs_equal(myers, after_step1);
     printf("verified\n");
-    free_diff_array(myers);
     
     // 3. AFTER STEP 2 (optimize)
     SequenceDiffArray* after_step2 = create_diff_array(10);
     add_diff(after_step2, 0, 1, 0, 1);
     add_diff(after_step2, 2, 3, 2, 3);
     
-    SequenceDiffArray* step2_actual = copy_diff_array(after_step1);
+    SequenceDiffArray* step2_actual = copy_diff_array(myers);
     optimize_sequence_diffs(seq1, seq2, step2_actual);
+    print_sequence_diff_array("After Step 2 (optimize)", step2_actual);
     printf("  Step 2 (optimize): ");
     assert_diffs_equal(step2_actual, after_step2);
     printf("verified\n");
-    free_diff_array(step2_actual);
     
     // 4. AFTER STEP 3 (removeVeryShort)
     // NOT joined (gap > 4 non-whitespace chars)
@@ -198,8 +204,9 @@ TEST(line_opt_large_gap_no_join) {
     add_diff(expected_final, 0, 1, 0, 1);
     add_diff(expected_final, 2, 3, 2, 3);
     
-    SequenceDiffArray* actual_final = copy_diff_array(after_step2);
+    SequenceDiffArray* actual_final = copy_diff_array(step2_actual);
     remove_very_short_matching_lines_between_diffs(seq1, seq2, actual_final);
+    print_sequence_diff_array("After Step 3 (removeVeryShort)", actual_final);
     printf("  Step 3 (removeVeryShort): ");
     assert_diffs_equal(actual_final, expected_final);
     printf("verified\n");
@@ -209,10 +216,12 @@ TEST(line_opt_large_gap_no_join) {
     // 5. CLEANUP
     seq1->destroy(seq1);
     seq2->destroy(seq2);
+    free_diff_array(myers);
     free_diff_array(after_step1);
+    free_diff_array(step2_actual);
     free_diff_array(after_step2);
-    free_diff_array(expected_final);
     free_diff_array(actual_final);
+    free_diff_array(expected_final);
 }
 
 // ============================================================================
@@ -244,30 +253,31 @@ TEST(line_opt_blank_lines_join) {
     ISequence* seq2 = line_sequence_create(lines_b, 7, false);
     bool timeout = false;
     SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
+    print_sequence_diff_array("After Step 1 (Myers)", myers);
     printf("  Step 1 (Myers): ");
     assert_diffs_equal(myers, after_step1);
     printf("verified\n");
-    free_diff_array(myers);
     
     // 3. AFTER STEP 2 (optimize)
     SequenceDiffArray* after_step2 = create_diff_array(10);
     add_diff(after_step2, 0, 4, 0, 4);
     add_diff(after_step2, 6, 7, 6, 7);
     
-    SequenceDiffArray* step2_actual = copy_diff_array(after_step1);
+    SequenceDiffArray* step2_actual = copy_diff_array(myers);
     optimize_sequence_diffs(seq1, seq2, step2_actual);
+    print_sequence_diff_array("After Step 2 (optimize)", step2_actual);
     printf("  Step 2 (optimize): ");
     assert_diffs_equal(step2_actual, after_step2);
     printf("verified\n");
-    free_diff_array(step2_actual);
     
     // 4. AFTER STEP 3 (removeVeryShort)
     // JOINED! Two blank lines = 0 non-ws chars (≤4) AND first diff is large (4+4=8 >5)
     SequenceDiffArray* expected_final = create_diff_array(10);
     add_diff(expected_final, 0, 7, 0, 7);
     
-    SequenceDiffArray* actual_final = copy_diff_array(after_step2);
+    SequenceDiffArray* actual_final = copy_diff_array(step2_actual);
     remove_very_short_matching_lines_between_diffs(seq1, seq2, actual_final);
+    print_sequence_diff_array("After Step 3 (removeVeryShort)", actual_final);
     printf("  Step 3 (removeVeryShort): ");
     assert_diffs_equal(actual_final, expected_final);
     printf("verified\n");
@@ -277,10 +287,12 @@ TEST(line_opt_blank_lines_join) {
     // 5. CLEANUP
     seq1->destroy(seq1);
     seq2->destroy(seq2);
+    free_diff_array(myers);
     free_diff_array(after_step1);
+    free_diff_array(step2_actual);
     free_diff_array(after_step2);
-    free_diff_array(expected_final);
     free_diff_array(actual_final);
+    free_diff_array(expected_final);
 }
 
 // ============================================================================
@@ -312,30 +324,31 @@ TEST(line_opt_function_refactor) {
     ISequence* seq2 = line_sequence_create(lines_b, 3, false);
     bool timeout = false;
     SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
+    print_sequence_diff_array("After Step 1 (Myers)", myers);
     printf("  Step 1 (Myers): ");
     assert_diffs_equal(myers, after_step1);
     printf("verified\n");
-    free_diff_array(myers);
     
     // 3. AFTER STEP 2 (optimize)
     // No change - it's a modification, not insertion/deletion
     SequenceDiffArray* after_step2 = create_diff_array(10);
     add_diff(after_step2, 0, 2, 0, 2);
     
-    SequenceDiffArray* step2_actual = copy_diff_array(after_step1);
+    SequenceDiffArray* step2_actual = copy_diff_array(myers);
     optimize_sequence_diffs(seq1, seq2, step2_actual);
+    print_sequence_diff_array("After Step 2 (optimize)", step2_actual);
     printf("  Step 2 (optimize): ");
     assert_diffs_equal(step2_actual, after_step2);
     printf("verified\n");
-    free_diff_array(step2_actual);
     
     // 4. AFTER STEP 3 (removeVeryShort)
     // Only 1 diff, nothing to join
     SequenceDiffArray* expected_final = create_diff_array(10);
     add_diff(expected_final, 0, 2, 0, 2);
     
-    SequenceDiffArray* actual_final = copy_diff_array(after_step2);
+    SequenceDiffArray* actual_final = copy_diff_array(step2_actual);
     remove_very_short_matching_lines_between_diffs(seq1, seq2, actual_final);
+    print_sequence_diff_array("After Step 3 (removeVeryShort)", actual_final);
     printf("  Step 3 (removeVeryShort): ");
     assert_diffs_equal(actual_final, expected_final);
     printf("verified\n");
@@ -346,10 +359,12 @@ TEST(line_opt_function_refactor) {
     // 5. CLEANUP
     seq1->destroy(seq1);
     seq2->destroy(seq2);
+    free_diff_array(myers);
     free_diff_array(after_step1);
+    free_diff_array(step2_actual);
     free_diff_array(after_step2);
-    free_diff_array(expected_final);
     free_diff_array(actual_final);
+    free_diff_array(expected_final);
 }
 
 // ============================================================================
@@ -378,30 +393,31 @@ TEST(line_opt_import_changes) {
     ISequence* seq2 = line_sequence_create(lines_b, 2, false);
     bool timeout = false;
     SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
+    print_sequence_diff_array("After Step 1 (Myers)", myers);
     printf("  Step 1 (Myers): ");
     assert_diffs_equal(myers, after_step1);
     printf("verified\n");
-    free_diff_array(myers);
     
     // 3. AFTER STEP 2 (optimize)
     // No change
     SequenceDiffArray* after_step2 = create_diff_array(10);
     add_diff(after_step2, 0, 2, 0, 2);
     
-    SequenceDiffArray* step2_actual = copy_diff_array(after_step1);
+    SequenceDiffArray* step2_actual = copy_diff_array(myers);
     optimize_sequence_diffs(seq1, seq2, step2_actual);
+    print_sequence_diff_array("After Step 2 (optimize)", step2_actual);
     printf("  Step 2 (optimize): ");
     assert_diffs_equal(step2_actual, after_step2);
     printf("verified\n");
-    free_diff_array(step2_actual);
     
     // 4. AFTER STEP 3 (removeVeryShort)
     // Only 1 diff, nothing to join
     SequenceDiffArray* expected_final = create_diff_array(10);
     add_diff(expected_final, 0, 2, 0, 2);
     
-    SequenceDiffArray* actual_final = copy_diff_array(after_step2);
+    SequenceDiffArray* actual_final = copy_diff_array(step2_actual);
     remove_very_short_matching_lines_between_diffs(seq1, seq2, actual_final);
+    print_sequence_diff_array("After Step 3 (removeVeryShort)", actual_final);
     printf("  Step 3 (removeVeryShort): ");
     assert_diffs_equal(actual_final, expected_final);
     printf("verified\n");
@@ -412,10 +428,12 @@ TEST(line_opt_import_changes) {
     // 5. CLEANUP
     seq1->destroy(seq1);
     seq2->destroy(seq2);
+    free_diff_array(myers);
     free_diff_array(after_step1);
+    free_diff_array(step2_actual);
     free_diff_array(after_step2);
-    free_diff_array(expected_final);
     free_diff_array(actual_final);
+    free_diff_array(expected_final);
 }
 
 // ============================================================================
@@ -453,29 +471,30 @@ TEST(line_opt_comment_block) {
     ISequence* seq2 = line_sequence_create(lines_b, 7, false);
     bool timeout = false;
     SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
+    print_sequence_diff_array("After Step 1 (Myers)", myers);
     printf("  Step 1 (Myers): ");
     assert_diffs_equal(myers, after_step1);
     printf("verified\n");
-    free_diff_array(myers);
     
     // 3. AFTER STEP 2 (optimize)
     SequenceDiffArray* after_step2 = create_diff_array(10);
     add_diff(after_step2, 0, 6, 0, 6);
     
-    SequenceDiffArray* step2_actual = copy_diff_array(after_step1);
+    SequenceDiffArray* step2_actual = copy_diff_array(myers);
     optimize_sequence_diffs(seq1, seq2, step2_actual);
+    print_sequence_diff_array("After Step 2 (optimize)", step2_actual);
     printf("  Step 2 (optimize): ");
     assert_diffs_equal(step2_actual, after_step2);
     printf("verified\n");
-    free_diff_array(step2_actual);
     
     // 4. AFTER STEP 3 (removeVeryShort)
     // No change (already single diff)
     SequenceDiffArray* expected_final = create_diff_array(10);
     add_diff(expected_final, 0, 6, 0, 6);
     
-    SequenceDiffArray* actual_final = copy_diff_array(after_step2);
+    SequenceDiffArray* actual_final = copy_diff_array(step2_actual);
     remove_very_short_matching_lines_between_diffs(seq1, seq2, actual_final);
+    print_sequence_diff_array("After Step 3 (removeVeryShort)", actual_final);
     printf("  Step 3 (removeVeryShort): ");
     assert_diffs_equal(actual_final, expected_final);
     printf("verified\n");
@@ -485,10 +504,12 @@ TEST(line_opt_comment_block) {
     // 5. CLEANUP
     seq1->destroy(seq1);
     seq2->destroy(seq2);
+    free_diff_array(myers);
     free_diff_array(after_step1);
+    free_diff_array(step2_actual);
     free_diff_array(after_step2);
-    free_diff_array(expected_final);
     free_diff_array(actual_final);
+    free_diff_array(expected_final);
 }
 
 // ============================================================================
@@ -520,30 +541,31 @@ TEST(line_opt_scattered_edits) {
     ISequence* seq2 = line_sequence_create(lines_b, 8, false);
     bool timeout = false;
     SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
+    print_sequence_diff_array("After Step 1 (Myers)", myers);
     printf("  Step 1 (Myers): ");
     assert_diffs_equal(myers, after_step1);
     printf("verified\n");
-    free_diff_array(myers);
     
     // 3. AFTER STEP 2 (optimize)
     SequenceDiffArray* after_step2 = create_diff_array(10);
     add_diff(after_step2, 0, 6, 0, 6);
     add_diff(after_step2, 7, 8, 7, 8);
     
-    SequenceDiffArray* step2_actual = copy_diff_array(after_step1);
+    SequenceDiffArray* step2_actual = copy_diff_array(myers);
     optimize_sequence_diffs(seq1, seq2, step2_actual);
+    print_sequence_diff_array("After Step 2 (optimize)", step2_actual);
     printf("  Step 2 (optimize): ");
     assert_diffs_equal(step2_actual, after_step2);
     printf("verified\n");
-    free_diff_array(step2_actual);
     
     // 4. AFTER STEP 3 (removeVeryShort)
     // JOINED! Gap "x" has 1 char (≤4) AND first diff is large (6+6=12 >5)
     SequenceDiffArray* expected_final = create_diff_array(10);
     add_diff(expected_final, 0, 8, 0, 8);
     
-    SequenceDiffArray* actual_final = copy_diff_array(after_step2);
+    SequenceDiffArray* actual_final = copy_diff_array(step2_actual);
     remove_very_short_matching_lines_between_diffs(seq1, seq2, actual_final);
+    print_sequence_diff_array("After Step 3 (removeVeryShort)", actual_final);
     printf("  Step 3 (removeVeryShort): ");
     assert_diffs_equal(actual_final, expected_final);
     printf("verified\n");
@@ -554,10 +576,12 @@ TEST(line_opt_scattered_edits) {
     // 5. CLEANUP
     seq1->destroy(seq1);
     seq2->destroy(seq2);
+    free_diff_array(myers);
     free_diff_array(after_step1);
+    free_diff_array(step2_actual);
     free_diff_array(after_step2);
-    free_diff_array(expected_final);
     free_diff_array(actual_final);
+    free_diff_array(expected_final);
 }
 
 // ============================================================================
@@ -591,30 +615,31 @@ TEST(line_opt_mixed_changes) {
     ISequence* seq2 = line_sequence_create(lines_b, 5, false);
     bool timeout = false;
     SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
+    print_sequence_diff_array("After Step 1 (Myers)", myers);
     printf("  Step 1 (Myers): ");
     assert_diffs_equal(myers, after_step1);
     printf("verified\n");
-    free_diff_array(myers);
     
     // 3. AFTER STEP 2 (optimize)
     // No change (already optimal)
     SequenceDiffArray* after_step2 = create_diff_array(10);
     add_diff(after_step2, 2, 3, 2, 4);
     
-    SequenceDiffArray* step2_actual = copy_diff_array(after_step1);
+    SequenceDiffArray* step2_actual = copy_diff_array(myers);
     optimize_sequence_diffs(seq1, seq2, step2_actual);
+    print_sequence_diff_array("After Step 2 (optimize)", step2_actual);
     printf("  Step 2 (optimize): ");
     assert_diffs_equal(step2_actual, after_step2);
     printf("verified\n");
-    free_diff_array(step2_actual);
     
     // 4. AFTER STEP 3 (removeVeryShort)
     // Only 1 diff, nothing to join
     SequenceDiffArray* expected_final = create_diff_array(10);
     add_diff(expected_final, 2, 3, 2, 4);
     
-    SequenceDiffArray* actual_final = copy_diff_array(after_step2);
+    SequenceDiffArray* actual_final = copy_diff_array(step2_actual);
     remove_very_short_matching_lines_between_diffs(seq1, seq2, actual_final);
+    print_sequence_diff_array("After Step 3 (removeVeryShort)", actual_final);
     printf("  Step 3 (removeVeryShort): ");
     assert_diffs_equal(actual_final, expected_final);
     printf("verified\n");
@@ -625,10 +650,12 @@ TEST(line_opt_mixed_changes) {
     // 5. CLEANUP
     seq1->destroy(seq1);
     seq2->destroy(seq2);
+    free_diff_array(myers);
     free_diff_array(after_step1);
+    free_diff_array(step2_actual);
     free_diff_array(after_step2);
-    free_diff_array(expected_final);
     free_diff_array(actual_final);
+    free_diff_array(expected_final);
 }
 
 // ============================================================================
@@ -663,30 +690,31 @@ TEST(line_opt_multiline_string) {
     ISequence* seq2 = line_sequence_create(lines_b, 5, false);
     bool timeout = false;
     SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
+    print_sequence_diff_array("After Step 1 (Myers)", myers);
     printf("  Step 1 (Myers): ");
     assert_diffs_equal(myers, after_step1);
     printf("verified\n");
-    free_diff_array(myers);
     
     // 3. AFTER STEP 2 (optimize)
     // No change
     SequenceDiffArray* after_step2 = create_diff_array(10);
     add_diff(after_step2, 1, 3, 1, 3);
     
-    SequenceDiffArray* step2_actual = copy_diff_array(after_step1);
+    SequenceDiffArray* step2_actual = copy_diff_array(myers);
     optimize_sequence_diffs(seq1, seq2, step2_actual);
+    print_sequence_diff_array("After Step 2 (optimize)", step2_actual);
     printf("  Step 2 (optimize): ");
     assert_diffs_equal(step2_actual, after_step2);
     printf("verified\n");
-    free_diff_array(step2_actual);
     
     // 4. AFTER STEP 3 (removeVeryShort)
     // Only 1 diff, nothing to join
     SequenceDiffArray* expected_final = create_diff_array(10);
     add_diff(expected_final, 1, 3, 1, 3);
     
-    SequenceDiffArray* actual_final = copy_diff_array(after_step2);
+    SequenceDiffArray* actual_final = copy_diff_array(step2_actual);
     remove_very_short_matching_lines_between_diffs(seq1, seq2, actual_final);
+    print_sequence_diff_array("After Step 3 (removeVeryShort)", actual_final);
     printf("  Step 3 (removeVeryShort): ");
     assert_diffs_equal(actual_final, expected_final);
     printf("verified\n");
@@ -697,10 +725,12 @@ TEST(line_opt_multiline_string) {
     // 5. CLEANUP
     seq1->destroy(seq1);
     seq2->destroy(seq2);
+    free_diff_array(myers);
     free_diff_array(after_step1);
+    free_diff_array(step2_actual);
     free_diff_array(after_step2);
-    free_diff_array(expected_final);
     free_diff_array(actual_final);
+    free_diff_array(expected_final);
 }
 
 // ============================================================================

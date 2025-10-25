@@ -200,6 +200,7 @@ SequenceDiffArray* myers_diff_algorithm(const ISequence* seq1, const ISequence* 
         if (len_a == 0 && len_b == 0) {
             result->diffs = NULL;
             result->count = 0;
+            result->capacity = 0;
         } else {
             result->diffs = (SequenceDiff*)malloc(sizeof(SequenceDiff));
             result->diffs[0].seq1_start = 0;
@@ -207,6 +208,7 @@ SequenceDiffArray* myers_diff_algorithm(const ISequence* seq1, const ISequence* 
             result->diffs[0].seq2_start = 0;
             result->diffs[0].seq2_end = len_b;
             result->count = 1;
+            result->capacity = 1;
         }
         return result;
     }
@@ -249,6 +251,7 @@ SequenceDiffArray* myers_diff_algorithm(const ISequence* seq1, const ISequence* 
                 result->diffs[0].seq2_start = 0;
                 result->diffs[0].seq2_end = len_b;
                 result->count = 1;
+                result->capacity = 1;
                 return result;
             }
         }
@@ -317,6 +320,7 @@ SequenceDiffArray* myers_diff_algorithm(const ISequence* seq1, const ISequence* 
     // Allocate result
     SequenceDiffArray* result = (SequenceDiffArray*)malloc(sizeof(SequenceDiffArray));
     result->count = diff_count;
+    result->capacity = diff_count;
     result->diffs = diff_count > 0 ? 
                     (SequenceDiff*)malloc(diff_count * sizeof(SequenceDiff)) : NULL;
     

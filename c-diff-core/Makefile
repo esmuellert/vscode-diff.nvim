@@ -20,11 +20,11 @@ REFINE_SRC = $(SRC_DIR)/refine.c
 # Test executables
 TEST_MYERS = $(BUILD_DIR)/test_myers
 TEST_INFRASTRUCTURE = $(BUILD_DIR)/test_infrastructure
-TEST_OPTIMIZE = $(BUILD_DIR)/test_optimize
+TEST_LINE_OPT = $(BUILD_DIR)/test_line_optimization
 TEST_REFINE = $(BUILD_DIR)/test_refine
 TEST_INTEGRATION = $(BUILD_DIR)/test_integration
 
-.PHONY: all clean test test-myers test-infrastructure test-optimize test-refine test-integration
+.PHONY: all clean test test-myers test-infrastructure test-line-opt test-refine test-integration
 
 all: $(BUILD_DIR)
 
@@ -47,13 +47,13 @@ test-infrastructure: $(BUILD_DIR)
 	@echo ""
 	@$(TEST_INFRASTRUCTURE)
 
-# Build and run Optimize tests (Step 2 & 3)
-test-optimize: $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(TEST_DIR)/test_optimize.c $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_OPTIMIZE)
+# Build and run Line Optimization tests (Step 1+2+3)
+test-line-opt: $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_line_optimization.c $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_LINE_OPT)
 	@echo ""
-	@echo "Running Optimize diff tests (Step 2 & 3)..."
+	@echo "Running Line-Level Optimization tests (Steps 1+2+3)..."
 	@echo ""
-	@$(TEST_OPTIMIZE)
+	@$(TEST_LINE_OPT)
 
 # Build and run Refine tests (Step 4)
 test-refine: $(BUILD_DIR)
@@ -69,7 +69,7 @@ test-integration: $(BUILD_DIR)
 	@$(TEST_INTEGRATION)
 
 # Run all tests
-test: test-myers test-optimize test-refine test-integration
+test: test-myers test-line-opt test-refine test-integration
 
 # Clean build artifacts
 clean:
