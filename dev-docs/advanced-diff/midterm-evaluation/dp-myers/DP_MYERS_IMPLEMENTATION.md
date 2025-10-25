@@ -1,12 +1,12 @@
 # DP Myers Algorithm Implementation - Development Log
 
 **Date:** 2025-10-25  
-**Status:** ✅ COMPLETE  
-**VSCode Parity:** 100% - Full algorithm parity achieved
+**Status:** ⚠️ PARTIAL
+**VSCode Parity:** ~80% – Core DP engine implemented, but auto-selection still lacks VSCode's equality scoring hook
 
 ## Overview
 
-Implemented the missing Dynamic Programming (DP) variant of the Myers diff algorithm to achieve 100% parity with VSCode's diff computation. Previously, our implementation only used the O(ND) Myers algorithm for all inputs, but VSCode uses a size-based selection strategy:
+Implemented the missing Dynamic Programming (DP) variant of the Myers diff algorithm to get much closer to VSCode's diff computation. Previously, our implementation only used the O(ND) Myers algorithm for all inputs, but VSCode uses a size-based selection strategy:
 
 - **Small sequences**: O(MN) DP algorithm with LCS-based scoring
 - **Large sequences**: O(ND) Myers forward algorithm
@@ -29,6 +29,7 @@ Implemented the missing Dynamic Programming (DP) variant of the Myers diff algor
      - Backtracks to build SequenceDiff array
    - Implemented automatic algorithm selection in `myers_diff_algorithm()`
      - Lines: DP if total < 1700, otherwise O(ND)
+     - ⚠️ TODO: Pass VSCode's equality scoring function when dispatching to DP
      - Provides flexibility for char-level code to use different threshold
    - Renamed original implementation to `myers_nd_diff_algorithm()`
 
@@ -36,6 +37,27 @@ Implemented the missing Dynamic Programming (DP) variant of the Myers diff algor
    - Modified `refine_diff()` to use 500-char threshold
    - Explicitly calls `myers_dp_diff_algorithm()` for small char sequences (< 500)
    - Explicitly calls `myers_nd_diff_algorithm()` for large char sequences (>= 500)
+
+## Remaining Parity Work
+
+- **Line-level scoring hook:** VSCode forwards a weighting callback when it selects the DP path so that trimmed-equal lines with different whitespace still prefer alignment. The C dispatcher currently calls `myers_dp_diff_algorithm(..., NULL, NULL)`, so whitespace-only edits on short files will not match VSCode's behavior yet.
+- **Line hash inputs:** VSCode hashes `l.trim()` before diffing; confirm whether our `LineSequence` instances for mainline diffing should also opt into trimmed hashing when parity work resumes.
+
+### Reference: VSCode DP Scoring Callback
+
+```ts
+return this.dynamicProgrammingDiffing.compute(
+        sequence1,
+        sequence2,
+        timeout,
+        (offset1, offset2) =>
+                originalLines[offset1] === modifiedLines[offset2]
+                        ? modifiedLines[offset2].length === 0
+                                ? 0.1
+                                : 1 + Math.log(1 + modifiedLines[offset2].length)
+                        : 0.99
+);
+```
 
 ### Algorithm Selection Strategy
 
@@ -163,11 +185,11 @@ Advanced users can call `myers_dp_diff_algorithm()` or `myers_nd_diff_algorithm(
 - **Note:** Previous docs incorrectly claimed "full parity"
 
 ### After This Implementation
-- **Step 1 Parity:** 1.0/1.0 (complete) - Full algorithm parity achieved
-- **Algorithm Selection:** ✅ Matches VSCode exactly
+- **Step 1 Parity:** ~0.8/1.0 (still partial) - DP core matches VSCode, but dispatcher lacks the equality-scoring callback so whitespace-only tweaks on short files diverge.
+- **Algorithm Selection:** ✅ Matches VSCode thresholds and branching logic
 - **Thresholds:** ✅ 1700 for lines, 500 for chars (VSCode values)
-- **Implementation:** ✅ Function-level parity with VSCode TypeScript code
-- **Behavior:** ✅ Produces identical diff results
+- **Implementation:** ✅ DP/ND internals mirror VSCode structure and data flow
+- **Behavior:** ⚠️ Small, whitespace-sensitive diffs will differ until the scoring hook is wired up
 
 ## What Was Missing (Historical Context)
 
@@ -181,26 +203,23 @@ This was correct but the implication wasn't clear in other documentation. We wer
 2. The size-based selection logic
 3. The different thresholds for lines vs chars
 
-This gap has now been fully closed.
+The structural gap (missing DP engine and thresholds) is now closed, but parity work must finish by feeding VSCode's scoring callback and reviewing the line-hash inputs described above.
 
 ## Next Steps
 
-The implementation is complete and all tests pass. No further work needed for DP algorithm parity.
-
-If future enhancements are desired:
-- Implement VSCode's exact line-level scoring function (empty line = 0.1, others = 1 + log(1 + length))
-- Currently using default scoring (1.0) which works correctly but may differ slightly in edge cases
-- This would require passing scoring function from line-level code
+- **Wire equality scoring:** Export a helper that computes the same weights VSCode passes to `DynamicProgrammingDiffing.compute` and supply it from the line-level caller when the DP branch is chosen.
+- **Audit hashing mode:** Decide whether `line_sequence_create(..., true)` should be used so hashes match VSCode's `trim()` preprocessing when parity is enforced end-to-end.
+- **Expand tests:** Add regression coverage that exercises whitespace-only deltas below the DP threshold to capture the current mismatch and guard the eventual fix.
 
 ## Conclusion
 
-✅ **100% Algorithm Parity Achieved**
+⚠️ **Parity Still Pending Final Wiring**
 
 We now have:
 - Full DP algorithm implementation matching VSCode's `dynamicProgrammingDiffing.ts`
 - Automatic algorithm selection matching VSCode's thresholds exactly
-- Comprehensive test coverage verifying correctness
+- Comprehensive test coverage verifying correctness of the DP core
 - No breaking changes to external API
 - All existing tests continue to pass
 
-The implementation is production-ready and achieves full parity with VSCode's Myers diff algorithm infrastructure.
+Remaining work is focused on feeding the equality-scoring callback (and potentially aligning hashing) so that short, whitespace-sensitive diffs behave identically to VSCode. Until that is delivered, the parity score remains partial.
