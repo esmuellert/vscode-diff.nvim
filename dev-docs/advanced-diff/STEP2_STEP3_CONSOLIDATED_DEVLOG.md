@@ -48,9 +48,6 @@ export function optimizeSequenceDiffs(seq1, seq2, diffs) {
     // Sub-step B: Shift to better boundaries  
     result = shiftSequenceDiffs(seq1, seq2, result);
     
-    // Sub-step C: Join small gaps (≤2 gap threshold)
-    result = removeShortMatches(seq1, seq2, result);
-    
     return result;
 }
 ```
@@ -63,9 +60,9 @@ export function optimizeSequenceDiffs(seq1, seq2, diffs) {
 - Step 3 is completely separate from Step 2
 
 **The Reality:**
-- Step 2 (`optimizeSequenceDiffs`) internally calls `removeShortMatches` (≤2 gap)
-- Step 2 has **no independent testable output** separate from its internal steps
-- Step 2 is a composite function that orchestrates 3 sub-algorithms
+- Step 2 (`optimizeSequenceDiffs`) is a composite function that orchestrates 2 sub-algorithms
+- Step 2 performs boundary shifting and joining via shifting, but **does NOT** call `removeShortMatches`
+- `removeShortMatches` is a separate exported function (not part of the Step 1-2-3 pipeline for line-level)
 - Step 3 (`removeVeryShortMatchingLinesBetweenDiffs`) uses different logic (≤4 chars + size check)
 - **Testing Steps 1+2+3 together** is the most effective approach
 
@@ -102,7 +99,7 @@ result->capacity = diff_count;
 
 ### Step 2: Optimize Sequence Diffs (`optimizeSequenceDiffs`)
 
-**Composite Function with 3 Sub-steps:**
+**Composite Function with 2 Sub-steps:**
 
 #### 2A. `joinSequenceDiffsByShifting` (called 2x)
 - **Purpose:** Merge insertion/deletion diffs by shifting boundaries
@@ -114,14 +111,9 @@ result->capacity = diff_count;
 - **Algorithm:** Evaluate boundary scores within shift limit (max 100 positions)
 - **Limitation:** Only works on insertions/deletions
 
-#### 2C. `removeShortMatches`  
-- **Purpose:** Join diffs with small gaps between them
-- **Threshold:** ≤2 lines gap in EITHER sequence
-- **Limitation:** None - works on all diff types
-
 **Why Step 2 Is Hard to Test Directly:**
-- Sub-steps 2A and 2B primarily benefit character-level refinement (Step 4)
-- Sub-step 2C (removeShortMatches) has limited visual effect (≤2 gap is very small)
+- Both sub-steps primarily benefit character-level refinement (Step 4)
+- Sub-steps have limited visual effect on line-level diffs
 - Most test cases either show no change or trigger Step 3 instead
 
 ### Step 3: Remove Very Short Matching Lines (`removeVeryShortMatchingLinesBetweenDiffs`)
@@ -133,15 +125,18 @@ result->capacity = diff_count;
 // Iterate up to 10 times for convergence
 for (int iteration = 0; iteration < 10; iteration++) {
     for (each pair of consecutive diffs) {
-        int gap1 = next.seq1_start - current.seq1_end;
-        int gap2 = next.seq2_start - current.seq2_end;
+        // Get unchanged range between diffs
+        OffsetRange unchangedRange = [current.seq1_end, next.seq1_start);
         
         // Count non-whitespace chars in gap
-        int non_ws_chars = count_non_whitespace(seq1, gap1_range);
+        int non_ws_chars = count_non_whitespace(seq1, unchangedRange);
         
-        // Join if: gap ≤4 chars AND (current OR next) >5 lines
-        if (non_ws_chars <= 4 && 
-            (diff_length(current) > 5 || diff_length(next) > 5)) {
+        // Join if: gap ≤4 non-ws chars AND 
+        //         (current total range >5 OR next total range >5)
+        int current_total = current.seq1_len + current.seq2_len;
+        int next_total = next.seq1_len + next.seq2_len;
+        
+        if (non_ws_chars <= 4 && (current_total > 5 || next_total > 5)) {
             merge(current, next);
             changed = true;
         }
@@ -151,8 +146,8 @@ for (int iteration = 0; iteration < 10; iteration++) {
 ```
 
 **Key Rules:**
-1. Gap must have ≤4 non-whitespace characters
-2. At least ONE of the two diffs must be >5 lines
+1. Gap must have ≤4 non-whitespace characters (whitespace ignored)
+2. At least ONE diff must have total range sum (seq1_len + seq2_len) > 5
 3. Iterates until convergence (max 10 iterations)
 
 **Why This Is the Main Line-Level Optimization:**
@@ -300,11 +295,9 @@ result->capacity = diff_count;  // For general case
 
 **Analysis:** Step 3 successfully merged the two diffs because:
 - Gap between diffs: 2 blank lines = 0 non-whitespace chars (≤4 ✓)
-- First diff: 4 lines (not >5 ✗)
-- Second diff: 1 line (not >5 ✗)
-- **Wait, this should NOT join!** Let me re-check...
-
-Actually reviewing the test case, the first diff is 4 lines which is indeed ≤5, but we need to verify the actual implementation is correct according to VSCode's logic.
+- First diff total range: 4 + 4 = 8 (>5 ✓) — **Triggers the join condition**
+- Second diff total range: 1 + 1 = 2 (≤5)
+- **Result:** Join succeeds because at least one diff has total range >5
 
 ---
 
@@ -356,7 +349,8 @@ c-diff-core/
 
 ## References
 
-- **VSCode Source:** `vscode/src/vs/editor/common/diff/defaultLinesDiffComputer.ts`
-- **VSCode Source:** `vscode/src/vs/base/common/diff/diff.ts` (Myers algorithm)
+- **VSCode Source:** `vscode/src/vs/editor/common/diff/defaultLinesDiffComputer/defaultLinesDiffComputer.ts`
+- **VSCode Source:** `vscode/src/vs/editor/common/diff/defaultLinesDiffComputer/heuristicSequenceOptimizations.ts`
+- **VSCode Source:** `vscode/src/vs/editor/common/diff/defaultLinesDiffComputer/algorithms/myersDiffAlgorithm.ts`
 - **Our Implementation Plan:** `dev-docs/advanced-diff/VSCODE_ADVANCED_DIFF_IMPLEMENTATION_PLAN.md`
 - **Step 1 Dev Log:** `dev-docs/advanced-diff/STEP1_CONSOLIDATED_DEVLOG.md`
