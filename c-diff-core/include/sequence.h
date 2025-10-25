@@ -158,4 +158,79 @@ ISequence* char_sequence_create(const char** lines, int start_line, int end_line
 void char_sequence_translate_offset(const CharSequence* seq, int offset, 
                                     int* out_line, int* out_col);
 
+/**
+ * Find word containing the given offset - VSCode Parity
+ * 
+ * Returns the range of the word (alphanumeric characters) that contains
+ * the character at the given offset.
+ * 
+ * VSCode: LinesSliceCharSequence.findWordContaining()
+ * 
+ * @param seq CharSequence
+ * @param offset Character offset
+ * @param out_start Output: Start offset of word (inclusive)
+ * @param out_end Output: End offset of word (exclusive)
+ * @return true if word found, false if offset is not in a word
+ */
+bool char_sequence_find_word_containing(const CharSequence* seq, int offset,
+                                       int* out_start, int* out_end);
+
+/**
+ * Find subword containing the given offset - VSCode Parity
+ * 
+ * Returns the range of the subword (for CamelCase) that contains
+ * the character at the given offset. Used for extendToSubwords option.
+ * 
+ * VSCode: LinesSliceCharSequence.findSubWordContaining()
+ * 
+ * @param seq CharSequence  
+ * @param offset Character offset
+ * @param out_start Output: Start offset of subword (inclusive)
+ * @param out_end Output: End offset of subword (exclusive)
+ * @return true if subword found, false if offset is not in a word
+ */
+bool char_sequence_find_subword_containing(const CharSequence* seq, int offset,
+                                          int* out_start, int* out_end);
+
+/**
+ * Count number of lines in character range - VSCode Parity
+ * 
+ * VSCode: LinesSliceCharSequence.countLinesIn()
+ * 
+ * @param seq CharSequence
+ * @param start_offset Start of range (inclusive)
+ * @param end_offset End of range (exclusive)
+ * @return Number of lines spanned by the range
+ */
+int char_sequence_count_lines_in(const CharSequence* seq, int start_offset, int end_offset);
+
+/**
+ * Get text for character range - VSCode Parity
+ * 
+ * VSCode: LinesSliceCharSequence.getText()
+ * 
+ * @param seq CharSequence
+ * @param start_offset Start of range (inclusive)
+ * @param end_offset End of range (exclusive)
+ * @return Newly allocated string (caller must free), or NULL on error
+ */
+char* char_sequence_get_text(const CharSequence* seq, int start_offset, int end_offset);
+
+/**
+ * Extend range to full lines - VSCode Parity
+ * 
+ * Extends the given character range to include full lines.
+ * 
+ * VSCode: LinesSliceCharSequence.extendToFullLines()
+ * 
+ * @param seq CharSequence
+ * @param start_offset Start of range (inclusive)
+ * @param end_offset End of range (exclusive)
+ * @param out_start Output: Extended start offset
+ * @param out_end Output: Extended end offset
+ */
+void char_sequence_extend_to_full_lines(const CharSequence* seq, 
+                                       int start_offset, int end_offset,
+                                       int* out_start, int* out_end);
+
 #endif // SEQUENCE_H

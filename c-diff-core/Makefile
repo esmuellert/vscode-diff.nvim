@@ -16,15 +16,17 @@ SEQUENCE_SRC = $(SRC_DIR)/sequence.c
 MYERS_SRC = $(SRC_DIR)/myers.c
 OPTIMIZE_SRC = $(SRC_DIR)/optimize.c
 REFINE_SRC = $(SRC_DIR)/refine.c
+CHAR_LEVEL_SRC = $(SRC_DIR)/char_level.c
 
 # Test executables
 TEST_MYERS = $(BUILD_DIR)/test_myers
 TEST_INFRASTRUCTURE = $(BUILD_DIR)/test_infrastructure
 TEST_LINE_OPT = $(BUILD_DIR)/test_line_optimization
 TEST_REFINE = $(BUILD_DIR)/test_refine
+TEST_CHAR_LEVEL = $(BUILD_DIR)/test_char_level
 TEST_INTEGRATION = $(BUILD_DIR)/test_integration
 
-.PHONY: all clean test test-myers test-infrastructure test-line-opt test-refine test-integration
+.PHONY: all clean test test-myers test-infrastructure test-line-opt test-refine test-char-level test-integration
 
 all: $(BUILD_DIR)
 
@@ -55,13 +57,21 @@ test-line-opt: $(BUILD_DIR)
 	@echo ""
 	@$(TEST_LINE_OPT)
 
-# Build and run Refine tests (Step 4)
+# Build and run Refine tests (Step 4 - old implementation)
 test-refine: $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(TEST_DIR)/test_refine.c $(REFINE_SRC) $(MYERS_SRC) $(OPTIMIZE_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_REFINE)
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_refine.c $(REFINE_SRC) $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_REFINE)
 	@echo ""
-	@echo "Running Character Refinement tests (Step 4)..."
+	@echo "Running Character Refinement tests (Old implementation)..."
 	@echo ""
 	@$(TEST_REFINE)
+
+# Build and run Character-Level tests (Step 4 - NEW VSCODE PARITY)
+test-char-level: $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_char_level.c $(CHAR_LEVEL_SRC) $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_CHAR_LEVEL) -lm
+	@echo ""
+	@echo "Running Character-Level Optimization tests (Step 4 - VSCODE PARITY)..."
+	@echo ""
+	@$(TEST_CHAR_LEVEL)
 
 # Build and run Integration test (Full Pipeline: Steps 1-4)
 test-integration: $(BUILD_DIR)
@@ -69,7 +79,7 @@ test-integration: $(BUILD_DIR)
 	@$(TEST_INTEGRATION)
 
 # Run all tests
-test: test-myers test-line-opt test-refine test-integration
+test: test-myers test-line-opt test-char-level
 
 # Clean build artifacts
 clean:

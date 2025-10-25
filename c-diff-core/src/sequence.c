@@ -433,3 +433,154 @@ void char_sequence_translate_offset(const CharSequence* seq, int offset,
     *out_line = line_idx;
     *out_col = offset - seq->line_start_offsets[line_idx];
 }
+
+// =============================================================================
+// CharSequence Extended Methods - VSCode LinesSliceCharSequence Parity
+// =============================================================================
+
+/**
+ * Helper: Check if character is word character (alphanumeric)
+ */
+static bool is_word_char(uint32_t ch) {
+    return (ch >= 'a' && ch <= 'z') ||
+           (ch >= 'A' && ch <= 'Z') ||
+           (ch >= '0' && ch <= '9');
+}
+
+/**
+ * Helper: Check if character is uppercase
+ */
+static bool is_upper_case(uint32_t ch) {
+    return (ch >= 'A' && ch <= 'Z');
+}
+
+/**
+ * Find word containing offset - VSCode Parity
+ */
+bool char_sequence_find_word_containing(const CharSequence* seq, int offset,
+                                       int* out_start, int* out_end) {
+    if (!seq || offset < 0 || offset >= seq->length) {
+        return false;
+    }
+    
+    if (!is_word_char(seq->elements[offset])) {
+        return false;
+    }
+    
+    // Find start of word
+    int start = offset;
+    while (start > 0 && is_word_char(seq->elements[start - 1])) {
+        start--;
+    }
+    
+    // Find end of word
+    int end = offset;
+    while (end < seq->length && is_word_char(seq->elements[end])) {
+        end++;
+    }
+    
+    *out_start = start;
+    *out_end = end;
+    return true;
+}
+
+/**
+ * Find subword containing offset - VSCode Parity
+ * 
+ * For CamelCase: "fooBar" has subwords "foo" and "Bar"
+ */
+bool char_sequence_find_subword_containing(const CharSequence* seq, int offset,
+                                          int* out_start, int* out_end) {
+    if (!seq || offset < 0 || offset >= seq->length) {
+        return false;
+    }
+    
+    if (!is_word_char(seq->elements[offset])) {
+        return false;
+    }
+    
+    // Find start of subword (stop at uppercase boundary)
+    int start = offset;
+    while (start > 0 && is_word_char(seq->elements[start - 1]) && 
+           !is_upper_case(seq->elements[start])) {
+        start--;
+    }
+    
+    // Find end of subword (stop at uppercase boundary)
+    int end = offset;
+    while (end < seq->length && is_word_char(seq->elements[end]) && 
+           !is_upper_case(seq->elements[end])) {
+        end++;
+    }
+    
+    *out_start = start;
+    *out_end = end;
+    return true;
+}
+
+/**
+ * Count lines in character range - VSCode Parity
+ */
+int char_sequence_count_lines_in(const CharSequence* seq, int start_offset, int end_offset) {
+    if (!seq || start_offset < 0 || end_offset > seq->length || start_offset >= end_offset) {
+        return 0;
+    }
+    
+    int start_line, start_col, end_line, end_col;
+    char_sequence_translate_offset(seq, start_offset, &start_line, &start_col);
+    char_sequence_translate_offset(seq, end_offset, &end_line, &end_col);
+    
+    return end_line - start_line;
+}
+
+/**
+ * Get text for range - VSCode Parity
+ */
+char* char_sequence_get_text(const CharSequence* seq, int start_offset, int end_offset) {
+    if (!seq || start_offset < 0 || end_offset > seq->length || start_offset > end_offset) {
+        return NULL;
+    }
+    
+    int len = end_offset - start_offset;
+    char* result = (char*)malloc(len + 1);
+    if (!result) return NULL;
+    
+    for (int i = 0; i < len; i++) {
+        result[i] = (char)seq->elements[start_offset + i];
+    }
+    result[len] = '\0';
+    
+    return result;
+}
+
+/**
+ * Extend range to full lines - VSCode Parity
+ */
+void char_sequence_extend_to_full_lines(const CharSequence* seq, 
+                                       int start_offset, int end_offset,
+                                       int* out_start, int* out_end) {
+    if (!seq || start_offset < 0 || end_offset > seq->length) {
+        *out_start = 0;
+        *out_end = 0;
+        return;
+    }
+    
+    int start_line, start_col, end_line, end_col;
+    char_sequence_translate_offset(seq, start_offset, &start_line, &start_col);
+    char_sequence_translate_offset(seq, end_offset, &end_line, &end_col);
+    
+    // Extend to start of start_line
+    int extended_start = seq->line_start_offsets[start_line];
+    
+    // Extend to start of next line after end_line (or end of sequence)
+    int extended_end;
+    if (end_line + 1 < seq->line_count) {
+        extended_end = seq->line_start_offsets[end_line + 1];
+    } else {
+        extended_end = seq->length;
+    }
+    
+    *out_start = extended_start;
+    *out_end = extended_end;
+}
+
