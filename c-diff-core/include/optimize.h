@@ -52,6 +52,25 @@ SequenceDiffArray* remove_short_matches(const ISequence* seq1, const ISequence* 
                                        SequenceDiffArray* diffs);
 
 /**
+ * removeVeryShortMatchingLinesBetweenDiffs() - VSCode Parity (LINE-LEVEL Step 3)
+ * 
+ * Joins line-level diffs separated by very short unchanged regions.
+ * 
+ * Logic:
+ * - Gap has ≤4 non-whitespace characters
+ * - AND at least one diff is large (>5 lines total)
+ * - Iterates up to 10 times until no more joins
+ * 
+ * This is the CORRECT Step 3 for line-level optimization.
+ * 
+ * VSCode: removeVeryShortMatchingLinesBetweenDiffs() from heuristicSequenceOptimizations.ts
+ */
+SequenceDiffArray* remove_very_short_matching_lines_between_diffs(
+    const ISequence* seq1, 
+    const ISequence* seq2,
+    SequenceDiffArray* diffs);
+
+/**
  * Legacy wrapper for backward compatibility
  * 
  * Creates LineSequence wrappers and calls ISequence version.

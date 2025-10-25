@@ -310,14 +310,14 @@ static SequenceDiffArray* shift_sequence_diffs(
 }
 
 /**
- * optimizeSequenceDiffs() - Main Optimization Entry Point (VSCode Parity)
+ * optimizeSequenceDiffs() - Main Optimization Entry Point (VSCode Parity - Step 2 ONLY!)
  * 
  * VSCode's algorithm:
  * 1. joinSequenceDiffsByShifting() - called TWICE for better results
  * 2. shiftSequenceDiffs() - align at good boundaries
  * 
- * Note: In VSCode, removeShortMatches() is called separately by the main
- * diff computer. We include it here for convenience.
+ * NOTE: In VSCode, removeShortMatches() (Step 3) is called SEPARATELY!
+ * We must NOT bundle it here to match VSCode's architecture.
  * 
  * REUSED BY: Step 4 (character-level optimization)
  */
@@ -327,16 +327,15 @@ SequenceDiffArray* optimize_sequence_diffs(const ISequence* seq1, const ISequenc
         return diffs;
     }
     
-    // Step 1: Join by shifting (called twice per VSCode)
+    // Join by shifting (called twice per VSCode)
     diffs = join_sequence_diffs_by_shifting(seq1, seq2, diffs);
     diffs = join_sequence_diffs_by_shifting(seq1, seq2, diffs);
     
-    // Step 2: Shift to better boundaries
+    // Shift to better boundaries
     diffs = shift_sequence_diffs(seq1, seq2, diffs);
     
-    // Step 3: Remove short matches (≤2 lines)
-    // VSCode calls this separately, but we include it for completeness
-    diffs = remove_short_matches(seq1, seq2, diffs);
+    // DO NOT call remove_short_matches here!
+    // It's Step 3, called separately by the main diff computer.
     
     return diffs;
 }
@@ -387,6 +386,104 @@ SequenceDiffArray* remove_short_matches(const ISequence* seq1 __attribute__((unu
     free(diffs->diffs);
     diffs->diffs = result;
     diffs->count = result_count;
+    
+    return diffs;
+}
+
+/**
+ * removeVeryShortMatchingLinesBetweenDiffs() - VSCode Parity (LINE-LEVEL Step 3)
+ * 
+ * Joins line-level diffs separated by very short unchanged regions.
+ * 
+ * Algorithm from VSCode heuristicSequenceOptimizations.ts:
+ * - Iterate up to 10 times until no more joins
+ * - Join if: gap has ≤4 non-whitespace chars AND 
+ *           (before diff is >5 lines total OR after diff is >5 lines total)
+ * - Gap is measured in seq1 between lastResult.seq1_end and cur.seq1_start
+ * 
+ * VSCode:
+ * ```typescript
+ * const unchangedText = sequence1.getText(unchangedRange);
+ * const unchangedTextWithoutWs = unchangedText.replace(/\s/g, '');
+ * if (unchangedTextWithoutWs.length <= 4
+ *     && (before.seq1Range.length + before.seq2Range.length > 5 
+ *      || after.seq1Range.length + after.seq2Range.length > 5)) {
+ *     return true;
+ * }
+ * ```
+ */
+SequenceDiffArray* remove_very_short_matching_lines_between_diffs(
+    const ISequence* seq1,
+    const ISequence* seq2 __attribute__((unused)),
+    SequenceDiffArray* diffs) {
+    
+    if (!diffs || diffs->count == 0) {
+        return diffs;
+    }
+    
+    // Cast to LineSequence to access line text
+    LineSequence* line_seq = (LineSequence*)seq1->data;
+    
+    int counter = 0;
+    bool should_repeat;
+    
+    do {
+        should_repeat = false;
+        
+        // Create result array
+        SequenceDiff* result = malloc(sizeof(SequenceDiff) * diffs->capacity);
+        int result_count = 0;
+        
+        // Start with first diff
+        result[result_count++] = diffs->diffs[0];
+        
+        for (int i = 1; i < diffs->count; i++) {
+            SequenceDiff cur = diffs->diffs[i];
+            SequenceDiff* last_result = &result[result_count - 1];
+            
+            // Calculate unchanged range between last_result and cur
+            int unchanged_start = last_result->seq1_end;
+            int unchanged_end = cur.seq1_start;
+            
+            // Count non-whitespace characters in unchanged region
+            int non_ws_count = 0;
+            for (int idx = unchanged_start; idx < unchanged_end; idx++) {
+                const char* line = line_seq->lines[idx];
+                if (!line) continue;
+                
+                for (const char* p = line; *p; p++) {
+                    if (*p != ' ' && *p != '\t' && *p != '\r' && *p != '\n') {
+                        non_ws_count++;
+                    }
+                }
+            }
+            
+            // Calculate diff sizes
+            int before_total = (last_result->seq1_end - last_result->seq1_start) +
+                              (last_result->seq2_end - last_result->seq2_start);
+            int after_total = (cur.seq1_end - cur.seq1_start) +
+                             (cur.seq2_end - cur.seq2_start);
+            
+            // VSCode logic: join if gap ≤4 non-ws chars AND one diff is large (>5 lines)
+            bool should_join = (non_ws_count <= 4) && 
+                              (before_total > 5 || after_total > 5);
+            
+            if (should_join) {
+                should_repeat = true;
+                // Join: extend last_result to include cur
+                last_result->seq1_end = cur.seq1_end;
+                last_result->seq2_end = cur.seq2_end;
+            } else {
+                result[result_count++] = cur;
+            }
+        }
+        
+        // Replace diffs with result
+        free(diffs->diffs);
+        diffs->diffs = result;
+        diffs->count = result_count;
+        
+    } while (counter++ < 10 && should_repeat);
     
     return diffs;
 }

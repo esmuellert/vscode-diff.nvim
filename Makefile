@@ -28,10 +28,29 @@ $(TARGET): $(OBJ)
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Build and run C unit tests
-test_c:
-	@cd c-diff-core && $(CC) $(CFLAGS) -o test_diff_core test_diff_core.c diff_core.c && ./test_diff_core
-	@rm -f c-diff-core/test_diff_core
+# Build directory for C tests
+c-diff-core/build:
+	@mkdir -p c-diff-core/build
+
+# C Test Targets
+TEST_CFLAGS = -Wall -Wextra -std=c11 -O2 -g -Iinclude
+TEST_SOURCES = src/myers.c src/optimize.c src/sequence.c src/utils.c src/print_utils.c
+
+# Individual test targets
+test-myers: c-diff-core/build
+	@echo "Running Myers tests..."
+	@cd c-diff-core && $(CC) $(TEST_CFLAGS) tests/test_myers.c $(TEST_SOURCES) -o build/test_myers && ./build/test_myers
+
+test-line-opt: c-diff-core/build
+	@echo "Running Line Optimization tests (Steps 1+2+3)..."
+	@cd c-diff-core && $(CC) $(TEST_CFLAGS) tests/test_line_optimization.c $(TEST_SOURCES) -o build/test_line_opt && ./build/test_line_opt
+
+# Build and run all C unit tests
+test_c: test-myers test-line-opt
+	@echo ""
+	@echo "================================================"
+	@echo "  ALL C UNIT TESTS PASSED ✓"
+	@echo "================================================"
 
 # Run C unit tests only (alias)
 test-c: test_c
@@ -58,5 +77,6 @@ test-verbose: test_c
 
 clean:
 	rm -f $(OBJ) $(TARGET) c-diff-core/test_diff_core
+	rm -rf c-diff-core/build
 
-.PHONY: all test test-c test-unit test-e2e test-e2e-verbose test-verbose clean test_c
+.PHONY: all test test-c test-unit test-e2e test-e2e-verbose test-verbose clean test_c test-myers test-line-opt
