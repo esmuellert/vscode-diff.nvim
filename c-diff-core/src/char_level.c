@@ -415,8 +415,99 @@ static SequenceDiffArray* remove_very_short_text(
         
     } while (counter++ < 10 && should_repeat);
     
-    // TODO: Second phase - remove short prefixes/suffixes (VSCode's forEachWithNeighbors logic)
-    // For now, first phase is implemented
+    // Second phase: Remove short prefixes/suffixes (VSCode's forEachWithNeighbors logic)
+    SequenceDiff* new_diffs = (SequenceDiff*)malloc(sizeof(SequenceDiff) * (diffs->capacity + 10));
+    int new_count = 0;
+    
+    for (int i = 0; i < diffs->count; i++) {
+        const SequenceDiff* prev = (i > 0) ? &diffs->diffs[i - 1] : NULL;
+        const SequenceDiff* cur = &diffs->diffs[i];
+        const SequenceDiff* next = (i < diffs->count - 1) ? &diffs->diffs[i + 1] : NULL;
+        
+        SequenceDiff new_diff = *cur;
+        
+        // Helper: shouldMarkAsChanged - check if text should be included in diff
+        int total_range_len = (cur->seq1_end - cur->seq1_start) + (cur->seq2_end - cur->seq2_start);
+        bool is_large_diff = (total_range_len > 100);
+        
+        // Get full line range
+        int full_start, full_end;
+        char_sequence_extend_to_full_lines(seq1, cur->seq1_start, cur->seq1_end, &full_start, &full_end);
+        
+        // Check prefix
+        if (full_start < cur->seq1_start && is_large_diff) {
+            char* prefix = char_sequence_get_text(seq1, full_start, cur->seq1_start);
+            if (prefix) {
+                // Trim whitespace
+                const char* start = prefix;
+                const char* end = prefix + strlen(prefix) - 1;
+                while (*start && isspace((unsigned char)*start)) start++;
+                while (end > start && isspace((unsigned char)*end)) end--;
+                
+                int trimmed_len = (int)(end - start + 1);
+                bool should_include = (trimmed_len > 0 && trimmed_len <= 3);
+                
+                if (should_include) {
+                    int prefix_len = cur->seq1_start - full_start;
+                    new_diff.seq1_start -= prefix_len;
+                    new_diff.seq2_start -= prefix_len;
+                }
+                free(prefix);
+            }
+        }
+        
+        // Check suffix
+        if (cur->seq1_end < full_end && is_large_diff) {
+            char* suffix = char_sequence_get_text(seq1, cur->seq1_end, full_end);
+            if (suffix) {
+                // Trim whitespace
+                const char* start = suffix;
+                const char* end = suffix + strlen(suffix) - 1;
+                while (*start && isspace((unsigned char)*start)) start++;
+                while (end > start && isspace((unsigned char)*end)) end--;
+                
+                int trimmed_len = (int)(end - start + 1);
+                bool should_include = (trimmed_len > 0 && trimmed_len <= 3);
+                
+                if (should_include) {
+                    int suffix_len = full_end - cur->seq1_end;
+                    new_diff.seq1_end += suffix_len;
+                    new_diff.seq2_end += suffix_len;
+                }
+                free(suffix);
+            }
+        }
+        
+        // Constrain to available space (SequenceDiff.fromOffsetPairs)
+        int avail_start1 = prev ? prev->seq1_end : 0;
+        int avail_start2 = prev ? prev->seq2_end : 0;
+        int avail_end1 = next ? next->seq1_start : seq1->length;
+        int avail_end2 = next ? next->seq2_start : seq2->length;
+        
+        // Intersect with available space
+        new_diff.seq1_start = max_int(new_diff.seq1_start, avail_start1);
+        new_diff.seq1_end = min_int(new_diff.seq1_end, avail_end1);
+        new_diff.seq2_start = max_int(new_diff.seq2_start, avail_start2);
+        new_diff.seq2_end = min_int(new_diff.seq2_end, avail_end2);
+        
+        // Add to result, merging if touching previous
+        if (new_count > 0) {
+            SequenceDiff* last = &new_diffs[new_count - 1];
+            if (last->seq1_end == new_diff.seq1_start && last->seq2_end == new_diff.seq2_start) {
+                // Merge with previous
+                last->seq1_end = new_diff.seq1_end;
+                last->seq2_end = new_diff.seq2_end;
+                continue;
+            }
+        }
+        
+        new_diffs[new_count++] = new_diff;
+    }
+    
+    free(diffs->diffs);
+    diffs->diffs = new_diffs;
+    diffs->count = new_count;
+    diffs->capacity = diffs->capacity + 10;
     
     return diffs;
 }
@@ -586,8 +677,8 @@ RangeMappingArray* refine_all_diffs_char_level(
         }
     }
     
-    // TODO: Scan for whitespace-only changes between diffs (VSCode does this)
-    // For now, we skip this optimization
+    // Note: Whitespace-only change scanning happens in the main diff computer
+    // (between line diffs), not here. This function only refines existing diffs.
     
     return result;
 }
