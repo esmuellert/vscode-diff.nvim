@@ -47,7 +47,26 @@ seq1[0,5) -> seq2[0,7)
 - Map to lines 0-6 (7 lines) in the modified file
 - Original had 5 lines, modified has 7 lines (2 lines inserted)
 
-#### Example 3: Multiple Diffs
+#### Example 3: Insertion
+```
+seq1[1,1) -> seq2[1,3)
+```
+**Meaning:**
+- Empty range `[1,1)` in original (0 lines) = insertion point before index 1
+- Maps to `[1,3)` in modified (2 lines) = indices 1 and 2
+- **Result:** 2 lines inserted at position 1 (after first line)
+- Concrete: If original is `['a', 'b']`, modified is `['a', 'x', 'y', 'b']`
+
+#### Example 4: Deletion
+```
+seq1[2,5) -> seq2[2,2)
+```
+**Meaning:**
+- Range `[2,5)` in original (3 lines) = indices 2, 3, 4
+- Empty range `[2,2)` in modified (0 lines) = deletion occurred
+- **Result:** 3 lines deleted starting at position 2
+
+#### Example 5: Multiple Diffs
 ```
 [0] seq1[1,2) -> seq2[1,2)
 [1] seq1[4,5) -> seq2[4,5)
@@ -62,9 +81,33 @@ seq1[0,5) -> seq2[0,7)
 The exclusive end index provides several benefits:
 
 1. **Empty ranges**: `[5,5)` represents an empty range (useful for insertions)
+   - `[1,1)` means "the position just before index 1"
+   - Equivalent to `array.insert(1, item)` in most languages
+   - Visual: `['a', 'b', 'c']` → insert at `[1,1)` → `['a', 'x', 'b', 'c']`
+   
 2. **Length calculation**: `end - start` gives the length directly
+
 3. **Concatenation**: `[0,5)` + `[5,10)` = `[0,10)` with no gap or overlap
+
 4. **Standard practice**: Consistent with array slicing in most programming languages
+
+### Insertion Points
+
+Empty ranges indicate insertion positions:
+
+```
+Array indices:  0      1      2
+Array values:  'a'    'b'    'c'
+Insertion pts:    [0,0) [1,1) [2,2) [3,3)
+                    ↓     ↓     ↓      ↓
+                 before before before after
+                   'a'   'b'   'c'    'c'
+```
+
+- `[0,0)` = before index 0 (start of array)
+- `[1,1)` = before index 1 (after index 0)
+- `[n,n)` = before index n (after index n-1)
+- `[length,length)` = after last element (end of array)
 
 ---
 

@@ -334,3 +334,116 @@ Used by: All functions for bounds checking
 - ✅ No code changes needed
 
 **Status:** ✅ **PRODUCTION READY - 100% VSCODE PARITY**
+
+---
+
+## Deep Dive: Why removeShortMatches Has Unused Parameters
+
+### Investigation (Oct 24, 2025)
+
+**Question:** Why does `remove_short_matches()` take `seq1` and `seq2` parameters when it doesn't use them?
+
+**Finding:** VSCode's implementation ALSO has unused parameters!
+
+```typescript
+// VSCode's signature
+export function removeShortMatches(
+    sequence1: ISequence,  // ← Not used in function body!
+    sequence2: ISequence,  // ← Not used in function body!
+    sequenceDiffs: SequenceDiff[]
+): SequenceDiff[] {
+    // Only uses diff positions, not sequence content
+    if (s.seq1Range.start - last.seq1Range.endExclusive <= 2 || 
+        s.seq2Range.start - last.seq2Range.endExclusive <= 2) {
+        join();
+    }
+}
+```
+
+### Why Unused Parameters Exist
+
+**Author:** Henning Dieterichs (@hediet) - Microsoft VSCode engineer
+
+**Design Rationale:**
+1. **API Consistency** - All optimization functions follow `(seq1, seq2, diffs)` pattern
+2. **Future-proofing** - Might add content-based heuristics later
+3. **Interface Compliance** - TypeScript ISequence expected everywhere
+4. **Pragmatic Design** - Cleaner API > perfect minimalism
+5. **Reusability** - Step 4 calls same function signature for character-level diffs
+
+**Conclusion:** Our C implementation with unused parameters is **100% VSCode parity**.
+
+---
+
+## Why removeShortMatches Is Separate From Shifting
+
+### The Two Join Mechanisms
+
+| Function | Algorithm | Works On | Purpose |
+|----------|-----------|----------|---------|
+| `joinSequenceDiffsByShifting()` | Content-based shifting | Insertion/deletion only | Shift diffs to merge them |
+| `removeShortMatches()` | Position-based threshold | ALL diff types | Join if gap ≤ 2 |
+
+### Key Difference
+
+**Shifting CAN'T join modification diffs:**
+```c
+// Modification diff: both ranges non-empty
+[1,3) -> [1,3]  // Can't shift - different content on both sides
+```
+
+**removeShortMatches CAN join them:**
+```c
+// Two modification diffs with gap=2
+[0,2) -> [0,2)   // Diff 1: lines 0-1 changed
+[4,6) -> [4,6)   // Diff 2: lines 4-5 changed (gap of 2 lines)
+
+// removeShortMatches joins them: gap=2 ≤ 2
+[0,6) -> [0,6)   // One merged diff
+```
+
+### VSCode's Pipeline
+
+```typescript
+let diffs = myersDiff(seq1, seq2);
+diffs = optimizeSequenceDiffs(seq1, seq2, diffs);  // Shifting + boundary
+diffs = removeShortMatches(seq1, seq2, diffs);      // Called SEPARATELY!
+```
+
+**Why separate:**
+- Called at different times in pipeline
+- Character-level diffs need it WITHOUT shifting
+- Cleaner separation of concerns
+- Catches cases shifting can't fix
+
+**Purpose:** Final cleanup pass for non-shiftable diffs with small gaps.
+
+---
+
+## Test Design Issues and Solutions
+
+### Issue: Step 3 Test Redundancy (Oct 24, 2025)
+
+**Problem:** Initial Step 3 tests overlapped with Step 2:
+- Step 2 `optimize_join_adjacent_diffs`: joins gap=1 via shifting
+- Step 3 `remove_short_matches_1line_match`: joins gap=1 via threshold
+- **Same scenario, doesn't show Step 3's unique value!**
+
+**Root cause:** 
+- Shifting can join insertion/deletion diffs by moving them
+- Gap threshold joins ANY diffs (including modifications) by position alone
+- Tests didn't distinguish between these two mechanisms
+
+**Solution (Oct 25, 2025):** Redesigned Step 3 tests to show what shifting CAN'T do:
+- Use modification diffs (both ranges non-empty)
+- These can't be shifted, but CAN be joined by gap threshold
+- Add real string examples for clarity
+- Demonstrates removeShortMatches' actual purpose
+
+### Step 3 Test Philosophy
+
+**Tests should demonstrate:**
+1. Modification diffs with gap ≤ 2 → JOINED (shifting can't do this)
+2. Modification diffs with gap > 2 → KEPT SEPARATE
+3. Asymmetric gaps (different in seq1 vs seq2) → Join if EITHER ≤ 2
+4. Real string examples showing why joining improves UX

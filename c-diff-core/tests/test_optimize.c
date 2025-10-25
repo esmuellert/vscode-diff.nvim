@@ -73,38 +73,49 @@ TEST(optimize_empty_array) {
     
     free_diff_array(diffs);}
 
-TEST(optimize_shift_to_blank_line) {
-    // Diff should shift to include leading blank line
+TEST(optimize_join_by_shifting_insertions) {
+    // Two insertion diffs that can be joined by shifting
+    // This demonstrates joinSequenceDiffsByShifting() in action
     const char* lines_a[] = {
-        "code",
-        "",           // blank line (preferred boundary)
-        "old line 1",
-        "old line 2"
+        "a",
+        "b",
+        "c"
     };
     const char* lines_b[] = {
-        "code",
-        "",           // blank line (preferred boundary)
-        "new line 1",
-        "new line 2"
+        "a",
+        "x",    // Insert "x"
+        "b",
+        "y",    // Insert "y" 
+        "c"
     };
     
+    // Myers might give us: [1,1)->[1,2) and [2,2)->[3,4)
+    // After shifting and joining, these should merge if possible
     SequenceDiffArray* diffs = create_diff_array(5);
-    add_diff(diffs, 2, 4, 2, 4);  // Initial diff at lines 2-4
-    print_sequence_diff_array("Before optimize", diffs);
+    add_diff(diffs, 1, 1, 1, 2);  // Insert "x" at position 1
+    add_diff(diffs, 2, 2, 3, 4);  // Insert "y" at position 2 (gap=1)
     
-    ISequence* seq1 = line_sequence_create(lines_a, 4, false);
-    ISequence* seq2 = line_sequence_create(lines_b, 4, false);
+    printf("  Test: Two insertions with gap=1 (should join via removeShortMatches)\n");
+    print_sequence_diff_array("  Before optimize", diffs);
+    
+    ISequence* seq1 = line_sequence_create(lines_a, 3, false);
+    ISequence* seq2 = line_sequence_create(lines_b, 5, false);
     optimize_sequence_diffs(seq1, seq2, diffs);
     seq1->destroy(seq1);
     seq2->destroy(seq2);
-    bool result = true;
     
-    print_sequence_diff_array("After optimize", diffs);
-    assert(result == true);
+    print_sequence_diff_array("  After optimize", diffs);
+    
+    // removeShortMatches (called by optimize) should join these (gap=1 ≤ 2)
     assert(diffs->count == 1);
-    printf("    ✓ Verified: Diff boundaries optimized\n");
+    assert(diffs->diffs[0].seq1_start == 1);
+    assert(diffs->diffs[0].seq1_end == 2);
+    assert(diffs->diffs[0].seq2_start == 1);
+    assert(diffs->diffs[0].seq2_end == 4);
+    printf("    ✓ Verified: Two insertions joined (gap=1 ≤ 2)\n");
     
-    free_diff_array(diffs);}
+    free_diff_array(diffs);
+}
 
 TEST(optimize_shift_to_brace) {
     // Diff should prefer boundaries at braces
@@ -323,111 +334,243 @@ TEST(remove_short_matches_empty) {
     free_diff_array(diffs);}
 
 TEST(remove_short_matches_single_diff) {
+    // Single diff should remain unchanged (nothing to join with)
+    
+    const char* lines_a[] = {
+        "old line"
+    };
+    const char* lines_b[] = {
+        "new line"
+    };
     
     SequenceDiffArray* diffs = create_diff_array(5);
     add_diff(diffs, 0, 1, 0, 1);
     print_sequence_diff_array("Before remove_short", diffs);
     
-    remove_short_matches(NULL, NULL, diffs);
-    bool result = true;
+    ISequence* seq1 = line_sequence_create(lines_a, 1, false);
+    ISequence* seq2 = line_sequence_create(lines_b, 1, false);
+    remove_short_matches(seq1, seq2, diffs);
+    seq1->destroy(seq1);
+    seq2->destroy(seq2);
     
     print_sequence_diff_array("After remove_short", diffs);
-    assert(result == true);
     assert(diffs->count == 1);
     printf("    ✓ Verified: Single diff unchanged\n");
     
-    free_diff_array(diffs);}
+    free_diff_array(diffs);
+}
 
-TEST(remove_short_matches_1line_match) {
-    // Diffs separated by 1-line match should be joined
+TEST(remove_short_matches_modification_gap2) {
+    // DEMONSTRATES: removeShortMatches' unique value
+    // Modification diffs with gap=2 can't be joined by shifting,
+    // but CAN be joined by gap threshold
     
+    const char* lines_a[] = {
+        "old func1() {",      // Changed (line 0)
+        "    return 1;",      // Changed (line 1)
+        "}",                  // Same (gap line 1)
+        "",                   // Same (gap line 2)
+        "old func2() {",      // Changed (line 4)
+        "    return 2;",      // Changed (line 5)
+        "}"
+    };
+    const char* lines_b[] = {
+        "new func1() {",      // Changed (line 0)
+        "    return 10;",     // Changed (line 1)
+        "}",                  // Same (gap line 1)
+        "",                   // Same (gap line 2)
+        "new func2() {",      // Changed (line 4)
+        "    return 20;",     // Changed (line 5)
+        "}"
+    };
+    
+    // Two modification diffs separated by gap=2
+    // Shifting CAN'T join these (both ranges non-empty)
+    // But removeShortMatches CAN (gap=2 ≤ 2)
     SequenceDiffArray* diffs = create_diff_array(5);
-    add_diff(diffs, 0, 1, 0, 1);  // First diff
-    add_diff(diffs, 2, 3, 2, 3);  // Second diff (1-line match between)
-    print_sequence_diff_array("Before remove_short (match=1)", diffs);
+    add_diff(diffs, 0, 2, 0, 2);  // Modification: lines 0-1 changed
+    add_diff(diffs, 4, 6, 4, 6);  // Modification: lines 4-5 changed (gap=2)
     
-    remove_short_matches(NULL, NULL, diffs);
-    bool result = true;
+    printf("  Example: Two function changes with 2-line gap (closing brace + blank)\n");
+    printf("  Shifting can't join modifications, but gap threshold can!\n");
+    print_sequence_diff_array("  Before remove_short (match=2)", diffs);
     
-    print_sequence_diff_array("After remove_short (joined)", diffs);
-    assert(result == true);
+    ISequence* seq1 = line_sequence_create(lines_a, 7, false);
+    ISequence* seq2 = line_sequence_create(lines_b, 7, false);
+    remove_short_matches(seq1, seq2, diffs);
+    seq1->destroy(seq1);
+    seq2->destroy(seq2);
+    
+    print_sequence_diff_array("  After remove_short (joined)", diffs);
+    
+    // Should join because gap=2 ≤ 2
     assert(diffs->count == 1);
     assert(diffs->diffs[0].seq1_start == 0);
-    assert(diffs->diffs[0].seq1_end == 3);
-    printf("    ✓ Verified: 1-line match removed, diffs joined\n");
+    assert(diffs->diffs[0].seq1_end == 6);
+    printf("    ✓ Verified: Modification diffs joined (gap=2 ≤ 2)\n");
+    printf("    ✓ This is what shifting CAN'T do!\n");
     
-    free_diff_array(diffs);}
+    free_diff_array(diffs);
+}
 
 TEST(remove_short_matches_3line_match) {
     // Diffs separated by 3-line match should NOT be joined (> 2 threshold)
-    // VSCode joins only if gap ≤ 2
+    // Demonstrates the gap=2 threshold is exact
     
+    const char* lines_a[] = {
+        "old code",        // Changed
+        "same line 1",     // \
+        "same line 2",     //  } 3 matching lines (gap=3)
+        "same line 3",     // /
+        "old code 2"       // Changed
+    };
+    const char* lines_b[] = {
+        "new code",        // Changed
+        "same line 1",     // \
+        "same line 2",     //  } 3 matching lines (gap=3)
+        "same line 3",     // /
+        "new code 2"       // Changed
+    };
+    
+    // Gap=3 is above threshold, should NOT join
     SequenceDiffArray* diffs = create_diff_array(5);
-    add_diff(diffs, 0, 1, 0, 1);
-    add_diff(diffs, 4, 5, 4, 5);  // 3-line match (gap=3, above threshold)
-    print_sequence_diff_array("Before remove_short (match=3)", diffs);
+    add_diff(diffs, 0, 1, 0, 1);  // Modification
+    add_diff(diffs, 4, 5, 4, 5);  // Modification (gap=3, above threshold)
     
-    remove_short_matches(NULL, NULL, diffs);
-    bool result = true;
+    printf("  Example: Changes separated by 3 identical lines\n");
+    print_sequence_diff_array("  Before remove_short (match=3)", diffs);
     
-    print_sequence_diff_array("After remove_short (preserved)", diffs);
-    assert(result == true);
+    ISequence* seq1 = line_sequence_create(lines_a, 5, false);
+    ISequence* seq2 = line_sequence_create(lines_b, 5, false);
+    remove_short_matches(seq1, seq2, diffs);
+    seq1->destroy(seq1);
+    seq2->destroy(seq2);
+    
+    print_sequence_diff_array("  After remove_short (preserved)", diffs);
     assert(diffs->count == 2);  // Should NOT join (gap=3 > 2)
     printf("    ✓ Verified: 3-line match above threshold preserved separation\n");
     
-    free_diff_array(diffs);}
+    free_diff_array(diffs);
+}
 
 TEST(remove_short_matches_preserve_long_match) {
     // Diffs separated by 4-line match should NOT be joined (above threshold)
     
+    const char* lines_a[] = {
+        "old code",        // Changed
+        "line 1",          // \
+        "line 2",          //  |
+        "line 3",          //  } 4 matching lines (gap=4)
+        "line 4",          //  |
+        "old code 2"       // /  Changed
+    };
+    const char* lines_b[] = {
+        "new code",        // Changed
+        "line 1",          // \
+        "line 2",          //  |
+        "line 3",          //  } 4 matching lines (gap=4)
+        "line 4",          //  |
+        "new code 2"       // /  Changed
+    };
+    
     SequenceDiffArray* diffs = create_diff_array(5);
     add_diff(diffs, 0, 1, 0, 1);
-    add_diff(diffs, 5, 6, 5, 6);  // 4-line match (above threshold of 3)
+    add_diff(diffs, 5, 6, 5, 6);  // 4-line match (gap=4, above threshold)
     print_sequence_diff_array("Before remove_short (match=4)", diffs);
     
-    remove_short_matches(NULL, NULL, diffs);
-    bool result = true;
+    ISequence* seq1 = line_sequence_create(lines_a, 6, false);
+    ISequence* seq2 = line_sequence_create(lines_b, 6, false);
+    remove_short_matches(seq1, seq2, diffs);
+    seq1->destroy(seq1);
+    seq2->destroy(seq2);
     
     print_sequence_diff_array("After remove_short (preserved)", diffs);
-    assert(result == true);
     assert(diffs->count == 2);  // Should remain separate
     printf("    ✓ Verified: 4-line match above threshold preserved separation\n");
     
-    free_diff_array(diffs);}
+    free_diff_array(diffs);
+}
 
 TEST(remove_short_matches_multiple_joins) {
-    // Multiple short matches should all be removed
+    // Multiple modification diffs with 1-line gaps should all join (cascade)
+    // Shows that gap threshold works across multiple diffs
     
+    const char* lines_a[] = {
+        "old 1",    // Changed
+        "same 1",   // 1-line match (gap=1)
+        "old 2",    // Changed  
+        "same 2",   // 1-line match (gap=1)
+        "old 3"     // Changed
+    };
+    const char* lines_b[] = {
+        "new 1",    // Changed
+        "same 1",   // 1-line match (gap=1)
+        "new 2",    // Changed
+        "same 2",   // 1-line match (gap=1)
+        "new 3"     // Changed
+    };
+    
+    // Three modification diffs with gap=1 between each
+    // All should cascade join
     SequenceDiffArray* diffs = create_diff_array(5);
-    add_diff(diffs, 0, 1, 0, 1);  // Diff 1
-    add_diff(diffs, 2, 3, 2, 3);  // Diff 2 (1-line match before)
-    add_diff(diffs, 4, 5, 4, 5);  // Diff 3 (1-line match before)
-    print_sequence_diff_array("Before remove_short (3 diffs, 1-line matches)", diffs);
+    add_diff(diffs, 0, 1, 0, 1);  // Modification
+    add_diff(diffs, 2, 3, 2, 3);  // Modification (gap=1)
+    add_diff(diffs, 4, 5, 4, 5);  // Modification (gap=1)
     
-    remove_short_matches(NULL, NULL, diffs);
-    bool result = true;
+    printf("  Example: Multiple line changes with 1-line gaps (cascade join)\n");
+    print_sequence_diff_array("  Before remove_short (3 diffs, 1-line matches)", diffs);
     
-    print_sequence_diff_array("After remove_short (all joined)", diffs);
-    assert(result == true);
-    assert(diffs->count == 1);  // All joined
+    ISequence* seq1 = line_sequence_create(lines_a, 5, false);
+    ISequence* seq2 = line_sequence_create(lines_b, 5, false);
+    remove_short_matches(seq1, seq2, diffs);
+    seq1->destroy(seq1);
+    seq2->destroy(seq2);
+    
+    print_sequence_diff_array("  After remove_short (all joined)", diffs);
+    assert(diffs->count == 1);
     assert(diffs->diffs[0].seq1_start == 0);
     assert(diffs->diffs[0].seq1_end == 5);
     printf("    ✓ Verified: Multiple short matches all removed, all diffs joined\n");
     
-    free_diff_array(diffs);}
+    free_diff_array(diffs);
+}
 
 TEST(remove_short_matches_asymmetric) {
-    // Different match lengths in seq1 vs seq2
+    // Asymmetric gaps: different gap sizes in seq1 vs seq2
+    // VSCode joins if gap ≤ 2 in EITHER sequence (not both)
+    
+    const char* lines_a[] = {
+        "old A",     // Changed
+        "same",      // 1-line match in seq1
+        "old B"      // Changed
+    };
+    const char* lines_b[] = {
+        "new A",     // Changed
+        "line 1",    // \
+        "line 2",    //  } 2-line match in seq2
+        "new B"      // Changed
+    };
+    
+    // Gap in seq1 = 1, Gap in seq2 = 2
+    // Should join because gap ≤ 2 in BOTH sequences
     SequenceDiffArray* diffs = create_diff_array(5);
-    add_diff(diffs, 0, 1, 0, 1);
-    add_diff(diffs, 2, 3, 3, 4);  // gap1=1, gap2=2
+    add_diff(diffs, 0, 1, 0, 1);  // Modification
+    add_diff(diffs, 2, 3, 3, 4);  // Modification (asymmetric gap)
     
-    remove_short_matches(NULL, NULL, diffs);
-    bool result = true;
+    printf("  Example: Asymmetric gaps (1 in seq1, 2 in seq2)\n");
+    print_sequence_diff_array("  Before remove_short", diffs);
     
-    assert(result == true);
-    // Both match lengths <= 3, should join
+    ISequence* seq1 = line_sequence_create(lines_a, 3, false);
+    ISequence* seq2 = line_sequence_create(lines_b, 4, false);
+    remove_short_matches(seq1, seq2, diffs);
+    seq1->destroy(seq1);
+    seq2->destroy(seq2);
+    
+    print_sequence_diff_array("  After remove_short", diffs);
+    
+    // Should join: gap1=1 ≤ 2 AND gap2=2 ≤ 2
     assert(diffs->count == 1);
+    printf("    ✓ Verified: Joined because gap ≤ 2 in EITHER sequence\n");
     
     free_diff_array(diffs);
 }
@@ -492,8 +635,8 @@ int main(void) {
     
     printf("--- Step 2: optimize_sequence_diffs() ---\n");
     RUN_TEST(optimize_empty_array);
-    RUN_TEST(optimize_shift_to_blank_line);
-    RUN_TEST(optimize_shift_to_brace);
+    RUN_TEST(optimize_join_by_shifting_insertions);
+    RUN_TEST(optimize_shift_to_brace);  // Note: modification diff, no actual shifting
     RUN_TEST(optimize_join_adjacent_diffs);
     RUN_TEST(optimize_preserve_separation);
     RUN_TEST(optimize_boundary_at_file_start);
@@ -503,7 +646,7 @@ int main(void) {
     printf("\n--- Step 3: remove_short_matches() ---\n");
     RUN_TEST(remove_short_matches_empty);
     RUN_TEST(remove_short_matches_single_diff);
-    RUN_TEST(remove_short_matches_1line_match);
+    RUN_TEST(remove_short_matches_modification_gap2);
     RUN_TEST(remove_short_matches_3line_match);
     RUN_TEST(remove_short_matches_preserve_long_match);
     RUN_TEST(remove_short_matches_multiple_joins);
