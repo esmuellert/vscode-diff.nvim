@@ -84,12 +84,13 @@ SequenceDiffArray* compute_line_alignments(
     StringHashMap* hash_map = string_hash_map_create();
     
     // Step 2: Hash all lines (trimmed) - VSCode line 77-78
-    // For simplicity, we use the full line content as hash key
-    // (VSCode uses trim(), but our hash map handles this)
+    // VSCode always uses l.trim() for hashing, regardless of ignoreTrimWhitespace option
+    // The ignoreTrimWhitespace option only affects char-level comparison later
     
-    // Step 3: Create LineSequence with hashed lines (VSCode line 80-81)
-    ISequence* seq1 = line_sequence_create(lines_a, len_a, false, hash_map);
-    ISequence* seq2 = line_sequence_create(lines_b, len_b, false, hash_map);
+    // Step 3: Create LineSequence with trimmed hashes (VSCode line 80-81)
+    // Pass true to hash trimmed lines, matching VSCode's getOrCreateHash(l.trim())
+    ISequence* seq1 = line_sequence_create(lines_a, len_a, true, hash_map);
+    ISequence* seq2 = line_sequence_create(lines_b, len_b, true, hash_map);
     
     // Step 4: Run Myers diff with algorithm selection (VSCode line 83-97)
     SequenceDiffArray* line_alignments;
