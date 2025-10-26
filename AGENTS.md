@@ -2,11 +2,25 @@
 
 ## General CLI Agent Behavior Instructions
 
-### Communication Guidelines
+### Communication and File Operation Guidelines
 
-1. **Output Messages**: When responding to users, utilize the native chat output interface. Do not use command-line utilities such as `cat`, `echo`, or `write-host` to display messages in the console. Do not use `cat` to save docs to `/tmp` folder
+1. **Output Messages**: When responding to users, utilize the native chat output interface. Do not use command-line utilities such as `cat`, `echo`, or `write-host` to display messages in the console.
 
-2. **Code Modifications**: When modifying code, use native patch/diff-based modification tools and APIs (edit manually). Do not use script-based operations or command-line utilities like `cat`, `sed`, `awk`, `grep`, or python scripts and regex to perform code edits.
+2. **File Creation and Editing**: Always use native file operation tools (create, edit, patch/diff APIs) for all file operations. Do not use shell redirection operators (`>`, `>>`, `<<`) or command-line utilities (`cat`, `sed`, `awk`, `grep`) to create or modify files. This applies to ALL files, regardless of location (project files, `/tmp`, `%TEMP%`, etc.).
+
+   **Prohibited patterns**:
+   - `cat > /tmp/file.md << 'EOF'`
+   - `echo "content" > file.txt`
+   - `sed -i 's/pattern/replacement/' file.js`
+   
+   **Required approach**: Use native `create` or `str_replace` tools instead.
+
+3. **Experimental and Demonstration Scripts**: When running experiments, demonstrations, or temporary operations that require script files, create the script files explicitly in temporary directories (`/tmp` on Linux/macOS, `%TEMP%` on Windows) using native file creation tools first, then execute them. Do not use inline heredocs or shell redirection.
+
+   **Example workflow**:
+   - Step 1: Use `create` tool to make `/tmp/experiment.sh`
+   - Step 2: Execute `bash /tmp/experiment.sh`
+   - Step 3: Clean up the file after use
 
 ## Path-Specific Instructions
 
