@@ -45,12 +45,12 @@ test-line-opt: c-diff-core/build
 	@echo "Running Line Optimization tests (Steps 1+2+3)..."
 	@cd c-diff-core && $(CC) $(TEST_CFLAGS) tests/test_line_optimization.c $(TEST_SOURCES) -o build/test_line_opt && ./build/test_line_opt
 
-test-infrastructure: c-diff-core/build
-	@echo "Running Infrastructure tests (Hash table, ISequence)..."
-	@cd c-diff-core && $(CC) $(TEST_CFLAGS) tests/test_infrastructure.c $(TEST_SOURCES) -o build/test_infrastructure && ./build/test_infrastructure
+test-sequence: c-diff-core/build
+	@echo "Running Sequence tests (Hash table, ISequence)..."
+	@cd c-diff-core && $(CC) $(TEST_CFLAGS) tests/test_sequence.c $(TEST_SOURCES) -o build/test_sequence && ./build/test_sequence
 
 # Build and run all C unit tests
-test_c: test-myers test-line-opt test-infrastructure
+test_c: test-myers test-line-opt test-sequence
 	@echo ""
 	@echo "================================================"
 	@echo "  ALL C UNIT TESTS PASSED ✓"
@@ -83,4 +83,4 @@ clean:
 	rm -f $(OBJ) $(TARGET) c-diff-core/test_diff_core
 	rm -rf c-diff-core/build
 
-.PHONY: all test test-c test-unit test-e2e test-e2e-verbose test-verbose clean test_c test-myers test-line-opt test-infrastructure
+.PHONY: all test test-c test-unit test-e2e test-e2e-verbose test-verbose clean test_c test-myers test-line-opt test-sequence
