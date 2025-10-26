@@ -129,9 +129,11 @@ ISequence* line_sequence_create(const char** lines, int length, bool ignore_whit
  * VSCode Reference: src/vs/editor/common/diff/defaultLinesDiffComputer/linesSliceCharSequence.ts
  */
 typedef struct {
-    uint32_t* elements;              // Character codes
-    int length;
+    uint32_t* elements;              // Character codes (trimmed if !consider_whitespace)
+    int length;                      // Length of elements array
     int* line_start_offsets;         // Offset where each line starts in elements array
+    int* trimmed_ws_lengths;         // Leading whitespace trimmed from each line (0 if consider_whitespace)
+    int* original_line_start_cols;   // Starting column in original line for each line
     int line_count;                  // Number of lines tracked
     bool consider_whitespace;        // If false, whitespace is trimmed before diffing
 } CharSequence;

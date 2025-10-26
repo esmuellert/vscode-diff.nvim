@@ -285,6 +285,8 @@ static void char_seq_destroy(ISequence* self) {
     CharSequence* seq = (CharSequence*)self->data;
     free(seq->elements);
     free(seq->line_start_offsets);
+    free(seq->trimmed_ws_lengths);
+    free(seq->original_line_start_cols);
     free(seq);
     free(self);
 }
@@ -304,6 +306,8 @@ ISequence* char_sequence_create(const char** lines, int start_line, int end_line
         seq->elements = NULL;
         seq->length = 0;
         seq->line_start_offsets = NULL;
+        seq->trimmed_ws_lengths = NULL;
+        seq->original_line_start_cols = NULL;
         seq->line_count = 0;
         seq->consider_whitespace = consider_whitespace;
         
@@ -321,26 +325,35 @@ ISequence* char_sequence_create(const char** lines, int start_line, int end_line
     seq->consider_whitespace = consider_whitespace;
     seq->line_count = end_line - start_line;
     seq->line_start_offsets = (int*)malloc(sizeof(int) * (seq->line_count + 1));
+    seq->trimmed_ws_lengths = (int*)malloc(sizeof(int) * seq->line_count);
+    seq->original_line_start_cols = (int*)malloc(sizeof(int) * seq->line_count);
     
-    // First pass: calculate total length
+    // First pass: calculate total length and track trim info
     int total_len = 0;
     for (int i = start_line; i < end_line; i++) {
         const char* line = lines[i];
+        const char* line_start = line;
+        int trimmed_leading = 0;
         
         if (!consider_whitespace) {
-            // Skip leading whitespace
-            while (*line && isspace((unsigned char)*line)) {
-                line++;
+            // Count and skip leading whitespace
+            while (*line_start && isspace((unsigned char)*line_start)) {
+                line_start++;
+                trimmed_leading++;
             }
             // Find end (trim trailing whitespace)
-            const char* end = line + strlen(line);
-            while (end > line && isspace((unsigned char)*(end - 1))) {
-                end--;
+            const char* line_end = line_start + strlen(line_start);
+            while (line_end > line_start && isspace((unsigned char)*(line_end - 1))) {
+                line_end--;
             }
-            total_len += (end - line);
+            total_len += (line_end - line_start);
         } else {
             total_len += strlen(line);
         }
+        
+        // Store trim info (VSCode: trimmedWsLengthsByLineIdx and lineStartOffsets)
+        seq->trimmed_ws_lengths[i - start_line] = trimmed_leading;
+        seq->original_line_start_cols[i - start_line] = 0; // Will be set if needed for range support
         
         // Add newline except for last line
         if (i < end_line - 1) {
@@ -401,7 +414,11 @@ ISequence* char_sequence_create(const char** lines, int start_line, int end_line
  * Translate character offset to (line, column) position
  * 
  * Binary search through line_start_offsets to find which line,
- * then calculate column within that line.
+ * then calculate column within that line, accounting for trimmed whitespace.
+ * 
+ * VSCode Parity: Matches LinesSliceCharSequence.translateOffset()
+ * When whitespace is trimmed, we must add back the trimmed leading whitespace
+ * to get the correct column in the original line.
  * 
  * REUSED BY: Step 4 when converting character SequenceDiff to RangeMapping
  */
@@ -414,6 +431,7 @@ void char_sequence_translate_offset(const CharSequence* seq, int offset,
     }
     
     // Binary search for line containing this offset
+    // Find the largest i such that line_start_offsets[i] <= offset
     int left = 0;
     int right = seq->line_count;
     
@@ -431,7 +449,20 @@ void char_sequence_translate_offset(const CharSequence* seq, int offset,
     if (line_idx >= seq->line_count) line_idx = seq->line_count - 1;
     
     *out_line = line_idx;
-    *out_col = offset - seq->line_start_offsets[line_idx];
+    
+    // Calculate column offset within the line
+    int line_offset = offset - seq->line_start_offsets[line_idx];
+    
+    // VSCode: translateOffset adds trimmedWsLengthsByLineIdx when lineOffset > 0
+    // This restores the trimmed leading whitespace to get the correct column
+    // in the original line.
+    // 
+    // For lineOffset == 0, we check preference (but we always use 'right' preference here,
+    // so we add the trimmed length even at offset 0)
+    int trimmed_ws = seq->trimmed_ws_lengths ? seq->trimmed_ws_lengths[line_idx] : 0;
+    int original_line_start = seq->original_line_start_cols ? seq->original_line_start_cols[line_idx] : 0;
+    
+    *out_col = original_line_start + line_offset + trimmed_ws;
 }
 
 // =============================================================================

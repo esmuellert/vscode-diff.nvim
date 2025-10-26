@@ -21,14 +21,14 @@ CHAR_LEVEL_SRC = $(SRC_DIR)/char_level.c
 
 # Test executables
 TEST_MYERS = $(BUILD_DIR)/test_myers
-TEST_INFRASTRUCTURE = $(BUILD_DIR)/test_infrastructure
+TEST_SEQUENCE = $(BUILD_DIR)/test_sequence
 TEST_LINE_OPT = $(BUILD_DIR)/test_line_optimization
 TEST_LINE_BOUNDARY = $(BUILD_DIR)/test_line_boundary_scoring
 TEST_CHAR_LEVEL = $(BUILD_DIR)/test_char_level
 TEST_INTEGRATION = $(BUILD_DIR)/test_integration
 TEST_DP = $(BUILD_DIR)/test_dp_algorithm
 
-.PHONY: all clean test test-myers test-infrastructure test-line-opt test-line-boundary test-char-level test-integration test-dp
+.PHONY: all clean test test-myers test-sequence test-line-opt test-line-boundary test-char-level test-integration test-dp
 
 all: $(BUILD_DIR)
 
@@ -43,13 +43,13 @@ test-myers: $(BUILD_DIR)
 	@echo ""
 	@$(TEST_MYERS)
 
-# Build and run Infrastructure tests (ISequence, LineSequence, CharSequence)
-test-infrastructure: $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(TEST_DIR)/test_infrastructure.c $(MYERS_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) -o $(TEST_INFRASTRUCTURE) -lm
+# Build and run Sequence tests (ISequence, LineSequence, CharSequence, Column Translation)
+test-sequence: $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_sequence.c $(MYERS_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) -o $(TEST_SEQUENCE) -lm
 	@echo ""
-	@echo "Running Infrastructure tests..."
+	@echo "Running Sequence tests (Infrastructure + Column Translation)..."
 	@echo ""
-	@$(TEST_INFRASTRUCTURE)
+	@$(TEST_SEQUENCE)
 
 # Build and run Line Optimization tests (Step 1+2+3)
 test-line-opt: $(BUILD_DIR)
@@ -89,7 +89,7 @@ test-dp: $(BUILD_DIR)
 	@$(TEST_DP)
 
 # Run all tests
-test: test-myers test-line-opt test-line-boundary test-char-level test-dp
+test: test-myers test-sequence test-line-opt test-line-boundary test-char-level test-dp
 
 # Clean build artifacts
 clean:

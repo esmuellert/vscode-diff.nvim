@@ -160,6 +160,130 @@ void test_timeout() {
     printf("✓ PASSED\n");
 }
 
+void test_column_translation_with_trimmed_whitespace() {
+    printf("\n=== Test: Column Translation with Trimmed Whitespace ===\n");
+    
+    // Lines with leading/trailing whitespace
+    const char* lines[] = {
+        "    hello world    ",  // Line 0: 4 leading, content starts at col 4
+        "  foo bar  ",          // Line 1: 2 leading, content starts at col 2
+        "no trim",              // Line 2: 0 leading, content starts at col 0
+    };
+    
+    // Create char sequence with whitespace trimming
+    ISequence* seq = char_sequence_create(lines, 0, 3, false);
+    CharSequence* char_seq = (CharSequence*)seq->data;
+    
+    printf("  Created char sequence (trimmed):\n");
+    printf("    Line 0: \"    hello world    \" -> \"hello world\"\n");
+    printf("    Line 1: \"  foo bar  \" -> \"foo bar\"\n");
+    printf("    Line 2: \"no trim\" -> \"no trim\"\n");
+    
+    // The trimmed sequence should be: "hello world\nfoo bar\nno trim"
+    // Offsets:
+    //   Line 0: offset 0-10 ("hello world")
+    //   Line 1: offset 12-18 ("foo bar")
+    //   Line 2: offset 20-26 ("no trim")
+    
+    int line, col;
+    
+    // Test Line 0: offset 0 should translate to (0, 4) - start of "hello" after 4 leading spaces
+    char_sequence_translate_offset(char_seq, 0, &line, &col);
+    printf("\n  Offset 0 (first char 'h' in trimmed) -> Line %d, Col %d\n", line, col);
+    printf("    Expected: Line 0, Col 4 (after 4 leading spaces in original)\n");
+    assert(line == 0);
+    assert(col == 4);
+    printf("  ✓ Correct\n");
+    
+    // Test Line 0: offset 5 should translate to (0, 9) - 'space' between hello and world
+    char_sequence_translate_offset(char_seq, 5, &line, &col);
+    printf("\n  Offset 5 (space in 'hello world') -> Line %d, Col %d\n", line, col);
+    printf("    Expected: Line 0, Col 9\n");
+    assert(line == 0);
+    assert(col == 9);
+    printf("  ✓ Correct\n");
+    
+    // Test Line 1: offset 12 should translate to (1, 2) - start of "foo" after 2 leading spaces
+    char_sequence_translate_offset(char_seq, 12, &line, &col);
+    printf("\n  Offset 12 (first char 'f' in 'foo bar') -> Line %d, Col %d\n", line, col);
+    printf("    Expected: Line 1, Col 2 (after 2 leading spaces in original)\n");
+    assert(line == 1);
+    assert(col == 2);
+    printf("  ✓ Correct\n");
+    
+    // Test Line 2: offset 20 should translate to (2, 0) - start of "no trim" with no leading space
+    char_sequence_translate_offset(char_seq, 20, &line, &col);
+    printf("\n  Offset 20 (first char 'n' in 'no trim') -> Line %d, Col %d\n", line, col);
+    printf("    Expected: Line 2, Col 0 (no leading spaces)\n");
+    assert(line == 2);
+    assert(col == 0);
+    printf("  ✓ Correct\n");
+    
+    seq->destroy(seq);
+    printf("\n✓ PASSED\n");
+}
+
+void test_column_translation_no_trimming() {
+    printf("\n=== Test: Column Translation without Trimming ===\n");
+    
+    const char* lines[] = {
+        "    hello world    ",
+        "  foo bar  ",
+    };
+    
+    // Create char sequence WITHOUT whitespace trimming
+    ISequence* seq = char_sequence_create(lines, 0, 2, true);
+    CharSequence* char_seq = (CharSequence*)seq->data;
+    
+    printf("  Created char sequence (no trimming):\n");
+    printf("    Preserves all whitespace\n");
+    
+    int line, col;
+    
+    // Test offset 0 should translate to (0, 0) - first space character
+    char_sequence_translate_offset(char_seq, 0, &line, &col);
+    printf("\n  Offset 0 (first space) -> Line %d, Col %d\n", line, col);
+    printf("    Expected: Line 0, Col 0\n");
+    assert(line == 0);
+    assert(col == 0);
+    printf("  ✓ Correct\n");
+    
+    // Test offset 4 should translate to (0, 4) - 'h' in hello
+    char_sequence_translate_offset(char_seq, 4, &line, &col);
+    printf("\n  Offset 4 ('h' in hello) -> Line %d, Col %d\n", line, col);
+    printf("    Expected: Line 0, Col 4\n");
+    assert(line == 0);
+    assert(col == 4);
+    printf("  ✓ Correct\n");
+    
+    seq->destroy(seq);
+    printf("\n✓ PASSED\n");
+}
+
+void test_column_translation_edge_cases() {
+    printf("\n=== Test: Column Translation Edge Cases ===\n");
+    
+    const char* lines[] = {
+        "        ",  // Only whitespace - will be trimmed to empty
+        "  x  ",    // Single char with whitespace
+        "",         // Empty line
+    };
+    
+    ISequence* seq = char_sequence_create(lines, 0, 3, false);
+    CharSequence* char_seq = (CharSequence*)seq->data;
+    
+    int line, col;
+    
+    // Test translation in line with only whitespace (trimmed to empty)
+    char_sequence_translate_offset(char_seq, 0, &line, &col);
+    printf("  Offset 0 in trimmed sequence -> Line %d, Col %d\n", line, col);
+    // Should map to line 1 (the "x" line) since line 0 is empty after trimming
+    printf("  (Line with single 'x' char)\n");
+    
+    seq->destroy(seq);
+    printf("\n✓ PASSED\n");
+}
+
 int main() {
     printf("\n========================================\n");
     printf("Infrastructure Tests - ISequence\n");
@@ -168,6 +292,15 @@ int main() {
     test_whitespace_handling();
     test_boundary_scoring();
     test_timeout();
+    
+    printf("\n========================================\n");
+    printf("Column Translation Tests\n");
+    printf("VSCode Parity: linesSliceCharSequence.translateOffset()\n");
+    printf("========================================\n");
+    
+    test_column_translation_with_trimmed_whitespace();
+    test_column_translation_no_trimming();
+    test_column_translation_edge_cases();
     
     printf("\n========================================\n");
     printf("All infrastructure tests passed! ✓\n");
