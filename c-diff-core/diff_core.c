@@ -15,12 +15,11 @@
 //
 // ============================================================================
 
-#define _POSIX_C_SOURCE 200809L
-#include "diff_core.h"
+#include "../include/types.h"
+#include "include/platform.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#include <unistd.h>  // for isatty() and fileno()
 
 // ============================================================================
 // Version
@@ -136,7 +135,7 @@ static const char* get_type_name(HighlightType type) {
 
 void diff_core_print_render_plan(const RenderPlan* plan) {
     // Use ANSI colors only if stdout is a TTY
-    bool use_color = isatty(fileno(stdout));
+    bool use_color = diff_isatty(diff_fileno(stdout));
     const char* cyan = use_color ? "\033[36m" : "";
     const char* yellow = use_color ? "\033[33m" : "";
     const char* green = use_color ? "\033[32m" : "";

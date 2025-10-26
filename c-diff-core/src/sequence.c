@@ -12,9 +12,9 @@
  * VSCode Parity: 100% for perfect hash and boundary scoring
  */
 
-#define _POSIX_C_SOURCE 200809L
 #include "../include/sequence.h"
 #include "../include/string_hash_map.h"
+#include "../include/platform.h"
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
@@ -27,7 +27,7 @@
  * Create a trimmed copy of string (caller must free)
  */
 static char* trim_string(const char* str) {
-    if (!str) return strdup("");
+    if (!str) return diff_strdup("");
     
     // Skip leading whitespace
     while (*str && isspace((unsigned char)*str)) {

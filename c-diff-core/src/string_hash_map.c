@@ -14,8 +14,8 @@
  * VSCode Parity: 100% - Exactly matches perfectHashes Map behavior
  */
 
-#define _POSIX_C_SOURCE 200809L
 #include "../include/string_hash_map.h"
+#include "../include/platform.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -109,7 +109,7 @@ uint32_t string_hash_map_get_or_create(StringHashMap* map, const char* str) {
     bucket = hash_for_bucket(str) % map->capacity;
     
     HashEntry* new_entry = (HashEntry*)malloc(sizeof(HashEntry));
-    new_entry->key = strdup(str);
+    new_entry->key = diff_strdup(str);
     new_entry->value = map->size;  // Sequential: 0, 1, 2, ...
     new_entry->next = map->buckets[bucket];
     map->buckets[bucket] = new_entry;
