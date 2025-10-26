@@ -178,8 +178,15 @@ typedef struct {
 
 /**
  * Helper: Scan word at given position
+ * This function mirrors VSCode's scanWord behavior, including the critical
+ * while loop that continues consuming and merging overlapping equal spans.
+ * 
+ * NOTE: This modifies the queue_pos to consume equal mappings from the shared queue,
+ * matching VSCode's closure-based approach where scanWord modifies the same array.
  */
-static void scan_word(ScanWordContext* ctx, int offset1, int offset2, const SequenceDiff* equal_mapping) {
+static void scan_word(ScanWordContext* ctx, int offset1, int offset2, 
+                     SequenceDiffArray* all_equal_mappings, int* queue_start_pos,
+                     const SequenceDiff* current_equal_mapping) {
     if (offset1 < *ctx->last_offset1 || offset2 < *ctx->last_offset2) {
         return;
     }
@@ -201,14 +208,72 @@ static void scan_word(ScanWordContext* ctx, int offset1, int offset2, const Sequ
     
     SequenceDiff word = {w1_start, w1_end, w2_start, w2_end};
     
-    // Calculate equal part within word
-    int equal_start1 = max_int(word.seq1_start, equal_mapping->seq1_start);
-    int equal_end1 = min_int(word.seq1_end, equal_mapping->seq1_end);
-    int equal_start2 = max_int(word.seq2_start, equal_mapping->seq2_start);
-    int equal_end2 = min_int(word.seq2_end, equal_mapping->seq2_end);
+    // Calculate equal part within word (intersection with current equal mapping)
+    int equal_start1 = max_int(word.seq1_start, current_equal_mapping->seq1_start);
+    int equal_end1 = min_int(word.seq1_end, current_equal_mapping->seq1_end);
+    int equal_start2 = max_int(word.seq2_start, current_equal_mapping->seq2_start);
+    int equal_end2 = min_int(word.seq2_end, current_equal_mapping->seq2_end);
     
     int equal_chars1 = max_int(0, equal_end1 - equal_start1);
     int equal_chars2 = max_int(0, equal_end2 - equal_start2);
+    
+    // VSCode critical feature: Keep consuming and merging overlapping equal spans
+    // from the remaining queue (starting at queue_start_pos).
+    // This is where we achieve parity with VSCode's while(equalMappings.length > 0) loop.
+    while (*queue_start_pos < all_equal_mappings->count) {
+        const SequenceDiff* next = &all_equal_mappings->diffs[*queue_start_pos];
+        
+        // Check if the next equal mapping intersects with our current word
+        bool intersects = (next->seq1_start < word.seq1_end && next->seq1_end > word.seq1_start) ||
+                         (next->seq2_start < word.seq2_end && next->seq2_end > word.seq2_start);
+        
+        if (!intersects) {
+            break;
+        }
+        
+        // Find the parent word for the next equal mapping's start position
+        int v1_start, v1_end, v2_start, v2_end;
+        bool v_found1, v_found2;
+        
+        if (ctx->use_subwords) {
+            v_found1 = char_sequence_find_subword_containing(ctx->seq1, next->seq1_start, &v1_start, &v1_end);
+            v_found2 = char_sequence_find_subword_containing(ctx->seq2, next->seq2_start, &v2_start, &v2_end);
+        } else {
+            v_found1 = char_sequence_find_word_containing(ctx->seq1, next->seq1_start, &v1_start, &v1_end);
+            v_found2 = char_sequence_find_word_containing(ctx->seq2, next->seq2_start, &v2_start, &v2_end);
+        }
+        
+        if (!v_found1 || !v_found2) {
+            break;
+        }
+        
+        SequenceDiff v = {v1_start, v1_end, v2_start, v2_end};
+        
+        // Calculate the equal part of this new word with the next equal mapping
+        int v_equal_start1 = max_int(v.seq1_start, next->seq1_start);
+        int v_equal_end1 = min_int(v.seq1_end, next->seq1_end);
+        int v_equal_start2 = max_int(v.seq2_start, next->seq2_start);
+        int v_equal_end2 = min_int(v.seq2_end, next->seq2_end);
+        
+        int v_equal_chars1 = max_int(0, v_equal_end1 - v_equal_start1);
+        int v_equal_chars2 = max_int(0, v_equal_end2 - v_equal_start2);
+        
+        equal_chars1 += v_equal_chars1;
+        equal_chars2 += v_equal_chars2;
+        
+        // Join the words: w = w.join(v)
+        word.seq1_start = min_int(word.seq1_start, v.seq1_start);
+        word.seq1_end = max_int(word.seq1_end, v.seq1_end);
+        word.seq2_start = min_int(word.seq2_start, v.seq2_start);
+        word.seq2_end = max_int(word.seq2_end, v.seq2_end);
+        
+        // If the word extends beyond the next equal mapping, consume it (shift)
+        if (word.seq1_end >= next->seq1_end) {
+            (*queue_start_pos)++;  // Consume this mapping from the queue
+        } else {
+            break;
+        }
+    }
     
     // Check if we should extend to include this word
     int word_len = (word.seq1_end - word.seq1_start) + (word.seq2_end - word.seq2_start);
@@ -266,20 +331,28 @@ static SequenceDiffArray* extend_diffs_to_entire_word(
         .additional = additional
     };
     
-    // Process all equal mappings
-    for (int i = 0; i < equal_mappings->count; i++) {
-        const SequenceDiff* next = &equal_mappings->diffs[i];
+    // VSCode uses: while (equalMappings.length > 0) { const next = equalMappings.shift()!; ... }
+    // We simulate with a position that advances. The key is that scan_word can also
+    // advance queue_pos (consuming mappings), matching VSCode's closure-based approach.
+    int queue_pos = 0;
+    while (queue_pos < equal_mappings->count) {
+        const SequenceDiff current = equal_mappings->diffs[queue_pos];
+        queue_pos++;  // Consume current mapping (like shift())
         
-        if (next->seq1_start >= next->seq1_end) {
+        if (current.seq1_start >= current.seq1_end) {
             continue;
         }
         
         // Scan at start of equal region
-        scan_word(&ctx, next->seq1_start, next->seq2_start, next);
+        // Pass queue_pos as the start of remaining items (what's left after shift)
+        scan_word(&ctx, current.seq1_start, current.seq2_start, 
+                 equal_mappings, &queue_pos, &current);
         
         // Scan at end of equal region (one char before end)
-        if (next->seq1_end > next->seq1_start + 1) {
-            scan_word(&ctx, next->seq1_end - 1, next->seq2_end - 1, next);
+        // VSCode: next.getEndExclusives().delta(-1)
+        if (current.seq1_end > current.seq1_start + 1) {
+            scan_word(&ctx, current.seq1_end - 1, current.seq2_end - 1, 
+                     equal_mappings, &queue_pos, &current);
         }
     }
     
