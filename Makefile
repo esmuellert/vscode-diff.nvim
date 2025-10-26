@@ -34,7 +34,7 @@ c-diff-core/build:
 
 # C Test Targets
 TEST_CFLAGS = -Wall -Wextra -std=c11 -O2 -g -Iinclude
-TEST_SOURCES = src/myers.c src/optimize.c src/sequence.c src/utils.c src/print_utils.c
+TEST_SOURCES = src/myers.c src/optimize.c src/sequence.c src/utils.c src/print_utils.c src/string_hash_map.c
 
 # Individual test targets
 test-myers: c-diff-core/build
@@ -45,8 +45,12 @@ test-line-opt: c-diff-core/build
 	@echo "Running Line Optimization tests (Steps 1+2+3)..."
 	@cd c-diff-core && $(CC) $(TEST_CFLAGS) tests/test_line_optimization.c $(TEST_SOURCES) -o build/test_line_opt && ./build/test_line_opt
 
+test-infrastructure: c-diff-core/build
+	@echo "Running Infrastructure tests (Hash table, ISequence)..."
+	@cd c-diff-core && $(CC) $(TEST_CFLAGS) tests/test_infrastructure.c $(TEST_SOURCES) -o build/test_infrastructure && ./build/test_infrastructure
+
 # Build and run all C unit tests
-test_c: test-myers test-line-opt
+test_c: test-myers test-line-opt test-infrastructure
 	@echo ""
 	@echo "================================================"
 	@echo "  ALL C UNIT TESTS PASSED ✓"
@@ -79,4 +83,4 @@ clean:
 	rm -f $(OBJ) $(TARGET) c-diff-core/test_diff_core
 	rm -rf c-diff-core/build
 
-.PHONY: all test test-c test-unit test-e2e test-e2e-verbose test-verbose clean test_c test-myers test-line-opt
+.PHONY: all test test-c test-unit test-e2e test-e2e-verbose test-verbose clean test_c test-myers test-line-opt test-infrastructure

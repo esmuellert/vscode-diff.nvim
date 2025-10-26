@@ -19,6 +19,7 @@
 #include "../include/myers.h"
 #include "../include/optimize.h"
 #include "../include/sequence.h"
+#include "../include/string_hash_map.h"
 #include "../include/print_utils.h"
 #include "test_utils.h"
 #include <stdio.h>
@@ -40,8 +41,9 @@ TEST(line_opt_simple_addition) {
     SequenceDiffArray* after_step1 = create_diff_array(10);
     add_diff(after_step1, 2, 2, 2, 3);  // Insert at position 2
     
-    ISequence* seq1 = line_sequence_create(lines_a, 3, false);
-    ISequence* seq2 = line_sequence_create(lines_b, 4, false);
+    StringHashMap* hash_map = string_hash_map_create();
+    ISequence* seq1 = line_sequence_create(lines_a, 3, false, hash_map);
+    ISequence* seq2 = line_sequence_create(lines_b, 4, false, hash_map);
     bool timeout = false;
     SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
     print_sequence_diff_array("After Step 1 (Myers)", myers);
@@ -78,6 +80,7 @@ TEST(line_opt_simple_addition) {
     // 5. CLEANUP
     seq1->destroy(seq1);
     seq2->destroy(seq2);
+    string_hash_map_destroy(hash_map);
     free_diff_array(myers);
     free_diff_array(after_step1);
     free_diff_array(step2_actual);
@@ -102,8 +105,9 @@ TEST(line_opt_small_gap_join) {
     add_diff(after_step1, 0, 1, 0, 1);  // Modify line 0
     add_diff(after_step1, 2, 3, 2, 3);  // Modify line 2
     
-    ISequence* seq1 = line_sequence_create(lines_a, 3, false);
-    ISequence* seq2 = line_sequence_create(lines_b, 3, false);
+    StringHashMap* hash_map = string_hash_map_create();
+    ISequence* seq1 = line_sequence_create(lines_a, 3, false, hash_map);
+    ISequence* seq2 = line_sequence_create(lines_b, 3, false, hash_map);
     bool timeout = false;
     SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
     print_sequence_diff_array("After Step 1 (Myers)", myers);
@@ -145,6 +149,7 @@ TEST(line_opt_small_gap_join) {
     // 5. CLEANUP
     seq1->destroy(seq1);
     seq2->destroy(seq2);
+    string_hash_map_destroy(hash_map);
     free_diff_array(myers);
     free_diff_array(after_step1);
     free_diff_array(step2_actual);
@@ -177,8 +182,9 @@ TEST(line_opt_large_gap_no_join) {
     add_diff(after_step1, 0, 1, 0, 1);
     add_diff(after_step1, 2, 3, 2, 3);
     
-    ISequence* seq1 = line_sequence_create(lines_a, 3, false);
-    ISequence* seq2 = line_sequence_create(lines_b, 3, false);
+    StringHashMap* hash_map = string_hash_map_create();
+    ISequence* seq1 = line_sequence_create(lines_a, 3, false, hash_map);
+    ISequence* seq2 = line_sequence_create(lines_b, 3, false, hash_map);
     bool timeout = false;
     SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
     print_sequence_diff_array("After Step 1 (Myers)", myers);
@@ -216,6 +222,7 @@ TEST(line_opt_large_gap_no_join) {
     // 5. CLEANUP
     seq1->destroy(seq1);
     seq2->destroy(seq2);
+    string_hash_map_destroy(hash_map);
     free_diff_array(myers);
     free_diff_array(after_step1);
     free_diff_array(step2_actual);
@@ -249,8 +256,9 @@ TEST(line_opt_blank_lines_join) {
     add_diff(after_step1, 0, 4, 0, 4);  // Modify 4 lines
     add_diff(after_step1, 6, 7, 6, 7);  // Modify 1 line
     
-    ISequence* seq1 = line_sequence_create(lines_a, 7, false);
-    ISequence* seq2 = line_sequence_create(lines_b, 7, false);
+    StringHashMap* hash_map = string_hash_map_create();
+    ISequence* seq1 = line_sequence_create(lines_a, 7, false, hash_map);
+    ISequence* seq2 = line_sequence_create(lines_b, 7, false, hash_map);
     bool timeout = false;
     SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
     print_sequence_diff_array("After Step 1 (Myers)", myers);
@@ -287,6 +295,7 @@ TEST(line_opt_blank_lines_join) {
     // 5. CLEANUP
     seq1->destroy(seq1);
     seq2->destroy(seq2);
+    string_hash_map_destroy(hash_map);
     free_diff_array(myers);
     free_diff_array(after_step1);
     free_diff_array(step2_actual);
@@ -320,8 +329,9 @@ TEST(line_opt_function_refactor) {
     SequenceDiffArray* after_step1 = create_diff_array(10);
     add_diff(after_step1, 0, 2, 0, 2);
     
-    ISequence* seq1 = line_sequence_create(lines_a, 3, false);
-    ISequence* seq2 = line_sequence_create(lines_b, 3, false);
+    StringHashMap* hash_map = string_hash_map_create();
+    ISequence* seq1 = line_sequence_create(lines_a, 3, false, hash_map);
+    ISequence* seq2 = line_sequence_create(lines_b, 3, false, hash_map);
     bool timeout = false;
     SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
     print_sequence_diff_array("After Step 1 (Myers)", myers);
@@ -359,6 +369,7 @@ TEST(line_opt_function_refactor) {
     // 5. CLEANUP
     seq1->destroy(seq1);
     seq2->destroy(seq2);
+    string_hash_map_destroy(hash_map);
     free_diff_array(myers);
     free_diff_array(after_step1);
     free_diff_array(step2_actual);
@@ -389,8 +400,9 @@ TEST(line_opt_import_changes) {
     SequenceDiffArray* after_step1 = create_diff_array(10);
     add_diff(after_step1, 0, 2, 0, 2);
     
-    ISequence* seq1 = line_sequence_create(lines_a, 2, false);
-    ISequence* seq2 = line_sequence_create(lines_b, 2, false);
+    StringHashMap* hash_map = string_hash_map_create();
+    ISequence* seq1 = line_sequence_create(lines_a, 2, false, hash_map);
+    ISequence* seq2 = line_sequence_create(lines_b, 2, false, hash_map);
     bool timeout = false;
     SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
     print_sequence_diff_array("After Step 1 (Myers)", myers);
@@ -428,6 +440,7 @@ TEST(line_opt_import_changes) {
     // 5. CLEANUP
     seq1->destroy(seq1);
     seq2->destroy(seq2);
+    string_hash_map_destroy(hash_map);
     free_diff_array(myers);
     free_diff_array(after_step1);
     free_diff_array(step2_actual);
@@ -467,8 +480,9 @@ TEST(line_opt_comment_block) {
     SequenceDiffArray* after_step1 = create_diff_array(10);
     add_diff(after_step1, 0, 6, 0, 6);  // One big modification
     
-    ISequence* seq1 = line_sequence_create(lines_a, 7, false);
-    ISequence* seq2 = line_sequence_create(lines_b, 7, false);
+    StringHashMap* hash_map = string_hash_map_create();
+    ISequence* seq1 = line_sequence_create(lines_a, 7, false, hash_map);
+    ISequence* seq2 = line_sequence_create(lines_b, 7, false, hash_map);
     bool timeout = false;
     SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
     print_sequence_diff_array("After Step 1 (Myers)", myers);
@@ -504,6 +518,7 @@ TEST(line_opt_comment_block) {
     // 5. CLEANUP
     seq1->destroy(seq1);
     seq2->destroy(seq2);
+    string_hash_map_destroy(hash_map);
     free_diff_array(myers);
     free_diff_array(after_step1);
     free_diff_array(step2_actual);
@@ -537,8 +552,9 @@ TEST(line_opt_scattered_edits) {
     add_diff(after_step1, 0, 6, 0, 6);  // Modify 6 lines
     add_diff(after_step1, 7, 8, 7, 8);  // Modify 1 line
     
-    ISequence* seq1 = line_sequence_create(lines_a, 8, false);
-    ISequence* seq2 = line_sequence_create(lines_b, 8, false);
+    StringHashMap* hash_map = string_hash_map_create();
+    ISequence* seq1 = line_sequence_create(lines_a, 8, false, hash_map);
+    ISequence* seq2 = line_sequence_create(lines_b, 8, false, hash_map);
     bool timeout = false;
     SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
     print_sequence_diff_array("After Step 1 (Myers)", myers);
@@ -576,6 +592,7 @@ TEST(line_opt_scattered_edits) {
     // 5. CLEANUP
     seq1->destroy(seq1);
     seq2->destroy(seq2);
+    string_hash_map_destroy(hash_map);
     free_diff_array(myers);
     free_diff_array(after_step1);
     free_diff_array(step2_actual);
@@ -611,8 +628,9 @@ TEST(line_opt_mixed_changes) {
     SequenceDiffArray* after_step1 = create_diff_array(10);
     add_diff(after_step1, 2, 3, 2, 4);
     
-    ISequence* seq1 = line_sequence_create(lines_a, 4, false);
-    ISequence* seq2 = line_sequence_create(lines_b, 5, false);
+    StringHashMap* hash_map = string_hash_map_create();
+    ISequence* seq1 = line_sequence_create(lines_a, 4, false, hash_map);
+    ISequence* seq2 = line_sequence_create(lines_b, 5, false, hash_map);
     bool timeout = false;
     SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
     print_sequence_diff_array("After Step 1 (Myers)", myers);
@@ -650,6 +668,7 @@ TEST(line_opt_mixed_changes) {
     // 5. CLEANUP
     seq1->destroy(seq1);
     seq2->destroy(seq2);
+    string_hash_map_destroy(hash_map);
     free_diff_array(myers);
     free_diff_array(after_step1);
     free_diff_array(step2_actual);
@@ -686,8 +705,9 @@ TEST(line_opt_multiline_string) {
     SequenceDiffArray* after_step1 = create_diff_array(10);
     add_diff(after_step1, 1, 3, 1, 3);
     
-    ISequence* seq1 = line_sequence_create(lines_a, 5, false);
-    ISequence* seq2 = line_sequence_create(lines_b, 5, false);
+    StringHashMap* hash_map = string_hash_map_create();
+    ISequence* seq1 = line_sequence_create(lines_a, 5, false, hash_map);
+    ISequence* seq2 = line_sequence_create(lines_b, 5, false, hash_map);
     bool timeout = false;
     SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
     print_sequence_diff_array("After Step 1 (Myers)", myers);
@@ -725,6 +745,7 @@ TEST(line_opt_multiline_string) {
     // 5. CLEANUP
     seq1->destroy(seq1);
     seq2->destroy(seq2);
+    string_hash_map_destroy(hash_map);
     free_diff_array(myers);
     free_diff_array(after_step1);
     free_diff_array(step2_actual);

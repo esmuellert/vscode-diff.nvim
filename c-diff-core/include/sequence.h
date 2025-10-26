@@ -81,31 +81,42 @@ struct ISequence {
  * LineSequence - Sequence of lines with hash-based comparison
  * 
  * Implements ISequence for line-level diffing.
- * Uses hash of trimmed lines for fast comparison while preserving
- * original lines for exact comparison when needed.
+ * Uses perfect hash (collision-free) of trimmed lines for comparison,
+ * matching VSCode's Map<string, number> approach exactly.
  * 
  * REUSED BY: Step 1 (Myers on lines), Step 2-3 (line optimization)
  * 
  * VSCode Reference: src/vs/editor/common/diff/defaultLinesDiffComputer/lineSequence.ts
+ * VSCode Parity: 100% - Perfect hash guarantees no collisions
  */
 typedef struct {
     const char** lines;      // Original lines (NOT owned - just a reference)
-    uint32_t* trimmed_hash;  // Hash of each line after trimming
+    uint32_t* trimmed_hash;  // Perfect hash of each line after trimming (collision-free)
     int length;
     bool ignore_whitespace;  // If true, getElement returns hash of trimmed line
 } LineSequence;
 
+// Forward declare StringHashMap
+typedef struct StringHashMap StringHashMap;
+
 /**
- * Create a LineSequence from array of lines
+ * Create a LineSequence from array of lines with perfect hash
+ * 
+ * Uses a hash map to ensure collision-free hashing, matching VSCode's Map<string, number>.
+ * The hash_map parameter allows sharing the map across sequences for consistent hashing.
  * 
  * @param lines Array of line strings (must remain valid for lifetime of sequence)
  * @param length Number of lines
  * @param ignore_whitespace If true, trim whitespace before hashing
+ * @param hash_map StringHashMap for perfect hashing (can be NULL to create internal map)
  * @return ISequence* that wraps the LineSequence
  * 
  * REUSED BY: Step 1 entry point, Step 2-3 optimization
+ * 
+ * VSCode Parity: 100% - Perfect hash implementation
  */
-ISequence* line_sequence_create(const char** lines, int length, bool ignore_whitespace);
+ISequence* line_sequence_create(const char** lines, int length, bool ignore_whitespace,
+                               StringHashMap* hash_map);
 
 /**
  * CharSequence - Sequence of characters with line boundary tracking

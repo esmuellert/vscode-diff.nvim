@@ -10,6 +10,7 @@
 
 #include "../include/myers.h"
 #include "../include/sequence.h"
+#include "../include/string_hash_map.h"
 #include "../include/print_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -46,8 +47,9 @@ void test_small_sequence_uses_dp() {
         "line 4"
     };
     
-    ISequence* seq_a = line_sequence_create(lines_a, 4, false);
-    ISequence* seq_b = line_sequence_create(lines_b, 4, false);
+    StringHashMap* hash_map = string_hash_map_create();
+    ISequence* seq_a = line_sequence_create(lines_a, 4, false, hash_map);
+    ISequence* seq_b = line_sequence_create(lines_b, 4, false, hash_map);
     
     // Total = 8, which is < 1700, so should use DP
     bool hit_timeout = false;
@@ -74,6 +76,7 @@ void test_small_sequence_uses_dp() {
     free(result_nd);
     seq_a->destroy(seq_a);
     seq_b->destroy(seq_b);
+    string_hash_map_destroy(hash_map);
     
     printf("✓ PASSED\n");
 }
@@ -131,8 +134,9 @@ void test_dp_with_equality_scoring() {
         "more content"
     };
     
-    ISequence* seq_a = line_sequence_create(lines_a, 3, false);
-    ISequence* seq_b = line_sequence_create(lines_b, 3, false);
+    StringHashMap* hash_map = string_hash_map_create();
+    ISequence* seq_a = line_sequence_create(lines_a, 3, false, hash_map);
+    ISequence* seq_b = line_sequence_create(lines_b, 3, false, hash_map);
     
     // Scoring function that mimics VSCode's line-level scoring
     // Empty lines get 0.1, others get 1 + log(1 + length)
@@ -154,6 +158,7 @@ void test_dp_with_equality_scoring() {
     free(result);
     seq_a->destroy(seq_a);
     seq_b->destroy(seq_b);
+    string_hash_map_destroy(hash_map);
     
     printf("✓ PASSED\n");
 }
@@ -171,8 +176,9 @@ void test_large_sequence_uses_myers() {
         lines_b[i] = "line";
     }
     
-    ISequence* seq_a = line_sequence_create(lines_a, size, false);
-    ISequence* seq_b = line_sequence_create(lines_b, size, false);
+    StringHashMap* hash_map = string_hash_map_create();
+    ISequence* seq_a = line_sequence_create(lines_a, size, false, hash_map);
+    ISequence* seq_b = line_sequence_create(lines_b, size, false, hash_map);
     
     printf("  Sequence size: %d + %d = %d (> 1700)\n", size, size, size * 2);
     
@@ -194,6 +200,7 @@ void test_large_sequence_uses_myers() {
     free(result_nd);
     seq_a->destroy(seq_a);
     seq_b->destroy(seq_b);
+    string_hash_map_destroy(hash_map);
     free(lines_a);
     free(lines_b);
     

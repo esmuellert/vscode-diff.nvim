@@ -14,6 +14,7 @@
 
 #include "../include/optimize.h"
 #include "../include/sequence.h"
+#include "../include/string_hash_map.h"
 #include "../include/types.h"
 #include <string.h>
 #include <stdlib.h>
@@ -503,13 +504,16 @@ SequenceDiffArray* remove_very_short_matching_lines_between_diffs(
 bool optimize_sequence_diffs_legacy(SequenceDiffArray* diffs,
                                    const char** lines_a, int len_a,
                                    const char** lines_b, int len_b) {
-    if (!diffs || !lines_a || !lines_b) {
+    if (!diffs ||!lines_a || !lines_b) {
         return false;
     }
     
+    // Create shared hash map for both sequences
+    StringHashMap* hash_map = string_hash_map_create();
+    
     // Create LineSequence wrappers
-    ISequence* seq1 = line_sequence_create(lines_a, len_a, false);
-    ISequence* seq2 = line_sequence_create(lines_b, len_b, false);
+    ISequence* seq1 = line_sequence_create(lines_a, len_a, false, hash_map);
+    ISequence* seq2 = line_sequence_create(lines_b, len_b, false, hash_map);
     
     // Call ISequence version
     optimize_sequence_diffs(seq1, seq2, diffs);
@@ -517,6 +521,7 @@ bool optimize_sequence_diffs_legacy(SequenceDiffArray* diffs,
     // Cleanup
     seq1->destroy(seq1);
     seq2->destroy(seq2);
+    string_hash_map_destroy(hash_map);
     
     return true;
 }

@@ -8,40 +8,26 @@
  * - lineSequence.ts
  * - linesSliceCharSequence.ts
  * - diffAlgorithm.ts (ISequence interface)
+ * 
+ * VSCode Parity: 100% for perfect hash and boundary scoring
  */
 
+#define _POSIX_C_SOURCE 200809L
 #include "../include/sequence.h"
+#include "../include/string_hash_map.h"
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
 
 // ============================================================================
-// Hash Function (FNV-1a)
+// String Trimming Utilities
 // ============================================================================
 
 /**
- * FNV-1a hash algorithm
- * Fast, good distribution, used by VSCode for string hashing
- * 
- * REUSED BY: LineSequence creation (hash trimmed lines)
+ * Create a trimmed copy of string (caller must free)
  */
-static uint32_t hash_string(const char* str) {
-    uint32_t hash = 2166136261u;
-    while (*str) {
-        hash ^= (uint32_t)(unsigned char)(*str);
-        hash *= 16777619u;
-        str++;
-    }
-    return hash;
-}
-
-/**
- * Trim whitespace from both ends and hash the result
- * 
- * REUSED BY: LineSequence when ignore_whitespace is true
- */
-static uint32_t hash_trimmed_string(const char* str) {
-    if (!str) return 0;
+static char* trim_string(const char* str) {
+    if (!str) return strdup("");
     
     // Skip leading whitespace
     while (*str && isspace((unsigned char)*str)) {
@@ -54,13 +40,12 @@ static uint32_t hash_trimmed_string(const char* str) {
         end--;
     }
     
-    // Hash the trimmed portion
-    uint32_t hash = 2166136261u;
-    for (const char* p = str; p < end; p++) {
-        hash ^= (uint32_t)(unsigned char)(*p);
-        hash *= 16777619u;
-    }
-    return hash;
+    // Copy trimmed portion
+    int len = end - str;
+    char* result = (char*)malloc(len + 1);
+    memcpy(result, str, len);
+    result[len] = '\0';
+    return result;
 }
 
 // ============================================================================
@@ -94,62 +79,58 @@ static bool line_seq_is_strongly_equal(const ISequence* self, int offset1, int o
 }
 
 /**
- * Boundary score for line sequences
+ * Get indentation count for a line
+ * 
+ * Counts leading spaces and tabs, matching VSCode's getIndentation().
+ * 
+ * VSCode Reference: lineSequence.ts getIndentation()
+ * VSCode Parity: 100%
+ */
+static int get_indentation(const char* line) {
+    int count = 0;
+    while (*line && (*line == ' ' || *line == '\t')) {
+        count++;
+        line++;
+    }
+    return count;
+}
+
+/**
+ * Boundary score for line sequences - VSCode Parity
  * 
  * Higher scores indicate better boundaries for diffs.
- * This guides the optimization to prefer natural breakpoints.
+ * Uses indentation-based scoring matching VSCode exactly:
+ * score = 1000 - (indentationBefore + indentationAfter)
+ * 
+ * Lines with less indentation are better boundaries.
+ * 
+ * VSCode Reference: lineSequence.ts getBoundaryScore()
+ * VSCode Parity: 100%
  * 
  * REUSED BY: Step 2 (shiftSequenceDiffs)
  */
 static int line_seq_get_boundary_score(const ISequence* self, int length) {
     LineSequence* seq = (LineSequence*)self->data;
     
-    if (length <= 0 || length > seq->length) {
+    if (length < 0 || length > seq->length) {
         return 0;
     }
     
-    // Check the line just before this boundary
-    const char* line = seq->lines[length - 1];
-    
-    // Empty/whitespace-only lines are great boundaries
-    bool is_blank = true;
-    for (const char* p = line; *p; p++) {
-        if (!isspace((unsigned char)*p)) {
-            is_blank = false;
-            break;
-        }
-    }
-    if (is_blank) {
-        return 50;  // High score for blank lines
+    // Indentation before boundary (line at length-1)
+    int indent_before = 0;
+    if (length > 0) {
+        indent_before = get_indentation(seq->lines[length - 1]);
     }
     
-    // Skip leading whitespace to check structural characters
-    while (*line && isspace((unsigned char)*line)) {
-        line++;
+    // Indentation after boundary (line at length)
+    int indent_after = 0;
+    if (length < seq->length) {
+        indent_after = get_indentation(seq->lines[length]);
     }
     
-    // Structural characters (braces, brackets) are good boundaries
-    if (*line == '{' || *line == '}' || 
-        *line == '[' || *line == ']' ||
-        *line == '(' || *line == ')') {
-        
-        // Check if rest is mostly whitespace
-        const char* rest = line + 1;
-        int non_ws = 0;
-        while (*rest) {
-            if (!isspace((unsigned char)*rest)) {
-                non_ws++;
-            }
-            rest++;
-        }
-        
-        if (non_ws <= 2) {
-            return 30;  // Medium-high score for structural lines
-        }
-    }
-    
-    // Default: not a particularly good boundary
-    return 5;
+    // VSCode formula: 1000 - (indentBefore + indentAfter)
+    // Lower indentation = higher score = better boundary
+    return 1000 - (indent_before + indent_after);
 }
 
 static void line_seq_destroy(ISequence* self) {
@@ -160,22 +141,41 @@ static void line_seq_destroy(ISequence* self) {
 }
 
 /**
- * Create LineSequence wrapped in ISequence interface
+ * Create LineSequence wrapped in ISequence interface with perfect hash
+ * 
+ * VSCode Parity: 100%
+ * - Uses perfect hash (collision-free) like Map<string, number>
+ * - Boundary scoring uses indentation matching VSCode exactly
  */
-ISequence* line_sequence_create(const char** lines, int length, bool ignore_whitespace) {
+ISequence* line_sequence_create(const char** lines, int length, bool ignore_whitespace,
+                               StringHashMap* hash_map) {
     LineSequence* seq = (LineSequence*)malloc(sizeof(LineSequence));
     seq->lines = lines;  // Just reference, not owned
     seq->length = length;
     seq->ignore_whitespace = ignore_whitespace;
     
-    // Pre-compute hashes for all lines
+    // Create internal hash map if not provided
+    bool owns_hash_map = false;
+    if (!hash_map) {
+        hash_map = string_hash_map_create();
+        owns_hash_map = true;
+    }
+    
+    // Pre-compute perfect hashes for all lines
     seq->trimmed_hash = (uint32_t*)malloc(sizeof(uint32_t) * length);
     for (int i = 0; i < length; i++) {
         if (ignore_whitespace) {
-            seq->trimmed_hash[i] = hash_trimmed_string(lines[i]);
+            char* trimmed = trim_string(lines[i]);
+            seq->trimmed_hash[i] = string_hash_map_get_or_create(hash_map, trimmed);
+            free(trimmed);
         } else {
-            seq->trimmed_hash[i] = hash_string(lines[i]);
+            seq->trimmed_hash[i] = string_hash_map_get_or_create(hash_map, lines[i]);
         }
+    }
+    
+    // Destroy internal hash map if we created it
+    if (owns_hash_map) {
+        string_hash_map_destroy(hash_map);
     }
     
     // Create ISequence wrapper

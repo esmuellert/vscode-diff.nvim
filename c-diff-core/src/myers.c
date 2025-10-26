@@ -25,6 +25,7 @@
 
 #include "../include/myers.h"
 #include "../include/sequence.h"
+#include "../include/string_hash_map.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -668,17 +669,21 @@ SequenceDiffArray* myers_diff_algorithm(const ISequence* seq1, const ISequence* 
  */
 SequenceDiffArray* myers_diff_lines(const char** lines_a, int len_a,
                                     const char** lines_b, int len_b) {
+    // Create shared hash map for both sequences (ensures hash consistency)
+    StringHashMap* hash_map = string_hash_map_create();
+    
     // Create LineSequence wrappers (no whitespace trimming for backward compat)
-    ISequence* seq_a = line_sequence_create(lines_a, len_a, false);
-    ISequence* seq_b = line_sequence_create(lines_b, len_b, false);
+    ISequence* seq_a = line_sequence_create(lines_a, len_a, false, hash_map);
+    ISequence* seq_b = line_sequence_create(lines_b, len_b, false, hash_map);
     
     // Run Myers algorithm
     bool hit_timeout = false;
     SequenceDiffArray* result = myers_diff_algorithm(seq_a, seq_b, 0, &hit_timeout);
     
-    // Cleanup sequences
+    // Cleanup sequences and hash map
     seq_a->destroy(seq_a);
     seq_b->destroy(seq_b);
+    string_hash_map_destroy(hash_map);
     
     return result;
 }
