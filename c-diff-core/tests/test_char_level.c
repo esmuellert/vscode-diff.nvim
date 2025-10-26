@@ -485,6 +485,70 @@ TEST(real_code_function_rename) {
     return true;
 }
 
+/**
+ * Test 11: Cross-line range mapping
+ * 
+ * This test demonstrates range mappings that span across line boundaries,
+ * producing mappings like L1:C11-L2:C1 -> L1:C19-L2:C9.
+ * 
+ * Input:
+ *   Line A1: "first line of code"
+ *   Line A2: "second line of code"
+ *   Line B1: "changed first line"
+ *   Line B2: "changed second line"
+ * 
+ * Expected: Character mappings showing cross-line transformations
+ */
+TEST(cross_line_range_mapping) {
+    const char* lines_a[] = {
+        "first line of code",
+        "second line of code"
+    };
+    const char* lines_b[] = {
+        "changed first line",
+        "changed second line"
+    };
+    
+    // Line diff covers both lines
+    SequenceDiff line_diff = {0, 2, 0, 2};
+    
+    CharLevelOptions opts = {
+        .consider_whitespace_changes = true,
+        .extend_to_subwords = false
+    };
+    
+    RangeMappingArray* result = refine_diff_char_level(&line_diff, lines_a, 2, lines_b, 2, &opts);
+    
+    ASSERT(result != NULL, "Result should not be NULL");
+    
+    printf("  Got %d char mappings\n", result->count);
+    for (int i = 0; i < result->count; i++) {
+        RangeMapping* m = &result->mappings[i];
+        printf("    [%d] L%d:C%d-L%d:C%d -> L%d:C%d-L%d:C%d\n", i,
+               m->original.start_line, m->original.start_col,
+               m->original.end_line, m->original.end_col,
+               m->modified.start_line, m->modified.start_col,
+               m->modified.end_line, m->modified.end_col);
+    }
+    
+    // Should have at least one cross-line mapping (spanning from one line to another)
+    bool has_cross_line = false;
+    for (int i = 0; i < result->count; i++) {
+        RangeMapping* m = &result->mappings[i];
+        if (m->original.start_line != m->original.end_line || 
+            m->modified.start_line != m->modified.end_line) {
+            has_cross_line = true;
+            printf("  Found cross-line mapping at index %d\n", i);
+            break;
+        }
+    }
+    
+    ASSERT(has_cross_line, "Should have at least one cross-line range mapping");
+    
+    free_range_mapping_array(result);
+    return true;
+}
+
 // =============================================================================
 // Main Test Runner
 // =============================================================================
@@ -502,6 +566,7 @@ int main(void) {
     run_punctuation_changes();
     run_short_match_removal();
     run_real_code_function_rename();
+    run_cross_line_range_mapping();
     
     printf("=== Test Summary ===\n");
     printf("Total: %d\n", tests_run);

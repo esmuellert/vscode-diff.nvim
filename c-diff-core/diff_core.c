@@ -15,7 +15,7 @@
 //
 // ============================================================================
 
-#include "../include/types.h"
+#include "include/types.h"
 #include "include/platform.h"
 #include <stdlib.h>
 #include <string.h>

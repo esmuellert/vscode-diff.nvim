@@ -22,11 +22,12 @@ CHAR_LEVEL_SRC = $(SRC_DIR)/char_level.c
 TEST_MYERS = $(BUILD_DIR)/test_myers
 TEST_INFRASTRUCTURE = $(BUILD_DIR)/test_infrastructure
 TEST_LINE_OPT = $(BUILD_DIR)/test_line_optimization
+TEST_LINE_BOUNDARY = $(BUILD_DIR)/test_line_boundary_scoring
 TEST_CHAR_LEVEL = $(BUILD_DIR)/test_char_level
 TEST_INTEGRATION = $(BUILD_DIR)/test_integration
 TEST_DP = $(BUILD_DIR)/test_dp_algorithm
 
-.PHONY: all clean test test-myers test-infrastructure test-line-opt test-char-level test-integration test-dp
+.PHONY: all clean test test-myers test-infrastructure test-line-opt test-line-boundary test-char-level test-integration test-dp
 
 all: $(BUILD_DIR)
 
@@ -35,7 +36,7 @@ $(BUILD_DIR):
 
 # Build and run Myers tests
 test-myers: $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(TEST_DIR)/test_myers.c $(MYERS_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_MYERS)
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_myers.c $(MYERS_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_MYERS) -lm
 	@echo ""
 	@echo "Running Myers diff tests..."
 	@echo ""
@@ -43,7 +44,7 @@ test-myers: $(BUILD_DIR)
 
 # Build and run Infrastructure tests (ISequence, LineSequence, CharSequence)
 test-infrastructure: $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(TEST_DIR)/test_infrastructure.c $(MYERS_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) -o $(TEST_INFRASTRUCTURE)
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_infrastructure.c $(MYERS_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) -o $(TEST_INFRASTRUCTURE) -lm
 	@echo ""
 	@echo "Running Infrastructure tests..."
 	@echo ""
@@ -51,11 +52,19 @@ test-infrastructure: $(BUILD_DIR)
 
 # Build and run Line Optimization tests (Step 1+2+3)
 test-line-opt: $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(TEST_DIR)/test_line_optimization.c $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_LINE_OPT)
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_line_optimization.c $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_LINE_OPT) -lm
 	@echo ""
 	@echo "Running Line-Level Optimization tests (Steps 1+2+3)..."
 	@echo ""
 	@$(TEST_LINE_OPT)
+
+# Build and run Line Boundary Scoring test (Proves Myers suboptimal → Optimization fixes)
+test-line-boundary: $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_line_boundary_scoring.c $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_LINE_BOUNDARY) -lm
+	@echo ""
+	@echo "Running Boundary Scoring Demonstration (Myers vs Optimized)..."
+	@echo ""
+	@$(TEST_LINE_BOUNDARY)
 
 # Build and run Character-Level tests (Step 4 - VSCODE PARITY)
 test-char-level: $(BUILD_DIR)
@@ -79,7 +88,7 @@ test-dp: $(BUILD_DIR)
 	@$(TEST_DP)
 
 # Run all tests
-test: test-myers test-line-opt test-char-level test-dp
+test: test-myers test-line-opt test-line-boundary test-char-level test-dp
 
 # Clean build artifacts
 clean:

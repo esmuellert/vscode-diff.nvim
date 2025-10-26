@@ -26,7 +26,6 @@
 #include "../include/myers.h"
 #include "../include/sequence.h"
 #include "../include/string_hash_map.h"
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -41,6 +40,69 @@ static int min_int(int a, int b) { return a < b ? a : b; }
 static int max_int(int a, int b) { return a > b ? a : b; }
 
 static double max_double(double a, double b) { return a > b ? a : b; }
+
+//==============================================================================
+// Line Equality Scoring Function - VSCode Parity
+//==============================================================================
+
+/**
+ * Context for line equality scoring
+ * 
+ * This structure is passed as user_data to the equality scoring function.
+ * It provides access to the original line arrays needed for scoring.
+ */
+typedef struct {
+    const char** original_lines;
+    const char** modified_lines;
+} LineScoreContext;
+
+/**
+ * Line equality scoring function - 100% VSCode Parity
+ * 
+ * This function implements VSCode's exact scoring algorithm for line-level diffs:
+ * - If lines are equal:
+ *   - Empty lines: score = 0.1 (low preference)
+ *   - Non-empty lines: score = 1 + log(1 + line_length) (prefer longer matches)
+ * - If lines are not equal: score = 0.99 (slightly less than equal empty line)
+ * 
+ * The scoring helps the DP algorithm make better alignment choices:
+ * - Longer matching lines get higher scores (more likely to align)
+ * - Empty lines get lower scores (less important to align)
+ * - Non-matching lines get near-zero score (won't align unless necessary)
+ * 
+ * VSCode Reference: defaultLinesDiffComputer.ts lines 71-75
+ * 
+ * @param seq1 First sequence (LineSequence)
+ * @param seq2 Second sequence (LineSequence)
+ * @param offset1 Offset in first sequence
+ * @param offset2 Offset in second sequence
+ * @param user_data Pointer to LineScoreContext
+ * @return Score value (higher = better match)
+ */
+static double line_equality_score(const ISequence* seq1 __attribute__((unused)), 
+                                  const ISequence* seq2 __attribute__((unused)),
+                                  int offset1, int offset2, void* user_data) {
+    LineScoreContext* ctx = (LineScoreContext*)user_data;
+    const char* line1 = ctx->original_lines[offset1];
+    const char* line2 = ctx->modified_lines[offset2];
+    
+    // Check if lines are equal
+    if (strcmp(line1, line2) == 0) {
+        // Lines are equal
+        int line_length = (int)strlen(line2);
+        if (line_length == 0) {
+            // Empty line: low score
+            return 0.1;
+        } else {
+            // Non-empty line: score based on length
+            // Longer matching lines get higher scores
+            return 1.0 + log(1.0 + (double)line_length);
+        }
+    } else {
+        // Lines are not equal: very low score
+        return 0.99;
+    }
+}
 
 //==============================================================================
 // 2D Array Helper (for DP algorithm)
@@ -651,10 +713,22 @@ SequenceDiffArray* myers_diff_algorithm(const ISequence* seq1, const ISequence* 
     
     // VSCode uses 1700 for lines, 500 for chars
     // We use 1700 as the default threshold since this is the line-level entry point
-    // Char-level code in char_level.c uses 500 threshold
+    // Char-level code in char_level.c uses 500 threshold and calls myers_dp_diff_algorithm() directly
     if (total < 1700) {
         // Use DP algorithm for small inputs
-        return myers_dp_diff_algorithm(seq1, seq2, timeout_ms, hit_timeout, NULL, NULL);
+        // NOTE: This function is only called with LineSequence.
+        // CharSequence diffs bypass this function and call myers_dp_diff_algorithm() directly.
+        
+        // Extract LineSequence data for equality scoring
+        LineSequence* line_seq1 = (LineSequence*)seq1->data;
+        LineSequence* line_seq2 = (LineSequence*)seq2->data;
+        
+        // Use line equality scoring function for better whitespace-sensitive alignment
+        LineScoreContext ctx;
+        ctx.original_lines = line_seq1->lines;
+        ctx.modified_lines = line_seq2->lines;
+        return myers_dp_diff_algorithm(seq1, seq2, timeout_ms, hit_timeout, 
+                                      line_equality_score, &ctx);
     } else {
         // Use O(ND) algorithm for large inputs
         return myers_nd_diff_algorithm(seq1, seq2, timeout_ms, hit_timeout);
