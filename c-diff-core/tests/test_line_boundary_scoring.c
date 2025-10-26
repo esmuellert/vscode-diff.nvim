@@ -27,7 +27,6 @@
 #include "../include/types.h"
 #include "../include/myers.h"
 #include "../include/optimize.h"
-#include "../include/sequence.h"
 #include "../include/print_utils.h"
 
 int main() {

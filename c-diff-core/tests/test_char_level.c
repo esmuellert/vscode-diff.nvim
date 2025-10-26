@@ -19,42 +19,21 @@
  */
 
 #include "../include/char_level.h"
-#include "../include/myers.h"
-#include "../include/optimize.h"
-#include "../include/sequence.h"
 #include "../include/types.h"
 #include "test_utils.h"
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
 
 // =============================================================================
-// Test Infrastructure
+// Test Infrastructure  
 // =============================================================================
-
-static int tests_run = 0;
-static int tests_passed = 0;
-
-#define TEST(name) \
-    static bool test_##name(); \
-    static void run_##name() { \
-        tests_run++; \
-        printf("Running test_%s...\n", #name); \
-        if (test_##name()) { \
-            tests_passed++; \
-            printf("  ✓ PASSED\n\n"); \
-        } else { \
-            printf("  ✗ FAILED\n\n"); \
-        } \
-    } \
-    static bool test_##name()
 
 #define ASSERT(cond, msg) \
     do { \
         if (!(cond)) { \
             printf("  ASSERTION FAILED: %s\n", msg); \
-            return false; \
+            assert(cond && msg); \
         } \
     } while (0)
 
@@ -62,7 +41,7 @@ static int tests_passed = 0;
     do { \
         if ((a) != (b)) { \
             printf("  ASSERTION FAILED: %s (expected %d, got %d)\n", msg, (int)(b), (int)(a)); \
-            return false; \
+            assert((a) == (b) && msg); \
         } \
     } while (0)
 
@@ -117,7 +96,7 @@ TEST(single_word_change) {
     ASSERT_EQ(m->original.start_col, 7, "Original start col");
     
     free_range_mapping_array(result);
-    return true;
+    
 }
 
 /**
@@ -158,7 +137,7 @@ TEST(multiple_word_changes) {
     ASSERT(result->count >= 1, "Should have at least one mapping");
     
     free_range_mapping_array(result);
-    return true;
+    
 }
 
 /**
@@ -213,7 +192,7 @@ TEST(multiline_char_diff) {
     ASSERT(found_line2, "Should have mapping on line 2");
     
     free_range_mapping_array(result);
-    return true;
+    
 }
 
 /**
@@ -243,7 +222,7 @@ TEST(whitespace_handling) {
     // (depends on exact trimming behavior)
     
     free_range_mapping_array(result);
-    return true;
+    
 }
 
 /**
@@ -284,7 +263,7 @@ TEST(camelcase_subword) {
     ASSERT(result->count > 0, "Should have at least one mapping");
     
     free_range_mapping_array(result);
-    return true;
+    
 }
 
 /**
@@ -315,7 +294,7 @@ TEST(completely_different) {
     printf("  Got %d char mappings\n", result->count);
     
     free_range_mapping_array(result);
-    return true;
+    
 }
 
 /**
@@ -353,7 +332,7 @@ TEST(empty_vs_content) {
     }
     
     free_range_mapping_array(result);
-    return true;
+    
 }
 
 /**
@@ -391,7 +370,7 @@ TEST(punctuation_changes) {
     }
     
     free_range_mapping_array(result);
-    return true;
+    
 }
 
 /**
@@ -432,7 +411,7 @@ TEST(short_match_removal) {
     // Result depends on exact heuristics
     
     free_range_mapping_array(result);
-    return true;
+    
 }
 
 /**
@@ -482,7 +461,7 @@ TEST(real_code_function_rename) {
     ASSERT(result->count > 0, "Should have char mappings");
     
     free_range_mapping_array(result);
-    return true;
+    
 }
 
 /**
@@ -546,7 +525,7 @@ TEST(cross_line_range_mapping) {
     ASSERT(has_cross_line, "Should have at least one cross-line range mapping");
     
     free_range_mapping_array(result);
-    return true;
+    
 }
 
 // =============================================================================
@@ -556,22 +535,23 @@ TEST(cross_line_range_mapping) {
 int main(void) {
     printf("=== Character-Level Refinement Tests (Step 4) ===\n\n");
     
-    run_single_word_change();
-    run_multiple_word_changes();
-    run_multiline_char_diff();
-    run_whitespace_handling();
-    run_camelcase_subword();
-    run_completely_different();
-    run_empty_vs_content();
-    run_punctuation_changes();
-    run_short_match_removal();
-    run_real_code_function_rename();
-    run_cross_line_range_mapping();
+    RUN_TEST(single_word_change);
+    RUN_TEST(multiple_word_changes);
+    RUN_TEST(multiline_char_diff);
+    RUN_TEST(whitespace_handling);
+    RUN_TEST(camelcase_subword);
+    RUN_TEST(completely_different);
+    RUN_TEST(empty_vs_content);
+    RUN_TEST(punctuation_changes);
+    RUN_TEST(short_match_removal);
+    RUN_TEST(real_code_function_rename);
+    RUN_TEST(cross_line_range_mapping);
     
-    printf("=== Test Summary ===\n");
-    printf("Total: %d\n", tests_run);
-    printf("Passed: %d\n", tests_passed);
-    printf("Failed: %d\n", tests_run - tests_passed);
+    printf("\n");
+    printf("=======================================================\n");
+    printf("  ALL CHARACTER-LEVEL TESTS PASSED ✓\n");
+    printf("=======================================================\n");
+    printf("\n");
     
-    return (tests_run == tests_passed) ? 0 : 1;
+    return 0;
 }

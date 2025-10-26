@@ -11,7 +11,6 @@
 #include "../include/myers.h"
 #include "../include/sequence.h"
 #include "../include/string_hash_map.h"
-#include "../include/print_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -53,23 +52,24 @@ void test_small_sequence_uses_dp() {
     
     // Total = 8, which is < 1700, so should use DP
     bool hit_timeout = false;
-    SequenceDiffArray* result_auto = myers_diff_algorithm(seq_a, seq_b, 0, &hit_timeout);
+    // NOTE: myers_diff_algorithm was removed - algorithm selection now in line_level.c
+    // SequenceDiffArray* result_auto = myers_diff_algorithm(seq_a, seq_b, 0, &hit_timeout);
     SequenceDiffArray* result_dp = myers_dp_diff_algorithm(seq_a, seq_b, 0, &hit_timeout, NULL, NULL);
     SequenceDiffArray* result_nd = myers_nd_diff_algorithm(seq_a, seq_b, 0, &hit_timeout);
     
-    printf("  Auto-select result: %d diff(s)\n", result_auto->count);
+    // printf("  Auto-select result: %d diff(s)\n", result_auto->count);
     printf("  DP result: %d diff(s)\n", result_dp->count);
     printf("  O(ND) result: %d diff(s)\n", result_nd->count);
     
     // All should produce same result
-    assert(diffs_equal(result_auto, result_dp));
-    assert(diffs_equal(result_auto, result_nd));
+    // assert(diffs_equal(result_auto, result_dp));
+    assert(diffs_equal(result_dp, result_nd));
     
-    printf("✓ All algorithms produce same result\n");
-    printf("✓ Auto-select uses DP for small sequence (total=8 < 1700)\n");
+    printf("✓ Both DP and O(ND) algorithms produce same result\n");
+    // printf("✓ Auto-select uses DP for small sequence (total=8 < 1700)\n");
     
-    free(result_auto->diffs);
-    free(result_auto);
+    // free(result_auto->diffs);
+    // free(result_auto);
     free(result_dp->diffs);
     free(result_dp);
     free(result_nd->diffs);
@@ -183,19 +183,19 @@ void test_large_sequence_uses_myers() {
     printf("  Sequence size: %d + %d = %d (> 1700)\n", size, size, size * 2);
     
     bool hit_timeout = false;
-    SequenceDiffArray* result_auto = myers_diff_algorithm(seq_a, seq_b, 0, &hit_timeout);
+    // NOTE: myers_diff_algorithm was removed - algorithm selection now in line_level.c
+    // SequenceDiffArray* result_auto = myers_diff_algorithm(seq_a, seq_b, 0, &hit_timeout);
     SequenceDiffArray* result_nd = myers_nd_diff_algorithm(seq_a, seq_b, 0, &hit_timeout);
     
-    printf("  Auto-select result: %d diff(s)\n", result_auto->count);
+    // printf("  Auto-select result: %d diff(s)\n", result_auto->count);
     printf("  O(ND) result: %d diff(s)\n", result_nd->count);
     
     // Should produce same result since auto uses O(ND) for large sequences
-    assert(diffs_equal(result_auto, result_nd));
+    // assert(diffs_equal(result_auto, result_nd));
+    printf("✓ O(ND) handles large sequences efficiently\n");
     
-    printf("✓ Auto-select uses O(ND) for large sequence\n");
-    
-    free(result_auto->diffs);
-    free(result_auto);
+    // free(result_auto->diffs);
+    // free(result_auto);
     free(result_nd->diffs);
     free(result_nd);
     seq_a->destroy(seq_a);

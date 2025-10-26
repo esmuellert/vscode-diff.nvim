@@ -38,7 +38,7 @@ void test_whitespace_handling() {
     ISequence* seq_b1 = line_sequence_create(lines_b, 3, false, shared_map);
     
     bool hit_timeout = false;
-    SequenceDiffArray* result1 = myers_diff_algorithm(seq_a1, seq_b1, 0, &hit_timeout);
+    SequenceDiffArray* result1 = myers_nd_diff_algorithm(seq_a1, seq_b1, 0, &hit_timeout);
     
     printf("  Without trim: %d diff(s)\n", result1->count);
     assert(result1->count >= 1);  // Should detect whitespace difference
@@ -53,7 +53,7 @@ void test_whitespace_handling() {
     ISequence* seq_a2 = line_sequence_create(lines_a, 3, true, shared_map);
     ISequence* seq_b2 = line_sequence_create(lines_b, 3, true, shared_map);
     
-    SequenceDiffArray* result2 = myers_diff_algorithm(seq_a2, seq_b2, 0, &hit_timeout);
+    SequenceDiffArray* result2 = myers_nd_diff_algorithm(seq_a2, seq_b2, 0, &hit_timeout);
     
     printf("  With trim: %d diff(s)\n", result2->count);
     assert(result2->count == 0);  // Should ignore whitespace
@@ -132,7 +132,7 @@ void test_timeout() {
     
     // Test with very short timeout (1ms)
     bool hit_timeout = false;
-    SequenceDiffArray* result = myers_diff_algorithm(seq_a, seq_b, 1, &hit_timeout);
+    SequenceDiffArray* result = myers_nd_diff_algorithm(seq_a, seq_b, 1, &hit_timeout);
     
     printf("  Timeout reached: %s\n", hit_timeout ? "yes" : "no");
     printf("  Result diff count: %d\n", result->count);

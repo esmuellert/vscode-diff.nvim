@@ -16,6 +16,7 @@ STRING_HASH_MAP_SRC = $(SRC_DIR)/string_hash_map.c
 SEQUENCE_SRC = $(SRC_DIR)/sequence.c
 MYERS_SRC = $(SRC_DIR)/myers.c
 OPTIMIZE_SRC = $(SRC_DIR)/optimize.c
+LINE_LEVEL_SRC = $(SRC_DIR)/line_level.c
 CHAR_LEVEL_SRC = $(SRC_DIR)/char_level.c
 
 # Test executables
@@ -52,7 +53,7 @@ test-infrastructure: $(BUILD_DIR)
 
 # Build and run Line Optimization tests (Step 1+2+3)
 test-line-opt: $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(TEST_DIR)/test_line_optimization.c $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_LINE_OPT) -lm
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_line_optimization.c $(LINE_LEVEL_SRC) $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_LINE_OPT) -lm
 	@echo ""
 	@echo "Running Line-Level Optimization tests (Steps 1+2+3)..."
 	@echo ""
@@ -60,7 +61,7 @@ test-line-opt: $(BUILD_DIR)
 
 # Build and run Line Boundary Scoring test (Proves Myers suboptimal → Optimization fixes)
 test-line-boundary: $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(TEST_DIR)/test_line_boundary_scoring.c $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_LINE_BOUNDARY) -lm
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_line_boundary_scoring.c $(LINE_LEVEL_SRC) $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_LINE_BOUNDARY) -lm
 	@echo ""
 	@echo "Running Boundary Scoring Demonstration (Myers vs Optimized)..."
 	@echo ""
@@ -68,7 +69,7 @@ test-line-boundary: $(BUILD_DIR)
 
 # Build and run Character-Level tests (Step 4 - VSCODE PARITY)
 test-char-level: $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(TEST_DIR)/test_char_level.c $(CHAR_LEVEL_SRC) $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_CHAR_LEVEL) -lm
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_char_level.c $(CHAR_LEVEL_SRC) $(LINE_LEVEL_SRC) $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_CHAR_LEVEL) -lm
 	@echo ""
 	@echo "Running Character-Level Optimization tests (Step 4 - VSCODE PARITY)..."
 	@echo ""
@@ -76,7 +77,7 @@ test-char-level: $(BUILD_DIR)
 
 # Build and run Integration test (Full Pipeline: Steps 1-4)
 test-integration: $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(TEST_DIR)/test_integration.c $(CHAR_LEVEL_SRC) $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_INTEGRATION) -lm
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_integration.c $(CHAR_LEVEL_SRC) $(LINE_LEVEL_SRC) $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_INTEGRATION) -lm
 	@$(TEST_INTEGRATION)
 
 # Build and run DP Algorithm tests

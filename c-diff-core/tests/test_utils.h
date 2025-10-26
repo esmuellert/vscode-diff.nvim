@@ -9,6 +9,7 @@
 #define TEST_UTILS_H
 
 #include "../include/types.h"
+#include "../include/sequence.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -100,8 +101,8 @@ static inline void assert_diff_count(const SequenceDiffArray* result, int expect
  * Create a SequenceDiffArray with specified capacity
  */
 static inline SequenceDiffArray* create_diff_array(int capacity) {
-    SequenceDiffArray* arr = malloc(sizeof(SequenceDiffArray));
-    arr->diffs = malloc(sizeof(SequenceDiff) * capacity);
+    SequenceDiffArray* arr = (SequenceDiffArray*)malloc(sizeof(SequenceDiffArray));
+    arr->diffs = (SequenceDiff*)malloc(sizeof(SequenceDiff) * capacity);
     arr->count = 0;
     arr->capacity = capacity;
     return arr;
@@ -134,10 +135,10 @@ static inline void free_diff_array(SequenceDiffArray* arr) {
 static inline SequenceDiffArray* copy_diff_array(const SequenceDiffArray* src) {
     if (!src) return NULL;
     
-    SequenceDiffArray* copy = malloc(sizeof(SequenceDiffArray));
+    SequenceDiffArray* copy = (SequenceDiffArray*)malloc(sizeof(SequenceDiffArray));
     copy->capacity = src->capacity;
     copy->count = src->count;
-    copy->diffs = malloc(sizeof(SequenceDiff) * src->capacity);
+    copy->diffs = (SequenceDiff*)malloc(sizeof(SequenceDiff) * src->capacity);
     
     for (int i = 0; i < src->count; i++) {
         copy->diffs[i] = src->diffs[i];
@@ -154,6 +155,32 @@ static inline void assert_diffs_equal(const SequenceDiffArray* actual,
                    expected->diffs[i].seq1_start, expected->diffs[i].seq1_end,
                    expected->diffs[i].seq2_start, expected->diffs[i].seq2_end);
     }
+}
+
+// ============================================================================
+// Step 1 Helper (Myers Algorithm Only - No Optimization)
+// ============================================================================
+
+// Forward declarations to avoid circular includes
+struct ISequence;
+typedef struct ISequence ISequence;
+
+/**
+ * Run Step 1 (Myers O(ND) diff) ONLY - no optimization
+ * 
+ * This is the pure Myers algorithm without any optimizations from Steps 2-3.
+ * Use this in tests that need to verify Step 1 output before optimization.
+ * 
+ * NOTE: This uses O(ND) for all sizes (no DP fallback) for test simplicity.
+ * For production use, use compute_line_alignments() which includes all steps.
+ */
+extern SequenceDiffArray* myers_nd_diff_algorithm(const ISequence* seq1, const ISequence* seq2,
+                                                  int timeout_ms, bool* hit_timeout);
+
+static inline SequenceDiffArray* run_step1_myers(
+    const ISequence* seq1, const ISequence* seq2, 
+    bool* hit_timeout) {
+    return myers_nd_diff_algorithm(seq1, seq2, 5000, hit_timeout);
 }
 
 #endif // TEST_UTILS_H

@@ -45,7 +45,7 @@ TEST(line_opt_simple_addition) {
     ISequence* seq1 = line_sequence_create(lines_a, 3, false, hash_map);
     ISequence* seq2 = line_sequence_create(lines_b, 4, false, hash_map);
     bool timeout = false;
-    SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
+    SequenceDiffArray* myers = run_step1_myers(seq1, seq2, &timeout);
     print_sequence_diff_array("After Step 1 (Myers)", myers);
     printf("  Step 1 (Myers): ");
     assert_diffs_equal(myers, after_step1);
@@ -109,7 +109,7 @@ TEST(line_opt_small_gap_join) {
     ISequence* seq1 = line_sequence_create(lines_a, 3, false, hash_map);
     ISequence* seq2 = line_sequence_create(lines_b, 3, false, hash_map);
     bool timeout = false;
-    SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
+    SequenceDiffArray* myers = run_step1_myers(seq1, seq2, &timeout);
     print_sequence_diff_array("After Step 1 (Myers)", myers);
     printf("  Step 1 (Myers): ");
     assert_diffs_equal(myers, after_step1);
@@ -186,7 +186,7 @@ TEST(line_opt_large_gap_no_join) {
     ISequence* seq1 = line_sequence_create(lines_a, 3, false, hash_map);
     ISequence* seq2 = line_sequence_create(lines_b, 3, false, hash_map);
     bool timeout = false;
-    SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
+    SequenceDiffArray* myers = run_step1_myers(seq1, seq2, &timeout);
     print_sequence_diff_array("After Step 1 (Myers)", myers);
     printf("  Step 1 (Myers): ");
     assert_diffs_equal(myers, after_step1);
@@ -260,7 +260,7 @@ TEST(line_opt_blank_lines_join) {
     ISequence* seq1 = line_sequence_create(lines_a, 7, false, hash_map);
     ISequence* seq2 = line_sequence_create(lines_b, 7, false, hash_map);
     bool timeout = false;
-    SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
+    SequenceDiffArray* myers = run_step1_myers(seq1, seq2, &timeout);
     print_sequence_diff_array("After Step 1 (Myers)", myers);
     printf("  Step 1 (Myers): ");
     assert_diffs_equal(myers, after_step1);
@@ -333,7 +333,7 @@ TEST(line_opt_function_refactor) {
     ISequence* seq1 = line_sequence_create(lines_a, 3, false, hash_map);
     ISequence* seq2 = line_sequence_create(lines_b, 3, false, hash_map);
     bool timeout = false;
-    SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
+    SequenceDiffArray* myers = run_step1_myers(seq1, seq2, &timeout);
     print_sequence_diff_array("After Step 1 (Myers)", myers);
     printf("  Step 1 (Myers): ");
     assert_diffs_equal(myers, after_step1);
@@ -404,7 +404,7 @@ TEST(line_opt_import_changes) {
     ISequence* seq1 = line_sequence_create(lines_a, 2, false, hash_map);
     ISequence* seq2 = line_sequence_create(lines_b, 2, false, hash_map);
     bool timeout = false;
-    SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
+    SequenceDiffArray* myers = run_step1_myers(seq1, seq2, &timeout);
     print_sequence_diff_array("After Step 1 (Myers)", myers);
     printf("  Step 1 (Myers): ");
     assert_diffs_equal(myers, after_step1);
@@ -484,7 +484,7 @@ TEST(line_opt_comment_block) {
     ISequence* seq1 = line_sequence_create(lines_a, 7, false, hash_map);
     ISequence* seq2 = line_sequence_create(lines_b, 7, false, hash_map);
     bool timeout = false;
-    SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
+    SequenceDiffArray* myers = run_step1_myers(seq1, seq2, &timeout);
     print_sequence_diff_array("After Step 1 (Myers)", myers);
     printf("  Step 1 (Myers): ");
     assert_diffs_equal(myers, after_step1);
@@ -556,7 +556,7 @@ TEST(line_opt_scattered_edits) {
     ISequence* seq1 = line_sequence_create(lines_a, 8, false, hash_map);
     ISequence* seq2 = line_sequence_create(lines_b, 8, false, hash_map);
     bool timeout = false;
-    SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
+    SequenceDiffArray* myers = run_step1_myers(seq1, seq2, &timeout);
     print_sequence_diff_array("After Step 1 (Myers)", myers);
     printf("  Step 1 (Myers): ");
     assert_diffs_equal(myers, after_step1);
@@ -632,7 +632,7 @@ TEST(line_opt_mixed_changes) {
     ISequence* seq1 = line_sequence_create(lines_a, 4, false, hash_map);
     ISequence* seq2 = line_sequence_create(lines_b, 5, false, hash_map);
     bool timeout = false;
-    SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
+    SequenceDiffArray* myers = run_step1_myers(seq1, seq2, &timeout);
     print_sequence_diff_array("After Step 1 (Myers)", myers);
     printf("  Step 1 (Myers): ");
     assert_diffs_equal(myers, after_step1);
@@ -709,7 +709,7 @@ TEST(line_opt_multiline_string) {
     ISequence* seq1 = line_sequence_create(lines_a, 5, false, hash_map);
     ISequence* seq2 = line_sequence_create(lines_b, 5, false, hash_map);
     bool timeout = false;
-    SequenceDiffArray* myers = myers_diff_algorithm(seq1, seq2, 5000, &timeout);
+    SequenceDiffArray* myers = run_step1_myers(seq1, seq2, &timeout);
     print_sequence_diff_array("After Step 1 (Myers)", myers);
     printf("  Step 1 (Myers): ");
     assert_diffs_equal(myers, after_step1);
