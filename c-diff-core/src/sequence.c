@@ -229,54 +229,91 @@ static bool char_seq_is_strongly_equal(const ISequence* self, int offset1, int o
  * 
  * VSCode Reference: linesSliceCharSequence.ts getBoundaryScore()
  */
+typedef enum {
+    CHAR_BOUNDARY_WORD_LOWER,
+    CHAR_BOUNDARY_WORD_UPPER,
+    CHAR_BOUNDARY_WORD_NUMBER,
+    CHAR_BOUNDARY_END,
+    CHAR_BOUNDARY_OTHER,
+    CHAR_BOUNDARY_SEPARATOR,
+    CHAR_BOUNDARY_SPACE,
+    CHAR_BOUNDARY_LINE_BREAK_CR,
+    CHAR_BOUNDARY_LINE_BREAK_LF
+} CharBoundaryCategory;
+
+static CharBoundaryCategory get_char_category(int char_code) {
+    if (char_code == '\n') {
+        return CHAR_BOUNDARY_LINE_BREAK_LF;
+    } else if (char_code == '\r') {
+        return CHAR_BOUNDARY_LINE_BREAK_CR;
+    } else if (char_code == ' ' || char_code == '\t') {
+        return CHAR_BOUNDARY_SPACE;
+    } else if (char_code >= 'a' && char_code <= 'z') {
+        return CHAR_BOUNDARY_WORD_LOWER;
+    } else if (char_code >= 'A' && char_code <= 'Z') {
+        return CHAR_BOUNDARY_WORD_UPPER;
+    } else if (char_code >= '0' && char_code <= '9') {
+        return CHAR_BOUNDARY_WORD_NUMBER;
+    } else if (char_code == -1) {
+        return CHAR_BOUNDARY_END;
+    } else if (char_code == ',' || char_code == ';') {
+        return CHAR_BOUNDARY_SEPARATOR;
+    } else {
+        return CHAR_BOUNDARY_OTHER;
+    }
+}
+
+static int get_category_boundary_score(CharBoundaryCategory category) {
+    static const int scores[] = {
+        [CHAR_BOUNDARY_WORD_LOWER] = 0,
+        [CHAR_BOUNDARY_WORD_UPPER] = 0,
+        [CHAR_BOUNDARY_WORD_NUMBER] = 0,
+        [CHAR_BOUNDARY_END] = 10,
+        [CHAR_BOUNDARY_OTHER] = 2,
+        [CHAR_BOUNDARY_SEPARATOR] = 30,
+        [CHAR_BOUNDARY_SPACE] = 3,
+        [CHAR_BOUNDARY_LINE_BREAK_CR] = 10,
+        [CHAR_BOUNDARY_LINE_BREAK_LF] = 10
+    };
+    return scores[category];
+}
+
 static int char_seq_get_boundary_score(const ISequence* self, int length) {
     CharSequence* seq = (CharSequence*)self->data;
     
-    if (length <= 0 || length >= seq->length) {
-        return 0;
-    }
+    int prev_char = (length > 0) ? (int)seq->elements[length - 1] : -1;
+    int next_char = (length < seq->length) ? (int)seq->elements[length] : -1;
     
-    uint32_t prev_char = length > 0 ? seq->elements[length - 1] : 0;
-    uint32_t next_char = length < seq->length ? seq->elements[length] : 0;
-    
-    // Line breaks are highest priority boundaries
-    if (prev_char == '\n') {
-        return 150;
-    }
+    CharBoundaryCategory prev_category = get_char_category(prev_char);
+    CharBoundaryCategory next_category = get_char_category(next_char);
     
     // Don't break between \r and \n
-    if (prev_char == '\r' && next_char == '\n') {
+    if (prev_category == CHAR_BOUNDARY_LINE_BREAK_CR && 
+        next_category == CHAR_BOUNDARY_LINE_BREAK_LF) {
         return 0;
+    }
+    
+    // Prefer the linebreak before the change
+    if (prev_category == CHAR_BOUNDARY_LINE_BREAK_LF) {
+        return 150;
     }
     
     int score = 0;
     
-    // Check category transitions (letter->number, lower->upper, etc.)
-    bool prev_is_word = (prev_char >= 'a' && prev_char <= 'z') ||
-                        (prev_char >= 'A' && prev_char <= 'Z') ||
-                        (prev_char >= '0' && prev_char <= '9');
-    bool next_is_word = (next_char >= 'a' && next_char <= 'z') ||
-                        (next_char >= 'A' && next_char <= 'Z') ||
-                        (next_char >= '0' && next_char <= '9');
-    
-    // Transition between word and non-word
-    if (prev_is_word != next_is_word) {
+    // Category transition bonus
+    if (prev_category != next_category) {
         score += 10;
+        
+        // CamelCase bonus: lower -> upper
+        if (prev_category == CHAR_BOUNDARY_WORD_LOWER && 
+            next_category == CHAR_BOUNDARY_WORD_UPPER) {
+            score += 1;
+        }
     }
     
-    // Whitespace boundaries
-    if (prev_char == ' ' || prev_char == '\t') {
-        score += 3;
-    }
-    if (next_char == ' ' || next_char == '\t') {
-        score += 3;
-    }
-    
-    // Punctuation/separator boundaries
-    if (prev_char == ',' || prev_char == ';' || 
-        prev_char == '.' || prev_char == ':') {
-        score += 30;
-    }
+    // Add boundary scores from both categories
+    score += get_category_boundary_score(prev_category);
+    score += get_category_boundary_score(next_category);
     
     return score;
 }

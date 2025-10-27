@@ -27,8 +27,9 @@ TEST_LINE_BOUNDARY = $(BUILD_DIR)/test_line_boundary_scoring
 TEST_CHAR_LEVEL = $(BUILD_DIR)/test_char_level
 TEST_INTEGRATION = $(BUILD_DIR)/test_integration
 TEST_DP = $(BUILD_DIR)/test_dp_algorithm
+TEST_CHAR_BOUNDARY = $(BUILD_DIR)/test_char_boundary_categories
 
-.PHONY: all clean test test-myers test-sequence test-line-opt test-line-boundary test-char-level test-integration test-dp
+.PHONY: all clean test test-myers test-sequence test-line-opt test-line-boundary test-char-level test-integration test-dp test-char-boundary
 
 all: $(BUILD_DIR)
 
@@ -88,8 +89,16 @@ test-dp: $(BUILD_DIR)
 	@echo ""
 	@$(TEST_DP)
 
+# Build and run Character Boundary Category tests
+test-char-boundary: $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_char_boundary_categories.c $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_CHAR_BOUNDARY) -lm
+	@echo ""
+	@echo "Running Character Boundary Category tests..."
+	@echo ""
+	@$(TEST_CHAR_BOUNDARY)
+
 # Run all tests
-test: test-myers test-sequence test-line-opt test-line-boundary test-char-level test-dp
+test: test-myers test-sequence test-line-opt test-line-boundary test-char-level test-dp test-char-boundary
 
 # Clean build artifacts
 clean:
