@@ -9,8 +9,10 @@ A Neovim plugin that provides VSCode-style inline diff rendering with two-tier h
 - **Two-tier highlighting system**:
   - Light backgrounds for entire modified lines (green for insertions, red for deletions)
   - Deep/dark character-level highlights showing exact changes within lines
-- **Side-by-side diff view** with synchronized scrolling
+- **Side-by-side diff view** in a new tab with synchronized scrolling
+- **Git integration**: Compare current buffer with any git revision (HEAD, commits, branches, tags)
 - **Fast C-based diff computation** using FFI
+- **Async git operations** - non-blocking file retrieval from git
 - **Read-only buffers** to prevent accidental edits
 - **Aligned line rendering** with virtual filler lines
 
@@ -18,9 +20,10 @@ A Neovim plugin that provides VSCode-style inline diff rendering with two-tier h
 
 ### Prerequisites
 
-- Neovim >= 0.7.0 (for Lua FFI support)
+- Neovim >= 0.7.0 (for Lua FFI support; 0.10+ recommended for vim.system)
 - GCC or compatible C compiler
 - Make
+- Git (for git diff features)
 
 ### Using lazy.nvim
 
@@ -56,7 +59,39 @@ vim.opt.rtp:append("~/.local/share/nvim/vscode-diff.nvim")
 
 ## Usage
 
-### Basic Command
+### Git Diff (Single Argument)
+
+Compare the current buffer with a git revision:
+
+```vim
+" Compare with last commit
+:VscodeDiff HEAD
+
+" Compare with previous commit
+:VscodeDiff HEAD~1
+
+" Compare with specific commit
+:VscodeDiff abc123
+
+" Compare with branch
+:VscodeDiff main
+
+" Compare with tag
+:VscodeDiff v1.0.0
+```
+
+**Requirements:**
+- Current buffer must be saved to a file
+- File must be in a git repository
+- Git revision must exist
+
+**Behavior:**
+- Left buffer: Git version (at specified revision) - readonly
+- Right buffer: Current buffer content - readonly
+- Opens in a new tab automatically
+- Async operation - won't block Neovim
+
+### File Diff (Two Arguments)
 
 Compare two files side-by-side:
 
@@ -69,17 +104,32 @@ Compare two files side-by-side:
 ```lua
 local diff = require("vscode-diff")
 local render = require("vscode-diff.render")
+local git = require("vscode-diff.git")
 
--- Read files
+-- Example 1: Compare two files
 local lines_a = vim.fn.readfile("file_a.txt")
 local lines_b = vim.fn.readfile("file_b.txt")
-
--- Compute diff
 local plan = diff.compute_diff(lines_a, lines_b)
-
--- Render in buffers
 render.setup_highlights()
 render.render_diff(lines_a, lines_b, plan)
+
+-- Example 2: Get file from git (async)
+git.get_file_at_revision("HEAD~1", "/path/to/file.lua", function(err, lines)
+  if err then
+    vim.notify(err, vim.log.levels.ERROR)
+    return
+  end
+  
+  -- Use lines...
+  local current_lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+  local plan = diff.compute_diff(lines, current_lines)
+  render.render_diff(lines, current_lines, plan)
+end)
+
+-- Example 3: Check if file is in git repo
+if git.is_in_git_repo("/path/to/file.lua") then
+  -- File is in a git repository
+end
 ```
 
 ## Architecture
