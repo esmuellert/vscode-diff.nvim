@@ -14,9 +14,26 @@
 #   make test-char-level - Test character-level refinement
 #   make test-dp         - Test DP algorithm selection
 #
+#
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c11 -O2 -g -Iinclude -D_POSIX_C_SOURCE=200809L
-CFLAGS_SHARED = -Wall -Wextra -std=c11 -O2 -g -Iinclude -fPIC -D_POSIX_C_SOURCE=200809L
+# Base flags for all platforms
+CFLAGS_BASE = -Wall -Wextra -std=c11 -O2 -g -Iinclude
+CFLAGS_SHARED_BASE = -Wall -Wextra -std=c11 -O2 -g -Iinclude -fPIC
+
+# Platform-specific feature test macros
+# _POSIX_C_SOURCE=200809L enables POSIX.1-2008 features (fileno, isatty, etc.)
+# Only needed on POSIX systems (Linux, macOS, BSD)
+# Windows uses its own _fileno/_isatty and doesn't need this
+ifeq ($(OS),Windows_NT)
+    # Windows: No POSIX flags needed (_fileno/_isatty from <io.h>)
+    CFLAGS = $(CFLAGS_BASE)
+    CFLAGS_SHARED = $(CFLAGS_SHARED_BASE)
+else
+    # POSIX (Linux, macOS, BSD): Need _POSIX_C_SOURCE for fileno()
+    CFLAGS = $(CFLAGS_BASE) -D_POSIX_C_SOURCE=200809L
+    CFLAGS_SHARED = $(CFLAGS_SHARED_BASE) -D_POSIX_C_SOURCE=200809L
+endif
+
 LDFLAGS = 
 LDFLAGS_SHARED = -shared
 
