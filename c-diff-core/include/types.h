@@ -133,6 +133,7 @@ typedef struct {
  * Based on VSCode's decoration types.
  */
 typedef enum {
+    HL_NONE = -1,        // No highlight (unchanged line)
     HL_LINE_INSERT = 0,  // Light green background (entire line)
     HL_LINE_DELETE = 1,  // Light red background (entire line)
     HL_CHAR_INSERT = 2,  // Deep/dark green (changed characters only)

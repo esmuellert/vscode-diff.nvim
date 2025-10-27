@@ -90,3 +90,74 @@ void print_detailed_line_range_mapping_array(const char* label,
         print_detailed_line_range_mapping(&mappings->mappings[i], i);
     }
 }
+
+void diff_core_print_render_plan(const RenderPlan* plan) {
+    if (!plan) {
+        printf("RenderPlan: NULL\n");
+        return;
+    }
+    
+    printf("=== RenderPlan ===\n");
+    
+    // Left side
+    printf("\nLeft side: %d lines\n", plan->left.line_count);
+    for (int i = 0; i < plan->left.line_count; i++) {
+        const LineMetadata* meta = &plan->left.line_metadata[i];
+        const char* type_str = "UNKNOWN";
+        if (meta->type == HL_LINE_INSERT) type_str = "INSERT";
+        else if (meta->type == HL_LINE_DELETE) type_str = "DELETE";
+        
+        printf("  Line %d: type=%s", meta->line_num, type_str);
+        
+        if (meta->is_filler) {
+            printf(" [FILLER]");
+        }
+        
+        if (meta->char_highlight_count > 0) {
+            printf(" (%d char highlights)", meta->char_highlight_count);
+        }
+        printf("\n");
+        
+        for (int j = 0; j < meta->char_highlight_count; j++) {
+            const CharHighlight* ch = &meta->char_highlights[j];
+            const char* ch_type_str = "UNKNOWN";
+            if (ch->type == HL_CHAR_INSERT) ch_type_str = "INSERT";
+            else if (ch->type == HL_CHAR_DELETE) ch_type_str = "DELETE";
+            
+            printf("    [%d] Line %d, cols %d-%d: %s\n", 
+                   j, ch->line_num, ch->start_col, ch->end_col, ch_type_str);
+        }
+    }
+    
+    // Right side
+    printf("\nRight side: %d lines\n", plan->right.line_count);
+    for (int i = 0; i < plan->right.line_count; i++) {
+        const LineMetadata* meta = &plan->right.line_metadata[i];
+        const char* type_str = "UNKNOWN";
+        if (meta->type == HL_LINE_INSERT) type_str = "INSERT";
+        else if (meta->type == HL_LINE_DELETE) type_str = "DELETE";
+        
+        printf("  Line %d: type=%s", meta->line_num, type_str);
+        
+        if (meta->is_filler) {
+            printf(" [FILLER]");
+        }
+        
+        if (meta->char_highlight_count > 0) {
+            printf(" (%d char highlights)", meta->char_highlight_count);
+        }
+        printf("\n");
+        
+        for (int j = 0; j < meta->char_highlight_count; j++) {
+            const CharHighlight* ch = &meta->char_highlights[j];
+            const char* ch_type_str = "UNKNOWN";
+            if (ch->type == HL_CHAR_INSERT) ch_type_str = "INSERT";
+            else if (ch->type == HL_CHAR_DELETE) ch_type_str = "DELETE";
+            
+            printf("    [%d] Line %d, cols %d-%d: %s\n", 
+                   j, ch->line_num, ch->start_col, ch->end_col, ch_type_str);
+        }
+    }
+    
+    printf("\n");
+}

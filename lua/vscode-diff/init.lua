@@ -70,11 +70,19 @@ ffi.cdef[[
     SideRenderPlan right;
   } RenderPlan;
 
+  // Diff computation options
+  typedef struct {
+    int max_computation_time_ms;
+    bool ignore_trim_whitespace;
+    bool extend_to_subwords;
+  } DiffOptions;
+
   // Functions
-  RenderPlan* compute_diff(const char** lines_a, int count_a,
-                           const char** lines_b, int count_b);
+  RenderPlan* compute_diff_render_plan(const char** lines_a, int count_a,
+                                       const char** lines_b, int count_b,
+                                       const DiffOptions* options);
   void free_render_plan(RenderPlan* plan);
-  const char* get_version(void);
+  const char* diff_api_get_version(void);
   void diff_core_print_render_plan(const RenderPlan* plan);
 ]]
 
@@ -157,7 +165,7 @@ end
 
 -- Public API
 function M.get_version()
-  return ffi.string(lib.get_version())
+  return ffi.string(lib.diff_api_get_version())
 end
 
 function M.set_verbose(enabled)
@@ -177,7 +185,17 @@ function M.compute_diff(lines_a, lines_b)
 
   print_lua_verbose(string.format("Computing diff: %d lines (left) vs %d lines (right)", count_a, count_b))
 
-  local c_plan = lib.compute_diff(c_arr_a, count_a, c_arr_b, count_b)
+  -- Create default options
+  local options = ffi.new("DiffOptions")
+  options.max_computation_time_ms = 5000  -- 5 seconds default
+  options.ignore_trim_whitespace = false
+  options.extend_to_subwords = false
+
+  local c_plan = lib.compute_diff_render_plan(c_arr_a, count_a, c_arr_b, count_b, options)
+  
+  if c_plan == nil then
+    error("Failed to compute diff")
+  end
   
   -- Print C verbose output if enabled
   if verbose_enabled then

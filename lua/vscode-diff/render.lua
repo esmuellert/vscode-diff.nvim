@@ -41,17 +41,22 @@ function M.apply_highlights(bufnr, side_plan)
     if not meta.is_filler and meta.line_num > 0 then
       local line_idx = meta.line_num - 1  -- Convert to 0-indexed
       
-      -- Apply line-level highlight
-      local line_hl_group
-      if meta.type == 0 then  -- HL_LINE_INSERT
-        line_hl_group = "VscodeDiffLineInsert"
-      elseif meta.type == 1 then  -- HL_LINE_DELETE
-        line_hl_group = "VscodeDiffLineDelete"
-      end
+      -- Apply line-level highlight for changed lines
+      -- HL_NONE is -1, which appears as 4294967295 in Lua FFI (unsigned)
+      -- So we check for the specific valid types instead
+      local is_changed_line = (meta.type == 0 or meta.type == 1)  -- INSERT or DELETE
       
-      if line_hl_group and #meta.char_highlights > 0 then
-        -- Only apply line highlight if there are character changes
-        vim.api.nvim_buf_add_highlight(bufnr, ns_id, line_hl_group, line_idx, 0, -1)
+      if is_changed_line then
+        local line_hl_group
+        if meta.type == 0 then  -- HL_LINE_INSERT
+          line_hl_group = "VscodeDiffLineInsert"
+        elseif meta.type == 1 then  -- HL_LINE_DELETE
+          line_hl_group = "VscodeDiffLineDelete"
+        end
+        
+        if line_hl_group then
+          vim.api.nvim_buf_add_highlight(bufnr, ns_id, line_hl_group, line_idx, 0, -1)
+        end
       end
       
       -- Apply character-level highlights (the "deeper color" effect)
@@ -139,6 +144,31 @@ function M.render_diff(lines_a, lines_b, render_plan)
     vim.api.nvim_win_set_option(win_left, opt, val)
     vim.api.nvim_win_set_option(win_right, opt, val)
   end
+  
+  -- Count highlights applied for user feedback
+  local left_count = 0
+  local right_count = 0
+  for _, meta in ipairs(render_plan.left.line_metadata) do
+    if not meta.is_filler then
+      -- Count line-level highlights (type 0 or 1 = INSERT or DELETE)
+      if meta.type == 0 or meta.type == 1 then
+        left_count = left_count + 1
+      end
+      left_count = left_count + #meta.char_highlights  -- Char hls
+    end
+  end
+  for _, meta in ipairs(render_plan.right.line_metadata) do
+    if not meta.is_filler then
+      -- Count line-level highlights (type 0 or 1 = INSERT or DELETE)
+      if meta.type == 0 or meta.type == 1 then
+        right_count = right_count + 1
+      end
+      right_count = right_count + #meta.char_highlights  -- Char hls
+    end
+  end
+  
+  vim.notify(string.format("Diff rendered: %d highlights (left: %d, right: %d). Note: Enable 'termguicolors' if colors don't show.",
+    left_count + right_count, left_count, right_count), vim.log.levels.INFO)
   
   return {
     buf_left = buf_left,

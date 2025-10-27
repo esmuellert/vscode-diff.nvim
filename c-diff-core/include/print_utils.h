@@ -56,4 +56,10 @@ void print_detailed_line_range_mapping(const DetailedLineRangeMapping* mapping, 
 void print_detailed_line_range_mapping_array(const char* label, 
                                              const DetailedLineRangeMappingArray* mappings);
 
+/**
+ * Print a RenderPlan in human-readable format.
+ * Shows metadata and highlights for both left and right sides.
+ */
+void diff_core_print_render_plan(const RenderPlan* plan);
+
 #endif // PRINT_UTILS_H

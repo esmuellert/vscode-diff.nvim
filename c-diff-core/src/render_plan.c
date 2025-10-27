@@ -48,6 +48,17 @@ static void add_char_highlight(
     int end_col,
     HighlightType type
 ) {
+    // Skip invalid ranges (but allow zero-length ranges for full-line highlights)
+    if (start_col < 0 || end_col < 0 || start_col > end_col) {
+        return;
+    }
+    
+    // For empty ranges (start_col == end_col), this represents a zero-width
+    // insertion point. We skip these as they don't need visual highlighting.
+    if (start_col == end_col) {
+        return;
+    }
+    
     if (builder->count >= builder->capacity) {
         size_t new_capacity = builder->capacity == 0 ? 4 : builder->capacity * 2;
         CharHighlight* new_highlights = (CharHighlight*)realloc(
@@ -76,7 +87,7 @@ static LineMetadata* create_line_metadata_array(int line_count) {
     // Initialize all lines as unchanged (no highlight)
     for (int i = 0; i < line_count; i++) {
         metadata[i].line_num = i + 1;
-        metadata[i].type = HL_LINE_INSERT;  // Default, will be overridden
+        metadata[i].type = HL_NONE;  // No highlight by default
         metadata[i].is_filler = false;
         metadata[i].char_highlight_count = 0;
         metadata[i].char_highlights = NULL;
@@ -165,23 +176,109 @@ RenderPlan* generate_render_plan(
             for (int j = 0; j < mapping->inner_change_count; j++) {
                 const RangeMapping* range = &mapping->inner_changes[j];
                 
-                // Original side: character delete highlight
-                add_char_highlight(
-                    &orig_builder,
-                    range->original.start_line,
-                    range->original.start_col,
-                    range->original.end_col,
-                    HL_CHAR_DELETE
-                );
+                // Original side: split multi-line ranges
+                if (range->original.start_line == range->original.end_line) {
+                    // Single line range
+                    add_char_highlight(
+                        &orig_builder,
+                        range->original.start_line,
+                        range->original.start_col,
+                        range->original.end_col,
+                        HL_CHAR_DELETE
+                    );
+                } else {
+                    // Multi-line range: split into per-line highlights
+                    // First line: from start_col to end of line
+                    int first_line_idx = range->original.start_line - 1;
+                    if (first_line_idx >= 0 && first_line_idx < original_count) {
+                        int line_len = strlen(original_lines[first_line_idx]);
+                        add_char_highlight(
+                            &orig_builder,
+                            range->original.start_line,
+                            range->original.start_col,
+                            line_len + 1,  // +1 for 1-based exclusive end
+                            HL_CHAR_DELETE
+                        );
+                    }
+                    
+                    // Middle lines: full line highlights (if any)
+                    for (int line = range->original.start_line + 1; line < range->original.end_line; line++) {
+                        int line_idx = line - 1;
+                        if (line_idx >= 0 && line_idx < original_count) {
+                            int line_len = strlen(original_lines[line_idx]);
+                            add_char_highlight(
+                                &orig_builder,
+                                line,
+                                1,
+                                line_len + 1,
+                                HL_CHAR_DELETE
+                            );
+                        }
+                    }
+                    
+                    // Last line: from start to end_col
+                    if (range->original.end_col > 1) {
+                        add_char_highlight(
+                            &orig_builder,
+                            range->original.end_line,
+                            1,
+                            range->original.end_col,
+                            HL_CHAR_DELETE
+                        );
+                    }
+                }
                 
-                // Modified side: character insert highlight
-                add_char_highlight(
-                    &mod_builder,
-                    range->modified.start_line,
-                    range->modified.start_col,
-                    range->modified.end_col,
-                    HL_CHAR_INSERT
-                );
+                // Modified side: split multi-line ranges
+                if (range->modified.start_line == range->modified.end_line) {
+                    // Single line range
+                    add_char_highlight(
+                        &mod_builder,
+                        range->modified.start_line,
+                        range->modified.start_col,
+                        range->modified.end_col,
+                        HL_CHAR_INSERT
+                    );
+                } else {
+                    // Multi-line range: split into per-line highlights
+                    // First line: from start_col to end of line
+                    int first_line_idx = range->modified.start_line - 1;
+                    if (first_line_idx >= 0 && first_line_idx < modified_count) {
+                        int line_len = strlen(modified_lines[first_line_idx]);
+                        add_char_highlight(
+                            &mod_builder,
+                            range->modified.start_line,
+                            range->modified.start_col,
+                            line_len + 1,
+                            HL_CHAR_INSERT
+                        );
+                    }
+                    
+                    // Middle lines: full line highlights (if any)
+                    for (int line = range->modified.start_line + 1; line < range->modified.end_line; line++) {
+                        int line_idx = line - 1;
+                        if (line_idx >= 0 && line_idx < modified_count) {
+                            int line_len = strlen(modified_lines[line_idx]);
+                            add_char_highlight(
+                                &mod_builder,
+                                line,
+                                1,
+                                line_len + 1,
+                                HL_CHAR_INSERT
+                            );
+                        }
+                    }
+                    
+                    // Last line: from start to end_col
+                    if (range->modified.end_col > 1) {
+                        add_char_highlight(
+                            &mod_builder,
+                            range->modified.end_line,
+                            1,
+                            range->modified.end_col,
+                            HL_CHAR_INSERT
+                        );
+                    }
+                }
             }
             
             // Attach character highlights to affected lines
