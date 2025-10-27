@@ -631,10 +631,16 @@ RangeMappingArray* refine_diff_char_level(
     const SequenceDiff* line_diff,
     const char** lines_a, int len_a,
     const char** lines_b, int len_b,
-    const CharLevelOptions* options
+    const CharLevelOptions* options,
+    bool* out_hit_timeout
 ) {
     (void)len_a;  // Used for bounds checking in real implementation
     (void)len_b;
+    
+    // Initialize timeout flag
+    if (out_hit_timeout) {
+        *out_hit_timeout = false;
+    }
     
     if (!line_diff || !lines_a || !lines_b || !options) {
         return NULL;
@@ -722,6 +728,11 @@ RangeMappingArray* refine_diff_char_level(
         add_range_mapping(result, &mapping);
     }
     
+    // Propagate timeout status (VSCode: return { mappings, hitTimeout })
+    if (out_hit_timeout) {
+        *out_hit_timeout = hit_timeout;
+    }
+    
     // Cleanup
     free(diffs->diffs);
     free(diffs);
@@ -738,8 +749,14 @@ RangeMappingArray* refine_all_diffs_char_level(
     const SequenceDiffArray* line_diffs,
     const char** lines_a, int len_a,
     const char** lines_b, int len_b,
-    const CharLevelOptions* options
+    const CharLevelOptions* options,
+    bool* out_hit_timeout
 ) {
+    // Initialize timeout flag
+    if (out_hit_timeout) {
+        *out_hit_timeout = false;
+    }
+    
     if (!line_diffs || !lines_a || !lines_b || !options) {
         return NULL;
     }
@@ -748,11 +765,21 @@ RangeMappingArray* refine_all_diffs_char_level(
         line_diffs->count > 0 ? line_diffs->count * 4 : 10
     );
     
+    // Track if any refinement hit timeout
+    bool any_timeout = false;
+    
     // Refine each line diff
     for (int i = 0; i < line_diffs->count; i++) {
+        bool local_timeout = false;
         RangeMappingArray* char_mappings = refine_diff_char_level(
-            &line_diffs->diffs[i], lines_a, len_a, lines_b, len_b, options
+            &line_diffs->diffs[i], lines_a, len_a, lines_b, len_b, options,
+            &local_timeout
         );
+        
+        // Accumulate timeout status (VSCode: if (characterDiffs.hitTimeout) hitTimeout = true)
+        if (local_timeout) {
+            any_timeout = true;
+        }
         
         if (char_mappings) {
             for (int j = 0; j < char_mappings->count; j++) {
@@ -760,6 +787,11 @@ RangeMappingArray* refine_all_diffs_char_level(
             }
             free_range_mapping_array(char_mappings);
         }
+    }
+    
+    // Propagate timeout status to caller
+    if (out_hit_timeout) {
+        *out_hit_timeout = any_timeout;
     }
     
     // Note: Whitespace-only change scanning happens in the main diff computer

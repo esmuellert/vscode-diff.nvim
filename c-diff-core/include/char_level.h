@@ -34,6 +34,9 @@ typedef struct {
  * 
  * This is the main Step 4 function that implements VSCode's refineDiff().
  * 
+ * VSCode returns: { mappings: RangeMapping[]; hitTimeout: boolean }
+ * C equivalent: Returns mappings, sets out_hit_timeout flag
+ * 
  * Algorithm (exact VSCode order):
  * 1. Create LinesSliceCharSequence for both sides
  * 2. Run Myers on character sequences (or DynamicProgramming if < 500 chars)
@@ -51,13 +54,15 @@ typedef struct {
  * @param lines_b Modified file lines
  * @param len_b Number of lines in modified
  * @param options Refinement options
+ * @param out_hit_timeout Output: Set to true if timeout occurred, can be NULL
  * @return RangeMappingArray* Character-level mappings (caller must free)
  */
 RangeMappingArray* refine_diff_char_level(
     const SequenceDiff* line_diff,
     const char** lines_a, int len_a,
     const char** lines_b, int len_b,
-    const CharLevelOptions* options
+    const CharLevelOptions* options,
+    bool* out_hit_timeout
 );
 
 /**
@@ -66,19 +71,24 @@ RangeMappingArray* refine_diff_char_level(
  * Calls refine_diff_char_level() for each line diff.
  * Also scans for whitespace-only changes between diffs if considerWhitespaceChanges.
  * 
+ * VSCode behavior: Accumulates hitTimeout from all refineDiff() calls
+ * C behavior: Sets out_hit_timeout if ANY refinement times out
+ * 
  * @param line_diffs Line-level diffs from Steps 1-3
  * @param lines_a Original file lines
  * @param len_a Number of lines in original
  * @param lines_b Modified file lines
  * @param len_b Number of lines in modified
  * @param options Refinement options
+ * @param out_hit_timeout Output: Set to true if any timeout occurred, can be NULL
  * @return RangeMappingArray* All character-level mappings (caller must free)
  */
 RangeMappingArray* refine_all_diffs_char_level(
     const SequenceDiffArray* line_diffs,
     const char** lines_a, int len_a,
     const char** lines_b, int len_b,
-    const CharLevelOptions* options
+    const CharLevelOptions* options,
+    bool* out_hit_timeout
 );
 
 /**

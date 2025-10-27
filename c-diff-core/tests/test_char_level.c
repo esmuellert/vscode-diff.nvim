@@ -76,7 +76,7 @@ TEST(single_word_change) {
         .extend_to_subwords = false
     };
     
-    RangeMappingArray* result = refine_diff_char_level(&line_diff, lines_a, 1, lines_b, 1, &opts);
+    RangeMappingArray* result = refine_diff_char_level(&line_diff, lines_a, 1, lines_b, 1, &opts, NULL);
     
     ASSERT(result != NULL, "Result should not be NULL");
     ASSERT(result->count > 0, "Should have at least one mapping");
@@ -119,7 +119,7 @@ TEST(multiple_word_changes) {
         .extend_to_subwords = false
     };
     
-    RangeMappingArray* result = refine_diff_char_level(&line_diff, lines_a, 1, lines_b, 1, &opts);
+    RangeMappingArray* result = refine_diff_char_level(&line_diff, lines_a, 1, lines_b, 1, &opts, NULL);
     
     ASSERT(result != NULL, "Result should not be NULL");
     
@@ -167,7 +167,7 @@ TEST(multiline_char_diff) {
         .extend_to_subwords = false
     };
     
-    RangeMappingArray* result = refine_diff_char_level(&line_diff, lines_a, 2, lines_b, 2, &opts);
+    RangeMappingArray* result = refine_diff_char_level(&line_diff, lines_a, 2, lines_b, 2, &opts, NULL);
     
     ASSERT(result != NULL, "Result should not be NULL");
     
@@ -212,7 +212,7 @@ TEST(whitespace_handling) {
         .extend_to_subwords = false
     };
     
-    RangeMappingArray* result = refine_diff_char_level(&line_diff, lines_a, 1, lines_b, 1, &opts);
+    RangeMappingArray* result = refine_diff_char_level(&line_diff, lines_a, 1, lines_b, 1, &opts, NULL);
     
     ASSERT(result != NULL, "Result should not be NULL");
     
@@ -245,7 +245,7 @@ TEST(camelcase_subword) {
         .extend_to_subwords = true  // Enable subword extension
     };
     
-    RangeMappingArray* result = refine_diff_char_level(&line_diff, lines_a, 1, lines_b, 1, &opts);
+    RangeMappingArray* result = refine_diff_char_level(&line_diff, lines_a, 1, lines_b, 1, &opts, NULL);
     
     ASSERT(result != NULL, "Result should not be NULL");
     
@@ -286,7 +286,7 @@ TEST(completely_different) {
         .extend_to_subwords = false
     };
     
-    RangeMappingArray* result = refine_diff_char_level(&line_diff, lines_a, 1, lines_b, 1, &opts);
+    RangeMappingArray* result = refine_diff_char_level(&line_diff, lines_a, 1, lines_b, 1, &opts, NULL);
     
     ASSERT(result != NULL, "Result should not be NULL");
     ASSERT(result->count > 0, "Should have at least one mapping");
@@ -317,7 +317,7 @@ TEST(empty_vs_content) {
         .extend_to_subwords = false
     };
     
-    RangeMappingArray* result = refine_diff_char_level(&line_diff, lines_a, 1, lines_b, 1, &opts);
+    RangeMappingArray* result = refine_diff_char_level(&line_diff, lines_a, 1, lines_b, 1, &opts, NULL);
     
     ASSERT(result != NULL, "Result should not be NULL");
     
@@ -355,7 +355,7 @@ TEST(punctuation_changes) {
         .extend_to_subwords = false
     };
     
-    RangeMappingArray* result = refine_diff_char_level(&line_diff, lines_a, 1, lines_b, 1, &opts);
+    RangeMappingArray* result = refine_diff_char_level(&line_diff, lines_a, 1, lines_b, 1, &opts, NULL);
     
     ASSERT(result != NULL, "Result should not be NULL");
     
@@ -393,7 +393,7 @@ TEST(short_match_removal) {
         .extend_to_subwords = false
     };
     
-    RangeMappingArray* result = refine_diff_char_level(&line_diff, lines_a, 1, lines_b, 1, &opts);
+    RangeMappingArray* result = refine_diff_char_level(&line_diff, lines_a, 1, lines_b, 1, &opts, NULL);
     
     ASSERT(result != NULL, "Result should not be NULL");
     
@@ -443,7 +443,7 @@ TEST(real_code_function_rename) {
         .extend_to_subwords = false
     };
     
-    RangeMappingArray* result = refine_diff_char_level(&line_diff, lines_a, 3, lines_b, 3, &opts);
+    RangeMappingArray* result = refine_diff_char_level(&line_diff, lines_a, 3, lines_b, 3, &opts, NULL);
     
     ASSERT(result != NULL, "Result should not be NULL");
     
@@ -496,7 +496,7 @@ TEST(cross_line_range_mapping) {
         .extend_to_subwords = false
     };
     
-    RangeMappingArray* result = refine_diff_char_level(&line_diff, lines_a, 2, lines_b, 2, &opts);
+    RangeMappingArray* result = refine_diff_char_level(&line_diff, lines_a, 2, lines_b, 2, &opts, NULL);
     
     ASSERT(result != NULL, "Result should not be NULL");
     
