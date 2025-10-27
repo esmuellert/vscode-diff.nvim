@@ -38,4 +38,22 @@ void print_range_mapping(const RangeMapping* mapping, int index);
  */
 void print_range_mapping_array(const char* label, const RangeMappingArray* mappings);
 
+/**
+ * Print a DetailedLineRangeMapping in human-readable format.
+ * Format: Lines {start}-{end} -> Lines {start}-{end} with {count} inner change(s)
+ * 
+ * Example:
+ *   [0] Lines 1-2 -> Lines 1-2 (2 inner changes)
+ *       Inner: L1:C1-L1:C4 -> L1:C1-L1:C4
+ *       Inner: L2:C1-L2:C4 -> L2:C1-L2:C4
+ */
+void print_detailed_line_range_mapping(const DetailedLineRangeMapping* mapping, int index);
+
+/**
+ * Print an array of DetailedLineRangeMappings.
+ * Shows count and details of each line-level mapping with inner changes.
+ */
+void print_detailed_line_range_mapping_array(const char* label, 
+                                             const DetailedLineRangeMappingArray* mappings);
+
 #endif // PRINT_UTILS_H

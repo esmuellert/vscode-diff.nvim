@@ -52,11 +52,12 @@ MYERS_SRC = $(SRC_DIR)/myers.c
 OPTIMIZE_SRC = $(SRC_DIR)/optimize.c
 LINE_LEVEL_SRC = $(SRC_DIR)/line_level.c
 CHAR_LEVEL_SRC = $(SRC_DIR)/char_level.c
+RANGE_MAPPING_SRC = $(SRC_DIR)/range_mapping.c
 DEFAULT_LINES_DIFF_COMPUTER_SRC = default_lines_diff_computer.c
 
 # All source files for shared library
 ALL_SRCS = $(DEFAULT_LINES_DIFF_COMPUTER_SRC) $(CHAR_LEVEL_SRC) $(LINE_LEVEL_SRC) $(MYERS_SRC) \
-           $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) \
+           $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(RANGE_MAPPING_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) \
            $(PRINT_UTILS_SRC)
 
 # Shared library output
@@ -174,3 +175,11 @@ clean:
 	rm -f $(SHARED_LIB)
 	rm -f libdiff_core.so libdiff_core.dylib libdiff_core.dll
 	rm -f ../libdiff_core.so ../libdiff_core.dylib ../libdiff_core.dll
+
+# Build and run Range Mapping tests
+test-range-mapping: $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_range_mapping.c $(RANGE_MAPPING_SRC) $(PRINT_UTILS_SRC) -o $(BUILD_DIR)/test_range_mapping -lm
+	@echo ""
+	@echo "Running Range Mapping Conversion tests..."
+	@echo ""
+	@$(BUILD_DIR)/test_range_mapping
