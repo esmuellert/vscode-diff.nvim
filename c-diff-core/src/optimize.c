@@ -16,11 +16,14 @@
 #include "../include/sequence.h"
 #include "../include/string_hash_map.h"
 #include "../include/types.h"
+#include "../include/utils.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 // Forward declarations
+static uint32_t decode_utf8(const char** str_ptr);
 static SequenceDiffArray* join_sequence_diffs_by_shifting(
     const ISequence* seq1, const ISequence* seq2, SequenceDiffArray* diffs);
 static SequenceDiffArray* shift_sequence_diffs(
@@ -33,6 +36,59 @@ static SequenceDiff shift_diff_to_better_position(
 // Helper: Min/Max functions
 static inline int min_int(int a, int b) { return a < b ? a : b; }
 static inline int max_int(int a, int b) { return a > b ? a : b; }
+
+// ============================================================================
+// UTF-8 Decoder - For Unicode Whitespace Detection
+// ============================================================================
+
+/**
+ * Decode one UTF-8 character from a string and advance the pointer.
+ * 
+ * This handles UTF-8 multi-byte sequences to properly detect Unicode whitespace
+ * characters, matching JavaScript's string handling.
+ * 
+ * @param str_ptr Pointer to string pointer (will be advanced)
+ * @return Unicode code point, or 0 if invalid/end of string
+ */
+static uint32_t decode_utf8(const char** str_ptr) {
+    const unsigned char* p = (const unsigned char*)*str_ptr;
+    
+    if (*p == 0) {
+        return 0;  // End of string
+    }
+    
+    // ASCII (single byte)
+    if (*p < 0x80) {
+        *str_ptr = (const char*)(p + 1);
+        return *p;
+    }
+    
+    // 2-byte sequence (110xxxxx 10xxxxxx)
+    if ((*p & 0xE0) == 0xC0 && p[1]) {
+        uint32_t ch = ((*p & 0x1F) << 6) | (p[1] & 0x3F);
+        *str_ptr = (const char*)(p + 2);
+        return ch;
+    }
+    
+    // 3-byte sequence (1110xxxx 10xxxxxx 10xxxxxx)
+    if ((*p & 0xF0) == 0xE0 && p[1] && p[2]) {
+        uint32_t ch = ((*p & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F);
+        *str_ptr = (const char*)(p + 3);
+        return ch;
+    }
+    
+    // 4-byte sequence (11110xxx 10xxxxxx 10xxxxxx 10xxxxxx)
+    if ((*p & 0xF8) == 0xF0 && p[1] && p[2] && p[3]) {
+        uint32_t ch = ((*p & 0x07) << 18) | ((p[1] & 0x3F) << 12) | 
+                      ((p[2] & 0x3F) << 6) | (p[3] & 0x3F);
+        *str_ptr = (const char*)(p + 4);
+        return ch;
+    }
+    
+    // Invalid UTF-8, skip this byte
+    *str_ptr = (const char*)(p + 1);
+    return 0xFFFD;  // Unicode replacement character
+}
 
 /**
  * joinSequenceDiffsByShifting() - VSCode Parity
@@ -447,13 +503,21 @@ SequenceDiffArray* remove_very_short_matching_lines_between_diffs(
             int unchanged_end = cur.seq1_start;
             
             // Count non-whitespace characters in unchanged region
+            // VSCode: unchangedText.replace(/\s/g, '').length
+            // We must use UTF-8 decoding to properly handle Unicode whitespace
             int non_ws_count = 0;
             for (int idx = unchanged_start; idx < unchanged_end; idx++) {
                 const char* line = line_seq->lines[idx];
                 if (!line) continue;
                 
-                for (const char* p = line; *p; p++) {
-                    if (*p != ' ' && *p != '\t' && *p != '\r' && *p != '\n') {
+                // Decode UTF-8 and check each character
+                const char* p = line;
+                while (*p) {
+                    uint32_t ch = decode_utf8(&p);
+                    if (ch == 0) break;  // End of string or invalid
+                    
+                    // Check if this character is whitespace using Unicode-aware function
+                    if (!is_unicode_whitespace(ch)) {
                         non_ws_count++;
                     }
                 }

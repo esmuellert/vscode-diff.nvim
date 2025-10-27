@@ -1,7 +1,24 @@
 # Makefile for c-diff-core
+#
+# Targets:
+#   make            - Build and install library to plugin root (for Lua FFI)
+#   make lib        - Build shared library only (stays in c-diff-core/)
+#   make install    - Same as default make (build + install)
+#   make test       - Run all tests
+#   make clean      - Remove all build artifacts
+#
+# Individual test targets:
+#   make test-myers      - Test Myers diff algorithm
+#   make test-sequence   - Test sequence infrastructure
+#   make test-line-opt   - Test line-level optimization
+#   make test-char-level - Test character-level refinement
+#   make test-dp         - Test DP algorithm selection
+#
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c11 -O2 -g -Iinclude
+CFLAGS_SHARED = -Wall -Wextra -std=c11 -O2 -g -Iinclude -fPIC
 LDFLAGS = 
+LDFLAGS_SHARED = -shared
 
 # Directories
 SRC_DIR = src
@@ -18,6 +35,23 @@ MYERS_SRC = $(SRC_DIR)/myers.c
 OPTIMIZE_SRC = $(SRC_DIR)/optimize.c
 LINE_LEVEL_SRC = $(SRC_DIR)/line_level.c
 CHAR_LEVEL_SRC = $(SRC_DIR)/char_level.c
+DIFF_CORE_SRC = diff_core.c
+
+# All source files for shared library
+ALL_SRCS = $(DIFF_CORE_SRC) $(CHAR_LEVEL_SRC) $(LINE_LEVEL_SRC) $(MYERS_SRC) \
+           $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) \
+           $(PRINT_UTILS_SRC)
+
+# Shared library output
+SHARED_LIB = libdiff_core.so
+ifeq ($(OS),Windows_NT)
+    SHARED_LIB = libdiff_core.dll
+else
+    UNAME_S := $(shell uname -s)
+    ifeq ($(UNAME_S),Darwin)
+        SHARED_LIB = libdiff_core.dylib
+    endif
+endif
 
 # Test executables
 TEST_MYERS = $(BUILD_DIR)/test_myers
@@ -29,12 +63,29 @@ TEST_INTEGRATION = $(BUILD_DIR)/test_integration
 TEST_DP = $(BUILD_DIR)/test_dp_algorithm
 TEST_CHAR_BOUNDARY = $(BUILD_DIR)/test_char_boundary_categories
 
-.PHONY: all clean test test-myers test-sequence test-line-opt test-line-boundary test-char-level test-integration test-dp test-char-boundary
+.PHONY: all clean test test-myers test-sequence test-line-opt test-line-boundary \
+        test-char-level test-integration test-dp test-char-boundary lib install
 
-all: $(BUILD_DIR)
+# Default target: build and install for Lua integration
+all: install
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
+
+# Build shared library for Lua integration
+lib: $(BUILD_DIR)
+	$(CC) $(CFLAGS_SHARED) $(LDFLAGS_SHARED) $(ALL_SRCS) -o $(SHARED_LIB) -lm
+	@echo ""
+	@echo "✓ Built shared library: $(SHARED_LIB)"
+	@echo ""
+
+# Install shared library to plugin root (for Lua FFI)
+install: lib
+	cp $(SHARED_LIB) ../$(SHARED_LIB)
+	@echo ""
+	@echo "✓ Installed $(SHARED_LIB) to plugin root"
+	@echo "  Lua can now load it via FFI"
+	@echo ""
 
 # Build and run Myers tests
 test-myers: $(BUILD_DIR)
@@ -103,3 +154,6 @@ test: test-myers test-sequence test-line-opt test-line-boundary test-char-level 
 # Clean build artifacts
 clean:
 	rm -rf $(BUILD_DIR)
+	rm -f $(SHARED_LIB)
+	rm -f libdiff_core.so libdiff_core.dylib libdiff_core.dll
+	rm -f ../libdiff_core.so ../libdiff_core.dylib ../libdiff_core.dll

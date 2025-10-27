@@ -1,7 +1,71 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdbool.h>
+#include <stdint.h>
 #include "../include/types.h"
+
+// ============================================================================
+// Unicode Whitespace Detection - 100% JavaScript /\s/ Parity
+// ============================================================================
+
+/**
+ * Check if a Unicode code point is whitespace.
+ * 
+ * This matches JavaScript's /\s/ regex exactly, which includes:
+ * 
+ * ASCII whitespace:
+ *   - Space (U+0020)
+ *   - Tab (U+0009)
+ *   - Line Feed (U+000A)
+ *   - Vertical Tab (U+000B)
+ *   - Form Feed (U+000C)
+ *   - Carriage Return (U+000D)
+ * 
+ * Unicode whitespace:
+ *   - No-break space (U+00A0)
+ *   - Ogham space mark (U+1680)
+ *   - En quad through hair space (U+2000-U+200A)
+ *   - Line separator (U+2028)
+ *   - Paragraph separator (U+2029)
+ *   - Narrow no-break space (U+202F)
+ *   - Medium mathematical space (U+205F)
+ *   - Ideographic space (U+3000)
+ * 
+ * VSCode Reference: JavaScript /\s/g in removeVeryShortMatchingLinesBetweenDiffs
+ * 
+ * @param ch Unicode code point (can be UTF-8 decoded value or ASCII char)
+ * @return true if ch is whitespace according to JavaScript /\s/
+ */
+bool is_unicode_whitespace(uint32_t ch) {
+    // ASCII whitespace (most common, check first for performance)
+    if (ch == 0x0020 ||  // Space
+        ch == 0x0009 ||  // Tab
+        ch == 0x000A ||  // Line Feed (LF)
+        ch == 0x000B ||  // Vertical Tab
+        ch == 0x000C ||  // Form Feed
+        ch == 0x000D) {  // Carriage Return (CR)
+        return true;
+    }
+    
+    // Unicode whitespace characters
+    if (ch == 0x00A0 ||  // No-break space
+        ch == 0x1680 ||  // Ogham space mark
+        ch == 0x2028 ||  // Line separator
+        ch == 0x2029 ||  // Paragraph separator
+        ch == 0x202F ||  // Narrow no-break space
+        ch == 0x205F ||  // Medium mathematical space
+        ch == 0x3000) {  // Ideographic space
+        return true;
+    }
+    
+    // Range: En quad through hair space (U+2000 - U+200A)
+    if (ch >= 0x2000 && ch <= 0x200A) {
+        return true;
+    }
+    
+    return false;
+}
 
 // ============================================================================
 // Utility Functions
