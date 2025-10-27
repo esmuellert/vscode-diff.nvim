@@ -1,22 +1,19 @@
 // ============================================================================
-// VSCode Advanced Diff Algorithm Implementation
+// VSCode DefaultLinesDiffComputer - Main Orchestrator
 // ============================================================================
 // 
-// ⚠️  IMPLEMENTATION STATUS: STUB (Day 1 - Phase 1)
+// This is the C port of VSCode's DefaultLinesDiffComputer class.
+// 
+// VSCode Reference:
+// src/vs/editor/common/diff/defaultLinesDiffComputer/defaultLinesDiffComputer.ts
 //
-// This file contains a TEMPORARY STUB implementation for Step 7 (render plan
-// generation) to maintain Lua integration during development of Steps 1-6.
-//
-// Current behavior: Pass-through - copies original file content to both sides
-// with no highlighting, no character diffs, and no alignment. This allows the
-// plugin to load without errors while we build the real algorithm.
-//
-// Real implementation will be added after Steps 1-6 are complete and tested.
+// Status: Implementing main pipeline with scanForWhitespaceChanges
 //
 // ============================================================================
 
 #include "include/types.h"
 #include "include/platform.h"
+#include "include/char_level.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -26,11 +23,135 @@
 // ============================================================================
 
 const char* get_version(void) {
-    return "0.2.0-stub";
+    return "0.3.0-implementing";
 }
 
 // ============================================================================
-// Step 7: Render Plan Generation (STUB)
+// Helper: scanForWhitespaceChanges - VSCode Parity
+// ============================================================================
+
+/**
+ * Scan equal-length line regions for whitespace-only changes.
+ * 
+ * This is a direct port of VSCode's scanForWhitespaceChanges closure.
+ * 
+ * VSCode Reference: defaultLinesDiffComputer.ts lines 100-118
+ * 
+ * TypeScript:
+ * ```
+ * const scanForWhitespaceChanges = (equalLinesCount: number) => {
+ *     if (!considerWhitespaceChanges) return;
+ *     
+ *     for (let i = 0; i < equalLinesCount; i++) {
+ *         const seq1Offset = seq1LastStart + i;
+ *         const seq2Offset = seq2LastStart + i;
+ *         if (originalLines[seq1Offset] !== modifiedLines[seq2Offset]) {
+ *             const characterDiffs = this.refineDiff(...);
+ *             for (const a of characterDiffs.mappings) alignments.push(a);
+ *             if (characterDiffs.hitTimeout) hitTimeout = true;
+ *         }
+ *     }
+ * };
+ * ```
+ * 
+ * Purpose:
+ * When two lines have the same hash (trimmed content) but different actual content,
+ * it means they differ only in whitespace. If considerWhitespaceChanges is true,
+ * we need to compute character-level diffs for these lines.
+ * 
+ * @param equal_lines_count Number of equal lines to scan
+ * @param seq1_last_start Current position in original lines
+ * @param seq2_last_start Current position in modified lines
+ * @param lines_a Original file lines
+ * @param len_a Number of lines in original
+ * @param lines_b Modified file lines
+ * @param len_b Number of lines in modified
+ * @param consider_whitespace_changes If false, skip scanning
+ * @param char_opts Options for character-level refinement
+ * @param alignments Output: Accumulate RangeMappings here
+ * @param hit_timeout Output: Set to true if any refinement times out
+ */
+static void scan_for_whitespace_changes(
+    int equal_lines_count,
+    int seq1_last_start,
+    int seq2_last_start,
+    const char** lines_a,
+    int len_a,
+    const char** lines_b,
+    int len_b,
+    bool consider_whitespace_changes,
+    CharLevelOptions* char_opts,
+    RangeMappingArray** alignments,
+    bool* hit_timeout
+) {
+    // VSCode: if (!considerWhitespaceChanges) return;
+    if (!consider_whitespace_changes) {
+        return;
+    }
+    
+    // VSCode: for (let i = 0; i < equalLinesCount; i++)
+    for (int i = 0; i < equal_lines_count; i++) {
+        // VSCode: const seq1Offset = seq1LastStart + i;
+        int seq1_offset = seq1_last_start + i;
+        // VSCode: const seq2Offset = seq2LastStart + i;
+        int seq2_offset = seq2_last_start + i;
+        
+        // VSCode: if (originalLines[seq1Offset] !== modifiedLines[seq2Offset])
+        if (strcmp(lines_a[seq1_offset], lines_b[seq2_offset]) != 0) {
+            // This is because of whitespace changes, diff these lines
+            // VSCode: const characterDiffs = this.refineDiff(originalLines, modifiedLines, ...)
+            
+            SequenceDiff line_diff = {
+                .seq1_start = seq1_offset,
+                .seq1_end = seq1_offset + 1,
+                .seq2_start = seq2_offset,
+                .seq2_end = seq2_offset + 1
+            };
+            
+            bool local_timeout = false;
+            RangeMappingArray* character_diffs = refine_diff_char_level(
+                &line_diff,
+                lines_a, len_a,
+                lines_b, len_b,
+                char_opts,
+                &local_timeout
+            );
+            
+            if (character_diffs) {
+                // VSCode: for (const a of characterDiffs.mappings) alignments.push(a);
+                for (int j = 0; j < character_diffs->count; j++) {
+                    // Grow alignments array if needed
+                    if ((*alignments)->count >= (*alignments)->capacity) {
+                        size_t new_capacity = (*alignments)->capacity == 0 ? 8 : (*alignments)->capacity * 2;
+                        RangeMapping* new_mappings = (RangeMapping*)realloc(
+                            (*alignments)->mappings,
+                            new_capacity * sizeof(RangeMapping)
+                        );
+                        if (new_mappings) {
+                            (*alignments)->mappings = new_mappings;
+                            (*alignments)->capacity = new_capacity;
+                        }
+                    }
+                    
+                    // Add mapping
+                    if ((*alignments)->count < (*alignments)->capacity) {
+                        (*alignments)->mappings[(*alignments)->count++] = character_diffs->mappings[j];
+                    }
+                }
+                
+                free_range_mapping_array(character_diffs);
+            }
+            
+            // VSCode: if (characterDiffs.hitTimeout) hitTimeout = true;
+            if (local_timeout) {
+                *hit_timeout = true;
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Main Diff Computer (STUB - Being Implemented)
 // ============================================================================
 
 /**

@@ -52,10 +52,10 @@ MYERS_SRC = $(SRC_DIR)/myers.c
 OPTIMIZE_SRC = $(SRC_DIR)/optimize.c
 LINE_LEVEL_SRC = $(SRC_DIR)/line_level.c
 CHAR_LEVEL_SRC = $(SRC_DIR)/char_level.c
-DIFF_CORE_SRC = diff_core.c
+DEFAULT_LINES_DIFF_COMPUTER_SRC = default_lines_diff_computer.c
 
 # All source files for shared library
-ALL_SRCS = $(DIFF_CORE_SRC) $(CHAR_LEVEL_SRC) $(LINE_LEVEL_SRC) $(MYERS_SRC) \
+ALL_SRCS = $(DEFAULT_LINES_DIFF_COMPUTER_SRC) $(CHAR_LEVEL_SRC) $(LINE_LEVEL_SRC) $(MYERS_SRC) \
            $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) \
            $(PRINT_UTILS_SRC)
 
