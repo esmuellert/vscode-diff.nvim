@@ -183,3 +183,11 @@ test-range-mapping: $(BUILD_DIR)
 	@echo "Running Range Mapping Conversion tests..."
 	@echo ""
 	@$(BUILD_DIR)/test_range_mapping
+
+# Build and run compute_diff tests
+test-compute-diff: $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_compute_diff.c $(ALL_SRCS) -o $(BUILD_DIR)/test_compute_diff -lm
+	@echo ""
+	@echo "Running compute_diff() tests..."
+	@echo ""
+	@$(BUILD_DIR)/test_compute_diff

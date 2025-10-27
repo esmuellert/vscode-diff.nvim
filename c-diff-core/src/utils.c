@@ -3,7 +3,12 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <time.h>
 #include "../include/types.h"
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 // ============================================================================
 // Unicode Whitespace Detection - 100% JavaScript /\s/ Parity
@@ -137,6 +142,61 @@ bool str_equal(const char* a, const char* b) {
     if (a == b) return true;
     if (!a || !b) return false;
     return strcmp(a, b) == 0;
+}
+
+/**
+ * Trim whitespace from a string and return new allocated string.
+ * 
+ * @param str String to trim
+ * @return Newly allocated trimmed string (caller must free)
+ */
+char* trim_string(const char* str) {
+    if (!str) return NULL;
+    
+    // Find start (skip leading whitespace)
+    const char* start = str;
+    while (*start && (*start == ' ' || *start == '\t' || *start == '\r' || *start == '\n')) {
+        start++;
+    }
+    
+    // All whitespace?
+    if (*start == '\0') {
+        char* result = (char*)malloc(1);
+        if (result) result[0] = '\0';
+        return result;
+    }
+    
+    // Find end (skip trailing whitespace)
+    const char* end = start + strlen(start) - 1;
+    while (end > start && (*end == ' ' || *end == '\t' || *end == '\r' || *end == '\n')) {
+        end--;
+    }
+    
+    // Allocate and copy
+    size_t len = end - start + 1;
+    char* result = (char*)malloc(len + 1);
+    if (result) {
+        memcpy(result, start, len);
+        result[len] = '\0';
+    }
+    return result;
+}
+
+/**
+ * Get current time in milliseconds.
+ * 
+ * @return Current time in milliseconds since epoch
+ */
+int64_t get_current_time_ms(void) {
+    #ifdef _WIN32
+        // Windows implementation
+        return (int64_t)GetTickCount64();
+    #else
+        // POSIX implementation
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        return (int64_t)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
+    #endif
 }
 
 // ============================================================================

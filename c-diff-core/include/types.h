@@ -26,6 +26,15 @@ typedef struct {
 } SequenceDiffArray;
 
 /**
+ * Timeout - Timeout mechanism for diff computation
+ * Maps to VSCode's ITimeout interface.
+ */
+typedef struct {
+    int timeout_ms;         // Timeout in milliseconds (0 = infinite)
+    int64_t start_time_ms;  // Start time in milliseconds
+} Timeout;
+
+/**
  * CharRange - Represents a range of characters within text
  * Maps to VSCode's Range class.
  */
@@ -93,6 +102,17 @@ typedef struct {
     int count;
     int capacity;
 } MovedTextArray;
+
+/**
+ * DiffOptions - Configuration for diff computation
+ * Maps to VSCode's ILinesDiffComputerOptions.
+ */
+typedef struct {
+    bool ignore_trim_whitespace;   // If true, ignore leading/trailing whitespace
+    int max_computation_time_ms;   // 0 = infinite timeout
+    bool compute_moves;            // If true, compute moved blocks (not implemented yet)
+    bool extend_to_subwords;       // If true, extend diffs to subword boundaries
+} DiffOptions;
 
 /**
  * LinesDiff - Complete algorithm output
