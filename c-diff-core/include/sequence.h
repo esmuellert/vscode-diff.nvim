@@ -156,19 +156,35 @@ ISequence* char_sequence_create(const char** lines, int start_line, int end_line
                                 bool consider_whitespace);
 
 /**
- * Translate character offset to (line, column) position
+ * Offset preference for translate operations - VSCode Parity
+ * 
+ * Controls how trimmed whitespace is handled when offset lands at line start.
+ * 
+ * VSCode: 'left' | 'right' parameter in translateOffset()
+ */
+typedef enum {
+    OFFSET_PREFERENCE_LEFT,   // Do not add trimmed whitespace when at line start
+    OFFSET_PREFERENCE_RIGHT   // Always add trimmed whitespace (default)
+} OffsetPreference;
+
+/**
+ * Translate character offset to (line, column) position - VSCode Parity
  * 
  * Used by Step 4 to convert character-level SequenceDiff offsets
  * back to (line, column) positions for RangeMapping.
  * 
+ * VSCode: LinesSliceCharSequence.translateOffset()
+ * 
  * @param seq CharSequence (cast from ISequence)
  * @param offset Character offset in the sequence
+ * @param preference How to handle trimmed whitespace at line start
  * @param out_line Output: 0-based line number
  * @param out_col Output: 0-based column number
  * 
  * REUSED BY: Step 4 (char_level.c) when building RangeMapping
  */
-void char_sequence_translate_offset(const CharSequence* seq, int offset, 
+void char_sequence_translate_offset(const CharSequence* seq, int offset,
+                                    OffsetPreference preference,
                                     int* out_line, int* out_col);
 
 /**
@@ -204,6 +220,27 @@ bool char_sequence_find_word_containing(const CharSequence* seq, int offset,
  */
 bool char_sequence_find_subword_containing(const CharSequence* seq, int offset,
                                           int* out_start, int* out_end);
+
+/**
+ * Translate character offset range to position range - VSCode Parity
+ * 
+ * Uses 'right' preference for start and 'left' preference for end,
+ * matching VSCode's translateRange() behavior. Handles collapsed ranges.
+ * 
+ * VSCode: LinesSliceCharSequence.translateRange()
+ * 
+ * @param seq CharSequence
+ * @param start_offset Start of range (inclusive)
+ * @param end_offset End of range (exclusive)
+ * @param out_start_line Output: Start line (0-based)
+ * @param out_start_col Output: Start column (0-based)
+ * @param out_end_line Output: End line (0-based)
+ * @param out_end_col Output: End column (0-based)
+ */
+void char_sequence_translate_range(const CharSequence* seq,
+                                   int start_offset, int end_offset,
+                                   int* out_start_line, int* out_start_col,
+                                   int* out_end_line, int* out_end_col);
 
 /**
  * Count number of lines in character range - VSCode Parity

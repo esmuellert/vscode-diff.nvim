@@ -188,7 +188,8 @@ void test_column_translation_with_trimmed_whitespace() {
     int line, col;
     
     // Test Line 0: offset 0 should translate to (0, 4) - start of "hello" after 4 leading spaces
-    char_sequence_translate_offset(char_seq, 0, &line, &col);
+    // Using RIGHT preference (default): should add trimmed whitespace even at line start
+    char_sequence_translate_offset(char_seq, 0, OFFSET_PREFERENCE_RIGHT, &line, &col);
     printf("\n  Offset 0 (first char 'h' in trimmed) -> Line %d, Col %d\n", line, col);
     printf("    Expected: Line 0, Col 4 (after 4 leading spaces in original)\n");
     assert(line == 0);
@@ -196,7 +197,7 @@ void test_column_translation_with_trimmed_whitespace() {
     printf("  ✓ Correct\n");
     
     // Test Line 0: offset 5 should translate to (0, 9) - 'space' between hello and world
-    char_sequence_translate_offset(char_seq, 5, &line, &col);
+    char_sequence_translate_offset(char_seq, 5, OFFSET_PREFERENCE_RIGHT, &line, &col);
     printf("\n  Offset 5 (space in 'hello world') -> Line %d, Col %d\n", line, col);
     printf("    Expected: Line 0, Col 9\n");
     assert(line == 0);
@@ -204,7 +205,7 @@ void test_column_translation_with_trimmed_whitespace() {
     printf("  ✓ Correct\n");
     
     // Test Line 1: offset 12 should translate to (1, 2) - start of "foo" after 2 leading spaces
-    char_sequence_translate_offset(char_seq, 12, &line, &col);
+    char_sequence_translate_offset(char_seq, 12, OFFSET_PREFERENCE_RIGHT, &line, &col);
     printf("\n  Offset 12 (first char 'f' in 'foo bar') -> Line %d, Col %d\n", line, col);
     printf("    Expected: Line 1, Col 2 (after 2 leading spaces in original)\n");
     assert(line == 1);
@@ -212,7 +213,7 @@ void test_column_translation_with_trimmed_whitespace() {
     printf("  ✓ Correct\n");
     
     // Test Line 2: offset 20 should translate to (2, 0) - start of "no trim" with no leading space
-    char_sequence_translate_offset(char_seq, 20, &line, &col);
+    char_sequence_translate_offset(char_seq, 20, OFFSET_PREFERENCE_RIGHT, &line, &col);
     printf("\n  Offset 20 (first char 'n' in 'no trim') -> Line %d, Col %d\n", line, col);
     printf("    Expected: Line 2, Col 0 (no leading spaces)\n");
     assert(line == 2);
@@ -241,7 +242,7 @@ void test_column_translation_no_trimming() {
     int line, col;
     
     // Test offset 0 should translate to (0, 0) - first space character
-    char_sequence_translate_offset(char_seq, 0, &line, &col);
+    char_sequence_translate_offset(char_seq, 0, OFFSET_PREFERENCE_RIGHT, &line, &col);
     printf("\n  Offset 0 (first space) -> Line %d, Col %d\n", line, col);
     printf("    Expected: Line 0, Col 0\n");
     assert(line == 0);
@@ -249,12 +250,150 @@ void test_column_translation_no_trimming() {
     printf("  ✓ Correct\n");
     
     // Test offset 4 should translate to (0, 4) - 'h' in hello
-    char_sequence_translate_offset(char_seq, 4, &line, &col);
+    char_sequence_translate_offset(char_seq, 4, OFFSET_PREFERENCE_RIGHT, &line, &col);
     printf("\n  Offset 4 ('h' in hello) -> Line %d, Col %d\n", line, col);
     printf("    Expected: Line 0, Col 4\n");
     assert(line == 0);
     assert(col == 4);
     printf("  ✓ Correct\n");
+    
+    seq->destroy(seq);
+    printf("\n✓ PASSED\n");
+}
+
+void test_translate_offset_left_right_preference() {
+    printf("\n=== Test: translateOffset Left/Right Preference (VSCode Parity) ===\n");
+    
+    // Test case: Line with 4 spaces of leading whitespace
+    // Original: "    code here"
+    // Trimmed:  "code here"
+    const char* lines[] = {
+        "    code here"
+    };
+    
+    // Create char sequence with whitespace trimming
+    ISequence* seq = char_sequence_create(lines, 0, 1, false);
+    CharSequence* char_seq = (CharSequence*)seq->data;
+    
+    printf("  Original line: \"%s\"\n", lines[0]);
+    printf("  Trimmed whitespace: %d spaces\n", char_seq->trimmed_ws_lengths[0]);
+    printf("  Sequence length: %d chars\n", char_seq->length);
+    
+    // Offset 0 is the start of "code" in the trimmed sequence
+    int offset = 0;
+    int line_left, col_left, line_right, col_right;
+    
+    // Test with LEFT preference (should NOT add trimmed whitespace at line start)
+    char_sequence_translate_offset(char_seq, offset, OFFSET_PREFERENCE_LEFT, &line_left, &col_left);
+    
+    // Test with RIGHT preference (should ALWAYS add trimmed whitespace)
+    char_sequence_translate_offset(char_seq, offset, OFFSET_PREFERENCE_RIGHT, &line_right, &col_right);
+    
+    printf("\n  Offset %d (at line start) translation:\n", offset);
+    printf("    LEFT preference:  line=%d, col=%d (0-based) => col=%d (1-based)\n", 
+           line_left, col_left, col_left + 1);
+    printf("    RIGHT preference: line=%d, col=%d (0-based) => col=%d (1-based)\n", 
+           line_right, col_right, col_right + 1);
+    
+    // Verify VSCode parity
+    // VSCode with 'left': column = 1 + 0 + 0 + 0 = 1 (1-based) => 0 (0-based)
+    // VSCode with 'right': column = 1 + 0 + 0 + 4 = 5 (1-based) => 4 (0-based)
+    assert(col_left == 0);
+    assert(col_right == 4);
+    printf("    ✓ PASSED: Left returns col 0, Right returns col 4\n");
+    
+    // Test non-zero offset (should always add trimmed whitespace regardless of preference)
+    int offset2 = 4; // Middle of "code"
+    char_sequence_translate_offset(char_seq, offset2, OFFSET_PREFERENCE_LEFT, &line_left, &col_left);
+    char_sequence_translate_offset(char_seq, offset2, OFFSET_PREFERENCE_RIGHT, &line_right, &col_right);
+    
+    printf("\n  Offset %d (not at line start) translation:\n", offset2);
+    printf("    LEFT preference:  col=%d (0-based)\n", col_left);
+    printf("    RIGHT preference: col=%d (0-based)\n", col_right);
+    
+    // Both should be 8 (4 spaces + 4 chars into "code")
+    assert(col_left == 8);
+    assert(col_right == 8);
+    printf("    ✓ PASSED: Both preferences add trimmed whitespace when lineOffset > 0\n");
+    
+    seq->destroy(seq);
+    printf("\n✓ PASSED\n");
+}
+
+void test_translate_range_preferences() {
+    printf("\n=== Test: translateRange (uses RIGHT for start, LEFT for end) ===\n");
+    
+    const char* lines[] = {
+        "    line one",
+        "    line two"
+    };
+    
+    ISequence* seq = char_sequence_create(lines, 0, 2, false);
+    CharSequence* char_seq = (CharSequence*)seq->data;
+    
+    printf("  Line 0: \"%s\" (trimmed_ws=%d)\n", lines[0], char_seq->trimmed_ws_lengths[0]);
+    printf("  Line 1: \"%s\" (trimmed_ws=%d)\n", lines[1], char_seq->trimmed_ws_lengths[1]);
+    printf("  Sequence length: %d\n", char_seq->length);
+    
+    // Create a range from start of line 0 to start of line 1
+    int start_offset = 0; // Start of "line one"
+    int end_offset = char_seq->line_start_offsets[1]; // Start of "line two"
+    
+    printf("\n  Range: offset %d to %d\n", start_offset, end_offset);
+    
+    int start_line, start_col, end_line, end_col;
+    char_sequence_translate_range(char_seq, start_offset, end_offset,
+                                  &start_line, &start_col, &end_line, &end_col);
+    
+    printf("  Translated range:\n");
+    printf("    Start: line=%d, col=%d (0-based) => col=%d (1-based)\n", 
+           start_line, start_col, start_col + 1);
+    printf("    End:   line=%d, col=%d (0-based) => col=%d (1-based)\n", 
+           end_line, end_col, end_col + 1);
+    
+    // VSCode translateRange uses:
+    // - 'right' for start: should add trimmed ws => col = 4 (0-based)
+    // - 'left' for end at line start: should NOT add trimmed ws => col = 0 (0-based)
+    assert(start_col == 4); // RIGHT preference
+    assert(end_col == 0);   // LEFT preference at line start
+    printf("    ✓ PASSED: Start uses RIGHT (col=4), End uses LEFT (col=0)\n");
+    
+    seq->destroy(seq);
+    printf("\n✓ PASSED\n");
+}
+
+void test_translate_range_collapsed() {
+    printf("\n=== Test: translateRange Collapsed Range Handling ===\n");
+    
+    const char* lines[] = {
+        "    test"
+    };
+    
+    ISequence* seq = char_sequence_create(lines, 0, 1, false);
+    CharSequence* char_seq = (CharSequence*)seq->data;
+    
+    // Create a zero-length range (start == end)
+    int start_offset = 0;
+    int end_offset = 0;
+    
+    printf("  Testing collapsed range: offset %d to %d\n", start_offset, end_offset);
+    
+    int start_line, start_col, end_line, end_col;
+    char_sequence_translate_range(char_seq, start_offset, end_offset,
+                                  &start_line, &start_col, &end_line, &end_col);
+    
+    printf("  Result:\n");
+    printf("    Start: line=%d, col=%d\n", start_line, start_col);
+    printf("    End:   line=%d, col=%d\n", end_line, end_col);
+    
+    // VSCode: if (pos2.isBefore(pos1)) return Range.fromPositions(pos2, pos2)
+    // With LEFT preference at offset 0, end_col = 0
+    // With RIGHT preference at offset 0, start_col = 4
+    // Since end < start, should collapse to end position
+    assert(start_line == end_line);
+    assert(start_col == end_col);
+    assert(end_col == 0); // Should collapse to LEFT preference (end position)
+    printf("    ✓ PASSED: Collapsed to end position (LEFT preference)\n");
     
     seq->destroy(seq);
     printf("\n✓ PASSED\n");
@@ -275,7 +414,7 @@ void test_column_translation_edge_cases() {
     int line, col;
     
     // Test translation in line with only whitespace (trimmed to empty)
-    char_sequence_translate_offset(char_seq, 0, &line, &col);
+    char_sequence_translate_offset(char_seq, 0, OFFSET_PREFERENCE_RIGHT, &line, &col);
     printf("  Offset 0 in trimmed sequence -> Line %d, Col %d\n", line, col);
     // Should map to line 1 (the "x" line) since line 0 is empty after trimming
     printf("  (Line with single 'x' char)\n");
@@ -301,6 +440,16 @@ int main() {
     test_column_translation_with_trimmed_whitespace();
     test_column_translation_no_trimming();
     test_column_translation_edge_cases();
+    
+    printf("\n========================================\n");
+    printf("Translate Preference Tests (Parity Fix)\n");
+    printf("VSCode Parity: translateOffset() left/right preference\n");
+    printf("VSCode Parity: translateRange() preference handling\n");
+    printf("========================================\n");
+    
+    test_translate_offset_left_right_preference();
+    test_translate_range_preferences();
+    test_translate_range_collapsed();
     
     printf("\n========================================\n");
     printf("All infrastructure tests passed! ✓\n");

@@ -15,7 +15,7 @@
    
    **Required approach**: Use native `create` or `str_replace` tools instead.
 
-3. **Experimental and Demonstration Scripts**: When running experiments, demonstrations, or temporary operations that require script files, create the script files explicitly in temporary directories (`/tmp` on Linux/macOS, `%TEMP%` on Windows) using native file creation tools first, then execute them. Do not use inline heredocs or shell redirection.
+3. **Experimental and Demonstration Scripts**: When running experiments, demonstrations, or temporary operations that require script files, create the script files explicitly in temporary directories (`/tmp` on Linux/macOS, `%TEMP%` on Windows) using native file creation tools first, then execute them. Do not use inline heredocs or shell redirection. Do not place code that should have commited and checked-in in `/tmp` folder
 
    **Example workflow**:
    - Step 1: Use `create` tool to make `/tmp/experiment.sh`

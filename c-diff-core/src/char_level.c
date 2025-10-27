@@ -604,10 +604,11 @@ static RangeMapping translate_diff_to_range(
     int line1_start, col1_start, line1_end, col1_end;
     int line2_start, col2_start, line2_end, col2_end;
     
-    char_sequence_translate_offset(seq1, diff->seq1_start, &line1_start, &col1_start);
-    char_sequence_translate_offset(seq1, diff->seq1_end, &line1_end, &col1_end);
-    char_sequence_translate_offset(seq2, diff->seq2_start, &line2_start, &col2_start);
-    char_sequence_translate_offset(seq2, diff->seq2_end, &line2_end, &col2_end);
+    // VSCode: translateRange() uses 'right' for start, 'left' for end
+    char_sequence_translate_range(seq1, diff->seq1_start, diff->seq1_end,
+                                  &line1_start, &col1_start, &line1_end, &col1_end);
+    char_sequence_translate_range(seq2, diff->seq2_start, diff->seq2_end,
+                                  &line2_start, &col2_start, &line2_end, &col2_end);
     
     // Convert to 1-based and add base line offset
     mapping.original.start_line = base_line1 + line1_start + 1;

@@ -448,18 +448,18 @@ ISequence* char_sequence_create(const char** lines, int start_line, int end_line
 }
 
 /**
- * Translate character offset to (line, column) position
+ * Translate character offset to (line, column) position - VSCode Parity
  * 
  * Binary search through line_start_offsets to find which line,
  * then calculate column within that line, accounting for trimmed whitespace.
  * 
- * VSCode Parity: Matches LinesSliceCharSequence.translateOffset()
- * When whitespace is trimmed, we must add back the trimmed leading whitespace
- * to get the correct column in the original line.
+ * VSCode: LinesSliceCharSequence.translateOffset()
+ * Key logic: ((lineOffset === 0 && preference === 'left') ? 0 : this.trimmedWsLengthsByLineIdx[i])
  * 
  * REUSED BY: Step 4 when converting character SequenceDiff to RangeMapping
  */
-void char_sequence_translate_offset(const CharSequence* seq, int offset, 
+void char_sequence_translate_offset(const CharSequence* seq, int offset,
+                                    OffsetPreference preference,
                                     int* out_line, int* out_col) {
     if (!seq || offset < 0) {
         *out_line = 0;
@@ -468,7 +468,7 @@ void char_sequence_translate_offset(const CharSequence* seq, int offset,
     }
     
     // Binary search for line containing this offset
-    // Find the largest i such that line_start_offsets[i] <= offset
+    // VSCode: findLastIdxMonotonous(this.firstElementOffsetByLineIdx, (value) => value <= offset)
     int left = 0;
     int right = seq->line_count;
     
@@ -488,18 +488,53 @@ void char_sequence_translate_offset(const CharSequence* seq, int offset,
     *out_line = line_idx;
     
     // Calculate column offset within the line
+    // VSCode: const lineOffset = offset - this.firstElementOffsetByLineIdx[i];
     int line_offset = offset - seq->line_start_offsets[line_idx];
     
-    // VSCode: translateOffset adds trimmedWsLengthsByLineIdx when lineOffset > 0
-    // This restores the trimmed leading whitespace to get the correct column
-    // in the original line.
-    // 
-    // For lineOffset == 0, we check preference (but we always use 'right' preference here,
-    // so we add the trimmed length even at offset 0)
+    // VSCode: 1 + this.lineStartOffsets[i] + lineOffset + 
+    //         ((lineOffset === 0 && preference === 'left') ? 0 : this.trimmedWsLengthsByLineIdx[i])
+    // Note: VSCode returns 1-based, we return 0-based, so we omit the "+ 1"
     int trimmed_ws = seq->trimmed_ws_lengths ? seq->trimmed_ws_lengths[line_idx] : 0;
     int original_line_start = seq->original_line_start_cols ? seq->original_line_start_cols[line_idx] : 0;
     
-    *out_col = original_line_start + line_offset + trimmed_ws;
+    // Key parity fix: only add trimmed whitespace if NOT (at line start AND left preference)
+    int add_trimmed_ws = (line_offset == 0 && preference == OFFSET_PREFERENCE_LEFT) ? 0 : trimmed_ws;
+    
+    *out_col = original_line_start + line_offset + add_trimmed_ws;
+}
+
+/**
+ * Translate character offset range to position range - VSCode Parity
+ * 
+ * VSCode: LinesSliceCharSequence.translateRange()
+ * Logic:
+ *   const pos1 = this.translateOffset(range.start, 'right');
+ *   const pos2 = this.translateOffset(range.endExclusive, 'left');
+ *   if (pos2.isBefore(pos1)) return Range.fromPositions(pos2, pos2);
+ *   return Range.fromPositions(pos1, pos2);
+ * 
+ * REUSED BY: Step 4 (char_level.c) when converting SequenceDiff to RangeMapping
+ */
+void char_sequence_translate_range(const CharSequence* seq,
+                                   int start_offset, int end_offset,
+                                   int* out_start_line, int* out_start_col,
+                                   int* out_end_line, int* out_end_col) {
+    // VSCode: const pos1 = this.translateOffset(range.start, 'right');
+    char_sequence_translate_offset(seq, start_offset, OFFSET_PREFERENCE_RIGHT,
+                                   out_start_line, out_start_col);
+    
+    // VSCode: const pos2 = this.translateOffset(range.endExclusive, 'left');
+    char_sequence_translate_offset(seq, end_offset, OFFSET_PREFERENCE_LEFT,
+                                   out_end_line, out_end_col);
+    
+    // VSCode: if (pos2.isBefore(pos1)) return Range.fromPositions(pos2, pos2);
+    // Check if end position is before start position
+    if (*out_end_line < *out_start_line ||
+        (*out_end_line == *out_start_line && *out_end_col < *out_start_col)) {
+        // Collapse to end position
+        *out_start_line = *out_end_line;
+        *out_start_col = *out_end_col;
+    }
 }
 
 // =============================================================================
@@ -588,6 +623,10 @@ bool char_sequence_find_subword_containing(const CharSequence* seq, int offset,
 
 /**
  * Count lines in character range - VSCode Parity
+ * 
+ * VSCode: LinesSliceCharSequence.countLinesIn()
+ * Logic: this.translateOffset(range.endExclusive).lineNumber - this.translateOffset(range.start).lineNumber
+ * Note: VSCode uses default preference ('right') for both positions
  */
 int char_sequence_count_lines_in(const CharSequence* seq, int start_offset, int end_offset) {
     if (!seq || start_offset < 0 || end_offset > seq->length || start_offset >= end_offset) {
@@ -595,8 +634,9 @@ int char_sequence_count_lines_in(const CharSequence* seq, int start_offset, int 
     }
     
     int start_line, start_col, end_line, end_col;
-    char_sequence_translate_offset(seq, start_offset, &start_line, &start_col);
-    char_sequence_translate_offset(seq, end_offset, &end_line, &end_col);
+    // VSCode: uses default 'right' preference for both
+    char_sequence_translate_offset(seq, start_offset, OFFSET_PREFERENCE_RIGHT, &start_line, &start_col);
+    char_sequence_translate_offset(seq, end_offset, OFFSET_PREFERENCE_RIGHT, &end_line, &end_col);
     
     return end_line - start_line;
 }
@@ -623,6 +663,13 @@ char* char_sequence_get_text(const CharSequence* seq, int start_offset, int end_
 
 /**
  * Extend range to full lines - VSCode Parity
+ * 
+ * VSCode: LinesSliceCharSequence.extendToFullLines()
+ * Logic:
+ *   const start = findLastMonotonous(this.firstElementOffsetByLineIdx, x => x <= range.start) ?? 0;
+ *   const end = findFirstMonotonous(this.firstElementOffsetByLineIdx, x => range.endExclusive <= x) ?? this.elements.length;
+ * 
+ * Note: VSCode does NOT use translateOffset! It directly searches line_start_offsets array.
  */
 void char_sequence_extend_to_full_lines(const CharSequence* seq, 
                                        int start_offset, int end_offset,
@@ -633,19 +680,24 @@ void char_sequence_extend_to_full_lines(const CharSequence* seq,
         return;
     }
     
-    int start_line, start_col, end_line, end_col;
-    char_sequence_translate_offset(seq, start_offset, &start_line, &start_col);
-    char_sequence_translate_offset(seq, end_offset, &end_line, &end_col);
+    // VSCode: findLastMonotonous(firstElementOffsetByLineIdx, x => x <= range.start) ?? 0
+    // Find the last line start offset that is <= start_offset
+    int extended_start = 0;
+    for (int i = seq->line_count - 1; i >= 0; i--) {
+        if (seq->line_start_offsets[i] <= start_offset) {
+            extended_start = seq->line_start_offsets[i];
+            break;
+        }
+    }
     
-    // Extend to start of start_line
-    int extended_start = seq->line_start_offsets[start_line];
-    
-    // Extend to start of next line after end_line (or end of sequence)
-    int extended_end;
-    if (end_line + 1 < seq->line_count) {
-        extended_end = seq->line_start_offsets[end_line + 1];
-    } else {
-        extended_end = seq->length;
+    // VSCode: findFirstMonotonous(firstElementOffsetByLineIdx, x => range.endExclusive <= x) ?? elements.length
+    // Find the first line start offset that is >= end_offset (or use seq->length)
+    int extended_end = seq->length;
+    for (int i = 0; i < seq->line_count; i++) {
+        if (end_offset <= seq->line_start_offsets[i]) {
+            extended_end = seq->line_start_offsets[i];
+            break;
+        }
     }
     
     *out_start = extended_start;
