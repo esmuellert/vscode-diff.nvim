@@ -46,6 +46,8 @@ static inline char* diff_strdup(const char* s) {
     #define diff_fileno _fileno
 #else
     // POSIX platforms (Linux, macOS, BSD, etc.)
+    // Note: fileno() requires _POSIX_C_SOURCE, defined in Makefile
+    #include <stdio.h>
     #include <unistd.h>
     #define diff_isatty isatty
     #define diff_fileno fileno

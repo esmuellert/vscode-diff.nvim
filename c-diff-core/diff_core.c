@@ -49,8 +49,10 @@ const char* get_version(void) {
  * Output:
  *   - RenderPlan with both sides showing original content (no processing)
  */
-RenderPlan* compute_diff(const char** lines_a, int count_a,
-                         const char** lines_b, int count_b) {
+RenderPlan* compute_diff(const char** lines_a __attribute__((unused)),
+                         int count_a,
+                         const char** lines_b __attribute__((unused)),
+                         int count_b) {
     RenderPlan* plan = malloc(sizeof(RenderPlan));
     if (!plan) return NULL;
     

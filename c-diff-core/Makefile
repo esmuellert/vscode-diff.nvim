@@ -15,8 +15,8 @@
 #   make test-dp         - Test DP algorithm selection
 #
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c11 -O2 -g -Iinclude
-CFLAGS_SHARED = -Wall -Wextra -std=c11 -O2 -g -Iinclude -fPIC
+CFLAGS = -Wall -Wextra -std=c11 -O2 -g -Iinclude -D_POSIX_C_SOURCE=200809L
+CFLAGS_SHARED = -Wall -Wextra -std=c11 -O2 -g -Iinclude -fPIC -D_POSIX_C_SOURCE=200809L
 LDFLAGS = 
 LDFLAGS_SHARED = -shared
 
