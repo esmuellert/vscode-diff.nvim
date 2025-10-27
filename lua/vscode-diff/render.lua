@@ -125,8 +125,8 @@ function M.render_diff(lines_a, lines_b, render_plan)
   M.add_filler_lines(buf_left, render_plan.left)
   M.add_filler_lines(buf_right, render_plan.right)
   
-  -- Create side-by-side windows
-  vim.cmd("new")
+  -- Create side-by-side windows in a new tab
+  vim.cmd("tabnew")
   local win_left = vim.api.nvim_get_current_win()
   vim.api.nvim_win_set_buf(win_left, buf_left)
   
