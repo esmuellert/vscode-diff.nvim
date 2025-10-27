@@ -1,54 +1,12 @@
 // Test render plan generation
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <assert.h>
 
-#include "diff_api.h"
-#include "default_lines_diff_computer.h"
-#include "render_plan.h"
-
-// Helper to print render plan
-void print_render_plan(RenderPlan* plan) {
-    printf("=== LEFT (Original) ===\n");
-    for (int i = 0; i < plan->left.line_count; i++) {
-        LineMetadata* meta = &plan->left.line_metadata[i];
-        printf("Line %d: ", meta->line_num);
-        
-        if (meta->type == HL_LINE_DELETE) {
-            printf("DELETE");
-        } else if (meta->type == HL_LINE_INSERT) {
-            printf("INSERT");
-        } else {
-            printf("UNCHANGED");
-        }
-        
-        if (meta->char_highlight_count > 0) {
-            printf(" [%d char highlights]", meta->char_highlight_count);
-        }
-        printf("\n");
-    }
-    
-    printf("\n=== RIGHT (Modified) ===\n");
-    for (int i = 0; i < plan->right.line_count; i++) {
-        LineMetadata* meta = &plan->right.line_metadata[i];
-        printf("Line %d: ", meta->line_num);
-        
-        if (meta->type == HL_LINE_DELETE) {
-            printf("DELETE");
-        } else if (meta->type == HL_LINE_INSERT) {
-            printf("INSERT");
-        } else {
-            printf("UNCHANGED");
-        }
-        
-        if (meta->char_highlight_count > 0) {
-            printf(" [%d char highlights]", meta->char_highlight_count);
-        }
-        printf("\n");
-    }
-}
+#include "../include/diff_api.h"
+#include "../include/render_plan.h"
+#include "../include/print_utils.h"
 
 // Test 1: Simple single line change
 void test_simple_change() {
@@ -90,7 +48,7 @@ void test_simple_change() {
     // Lines 2-3 should be unchanged
     // (Note: unchanged lines still have a type, but no char highlights)
     
-    print_render_plan(plan);
+    diff_core_print_render_plan(plan);
     
     free_render_plan(plan);
     printf("✓ Test 1 passed\n");
@@ -129,7 +87,7 @@ void test_addition_deletion() {
     assert(plan->left.line_count == 3);
     assert(plan->right.line_count == 3);
     
-    print_render_plan(plan);
+    diff_core_print_render_plan(plan);
     
     free_render_plan(plan);
     printf("✓ Test 2 passed\n");
@@ -157,7 +115,7 @@ void test_empty() {
     
     assert(plan != NULL);
     
-    print_render_plan(plan);
+    diff_core_print_render_plan(plan);
     
     free_render_plan(plan);
     printf("✓ Test 3 passed\n");
