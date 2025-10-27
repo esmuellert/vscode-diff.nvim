@@ -7,23 +7,18 @@
 // VSCode Reference:
 //   src/vs/editor/common/diff/defaultLinesDiffComputer/defaultLinesDiffComputer.ts
 //
-// VSCode Parity: 100% (excluding computeMoves and DynamicProgramming)
+// VSCode Parity: 100% (excluding computeMoves)
 //
 // ============================================================================
 
 #include "include/types.h"
-#include "include/platform.h"
-#include "include/sequence.h"
-#include "include/myers.h"
-#include "include/optimize.h"
+#include "include/line_level.h"
 #include "include/char_level.h"
 #include "include/range_mapping.h"
-#include "include/string_hash_map.h"
 #include "include/utils.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#include <math.h>
 
 // ============================================================================
 // Forward Declarations
@@ -182,7 +177,7 @@ static bool arrays_equal(const char** a, int a_len, const char** b, int b_len) {
  * @return Array of RangeMappings (character-level changes)
  * 
  * VSCode Reference: defaultLinesDiffComputer.ts refineDiff() lines 220-259
- * VSCode Parity: 100% (excluding DP algorithm fallback)
+ * VSCode Parity: 100%
  */
 static RangeMappingArray* refine_diff(
     const SequenceDiff* diff,
@@ -332,10 +327,9 @@ static void scan_for_whitespace_changes(
  * @return LinesDiff structure containing changes and metadata
  * 
  * VSCode Reference: defaultLinesDiffComputer.ts computeDiff() lines 31-174
- * VSCode Parity: 100% (excluding computeMoves and DynamicProgramming)
+ * VSCode Parity: 100% (excluding computeMoves)
  * 
  * Notable differences from VSCode:
- * - No DynamicProgramming fallback (always use Myers)
  * - No computeMoves implementation (Neovim UI limitation)
  * - No assertion validation (can be added later if needed)
  */
@@ -366,86 +360,29 @@ LinesDiff* compute_diff(
     
     bool consider_whitespace_changes = !options->ignore_trim_whitespace;
     
-    // Setup perfect hash map
-    StringHashMap* hash_map = string_hash_map_create();
-    if (!hash_map) return NULL;
-    
-    // Hash all lines (trimmed)
-    int* original_hashes = (int*)malloc(original_count * sizeof(int));
-    int* modified_hashes = (int*)malloc(modified_count * sizeof(int));
-    
-    if (!original_hashes || !modified_hashes) {
-        free(original_hashes);
-        free(modified_hashes);
-        string_hash_map_destroy(hash_map);
-        return NULL;
-    }
-    
-    for (int i = 0; i < original_count; i++) {
-        char* trimmed = trim_string(original_lines[i]);
-        original_hashes[i] = string_hash_map_get_or_create(hash_map, trimmed);
-        free(trimmed);
-    }
-    
-    for (int i = 0; i < modified_count; i++) {
-        char* trimmed = trim_string(modified_lines[i]);
-        modified_hashes[i] = string_hash_map_get_or_create(hash_map, trimmed);
-        free(trimmed);
-    }
-    
-    // Create line sequences
-    ISequence* seq1 = line_sequence_create(
-        original_lines, original_count,
-        !consider_whitespace_changes,  // ignore_whitespace
-        hash_map
-    );
-    ISequence* seq2 = line_sequence_create(
-        modified_lines, modified_count,
-        !consider_whitespace_changes,  // ignore_whitespace
-        hash_map
-    );
-    
-    if (!seq1 || !seq2) {
-        // Sequences are freed by line_sequence itself on failure
-        free(original_hashes);
-        free(modified_hashes);
-        string_hash_map_destroy(hash_map);
-        return NULL;
-    }
-    
-    // Line-level diff (Myers only, no DP for now)
-    // VSCode: if (sequence1.length + sequence2.length < 1700) use DP
-    // We skip DP and always use Myers
+    // Line-level diff
+    // Use our compute_line_alignments which internally selects DP (<1700 lines) or Myers
+    // VSCode Reference: defaultLinesDiffComputer.ts lines 66-77
     bool line_hit_timeout = false;
-    SequenceDiffArray* line_alignments = myers_nd_diff_algorithm(
-        seq1, seq2,
+    SequenceDiffArray* line_alignments = compute_line_alignments(
+        original_lines, original_count,
+        modified_lines, modified_count,
         timeout.timeout_ms,
         &line_hit_timeout
     );
     bool hit_timeout = line_hit_timeout;
     
     if (!line_alignments) {
-        if (seq1 && seq1->destroy) seq1->destroy(seq1);
-        if (seq2 && seq2->destroy) seq2->destroy(seq2);
-        free(original_hashes);
-        free(modified_hashes);
-        string_hash_map_destroy(hash_map);
         return NULL;
     }
     
-    // Optimize line diffs
-    line_alignments = optimize_sequence_diffs(seq1, seq2, line_alignments);
-    line_alignments = remove_very_short_matching_lines_between_diffs(seq1, seq2, line_alignments);
+    // Optimize line diffs (already done inside compute_line_diff)
+    // No need to call optimize_sequence_diffs or remove_very_short_matching_lines_between_diffs
     
     // Initialize character mappings array
     RangeMappingArray* alignments = (RangeMappingArray*)malloc(sizeof(RangeMappingArray));
     if (!alignments) {
         sequence_diff_array_free(line_alignments);
-        if (seq1 && seq1->destroy) seq1->destroy(seq1);
-        if (seq2 && seq2->destroy) seq2->destroy(seq2);
-        free(original_hashes);
-        free(modified_hashes);
-        string_hash_map_destroy(hash_map);
         return NULL;
     }
     alignments->mappings = NULL;
@@ -562,11 +499,6 @@ LinesDiff* compute_diff(
         free_detailed_line_range_mapping_array(changes);
         range_mapping_array_free(alignments);
         sequence_diff_array_free(line_alignments);
-        if (seq1 && seq1->destroy) seq1->destroy(seq1);
-        if (seq2 && seq2->destroy) seq2->destroy(seq2);
-        free(original_hashes);
-        free(modified_hashes);
-        string_hash_map_destroy(hash_map);
         return NULL;
     }
     
@@ -590,11 +522,6 @@ LinesDiff* compute_diff(
     // Cleanup
     range_mapping_array_free(alignments);
     sequence_diff_array_free(line_alignments);
-    if (seq1 && seq1->destroy) seq1->destroy(seq1);
-    if (seq2 && seq2->destroy) seq2->destroy(seq2);
-    free(original_hashes);
-    free(modified_hashes);
-    string_hash_map_destroy(hash_map);
     
     return result;
 }
