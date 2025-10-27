@@ -53,12 +53,14 @@ OPTIMIZE_SRC = $(SRC_DIR)/optimize.c
 LINE_LEVEL_SRC = $(SRC_DIR)/line_level.c
 CHAR_LEVEL_SRC = $(SRC_DIR)/char_level.c
 RANGE_MAPPING_SRC = $(SRC_DIR)/range_mapping.c
+RENDER_PLAN_SRC = $(SRC_DIR)/render_plan.c
+DIFF_API_SRC = $(SRC_DIR)/diff_api.c
 DEFAULT_LINES_DIFF_COMPUTER_SRC = default_lines_diff_computer.c
 
 # All source files for shared library
-ALL_SRCS = $(DEFAULT_LINES_DIFF_COMPUTER_SRC) $(CHAR_LEVEL_SRC) $(LINE_LEVEL_SRC) $(MYERS_SRC) \
-           $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(RANGE_MAPPING_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) \
-           $(PRINT_UTILS_SRC)
+ALL_SRCS = $(DIFF_API_SRC) $(RENDER_PLAN_SRC) $(DEFAULT_LINES_DIFF_COMPUTER_SRC) $(CHAR_LEVEL_SRC) \
+           $(LINE_LEVEL_SRC) $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(RANGE_MAPPING_SRC) \
+           $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC)
 
 # Shared library output
 SHARED_LIB = libdiff_core.so
@@ -191,3 +193,11 @@ test-compute-diff: $(BUILD_DIR)
 	@echo "Running compute_diff() tests..."
 	@echo ""
 	@$(BUILD_DIR)/test_compute_diff
+
+# Build and run render plan tests
+test-render-plan: $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_render_plan.c $(ALL_SRCS) -o $(BUILD_DIR)/test_render_plan -lm
+	@echo ""
+	@echo "Running render plan generation tests..."
+	@echo ""
+	@$(BUILD_DIR)/test_render_plan

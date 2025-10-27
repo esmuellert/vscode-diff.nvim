@@ -461,7 +461,7 @@ ISequence* char_sequence_create(const char** lines, int start_line, int end_line
 void char_sequence_translate_offset(const CharSequence* seq, int offset,
                                     OffsetPreference preference,
                                     int* out_line, int* out_col) {
-    if (!seq || offset < 0) {
+    if (!seq || offset < 0 || seq->line_count == 0 || !seq->line_start_offsets) {
         *out_line = 0;
         *out_col = 0;
         return;
