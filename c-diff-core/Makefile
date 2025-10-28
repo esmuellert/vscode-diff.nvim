@@ -82,9 +82,10 @@ TEST_CHAR_LEVEL = $(BUILD_DIR)/test_char_level
 TEST_INTEGRATION = $(BUILD_DIR)/test_integration
 TEST_DP = $(BUILD_DIR)/test_dp_algorithm
 TEST_CHAR_BOUNDARY = $(BUILD_DIR)/test_char_boundary_categories
+DIFF_TOOL = $(BUILD_DIR)/diff
 
 .PHONY: all clean test test-myers test-sequence test-line-opt test-line-boundary \
-        test-char-level test-integration test-dp test-char-boundary lib install
+        test-char-level test-integration test-dp test-char-boundary lib install diff-tool
 
 # Default target: build and install for Lua integration
 all: install
@@ -175,6 +176,7 @@ test: test-myers test-sequence test-line-opt test-line-boundary test-char-level 
 clean:
 	rm -rf $(BUILD_DIR)
 	rm -f $(SHARED_LIB)
+	rm -f $(DIFF_TOOL)
 	rm -f libdiff_core.so libdiff_core.dylib libdiff_core.dll
 	rm -f ../libdiff_core.so ../libdiff_core.dylib ../libdiff_core.dll
 
@@ -201,3 +203,11 @@ test-render-plan: $(BUILD_DIR)
 	@echo "Running render plan generation tests..."
 	@echo ""
 	@$(BUILD_DIR)/test_render_plan
+
+# Build standalone diff tool executable
+diff-tool: $(BUILD_DIR)
+	$(CC) $(CFLAGS) diff_tool.c $(ALL_SRCS) -o $(DIFF_TOOL) -lm
+	@echo ""
+	@echo "✓ Built standalone diff tool: $(DIFF_TOOL)"
+	@echo "  Usage: $(DIFF_TOOL) <original_file> <modified_file>"
+	@echo ""
