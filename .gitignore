@@ -6,6 +6,9 @@
 test_diff_core
 **/build
 
+# Generated VSCode diff bundle (can be regenerated with ./build-vscode-diff.sh)
+vscode-diff.mjs
+
 # Neovim
 *.swp
 *.swo

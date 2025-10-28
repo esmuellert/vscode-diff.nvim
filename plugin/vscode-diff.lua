@@ -55,13 +55,13 @@ vim.api.nvim_create_user_command("VscodeDiff", function(opts)
           return
         end
         
-        -- Compute diff
-        local diff = require("vscode-diff")
-        local plan = diff.compute_diff(lines_git, lines_current)
+        -- Compute diff using new diff.lua
+        local diff = require("vscode-diff.diff")
+        local lines_diff = diff.compute_diff(lines_git, lines_current)
         
-        -- Render
+        -- Render using new render.lua
         local render = require("vscode-diff.render")
-        render.render_diff(lines_git, lines_current, plan)
+        render.create_diff_view(lines_git, lines_current, lines_diff)
       end)
     end)
     
@@ -81,12 +81,12 @@ vim.api.nvim_create_user_command("VscodeDiff", function(opts)
   local lines_a = vim.fn.readfile(file_a)
   local lines_b = vim.fn.readfile(file_b)
   
-  -- Compute diff
-  local diff = require("vscode-diff")
-  local plan = diff.compute_diff(lines_a, lines_b)
+  -- Compute diff using new diff.lua
+  local diff = require("vscode-diff.diff")
+  local lines_diff = diff.compute_diff(lines_a, lines_b)
   
-  -- Render
-  render.render_diff(lines_a, lines_b, plan)
+  -- Render using new render.lua
+  render.create_diff_view(lines_a, lines_b, lines_diff)
 end, {
   nargs = "*",
   complete = "file",
