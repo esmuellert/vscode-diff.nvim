@@ -270,6 +270,33 @@ void test_worst_case() {
     free(result);
 }
 
+void test_delete_and_add() {
+    printf("\n=== Test: Delete Line and Add New Line ===\n");
+    const char* original[] = {
+        "line 1",
+        "line 2 to delete",
+        "line 3"
+    };
+    
+    const char* modified[] = {
+        "line 1",
+        "line 3",
+        "line 4 added"
+    };
+    
+    SequenceDiffArray* result = myers_diff_lines(original, 3, modified, 3);
+    print_sequence_diff_array("Result", result);
+    
+    assert_diff_count(result, 2);
+    ASSERT_DIFF(result, 0, 1,2, 1,1);  // Delete "line 2 to delete"
+    ASSERT_DIFF(result, 1, 3,3, 2,3);  // Add "line 4 added"
+    
+    printf("✓ PASSED\n");
+    
+    free(result->diffs);
+    free(result);
+}
+
 int main() {
     printf("Running Myers Algorithm Tests\n");
     printf("==============================\n");
@@ -285,6 +312,7 @@ int main() {
     test_snake_following();
     test_large_file();
     test_worst_case();
+    test_delete_and_add();
     
     printf("\n==============================\n");
     printf("All tests passed! ✓\n");

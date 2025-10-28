@@ -755,6 +755,79 @@ TEST(line_opt_multiline_string) {
 }
 
 // ============================================================================
+// TEST 11: Delete and Add
+// ============================================================================
+
+TEST(line_opt_delete_and_add) {
+    printf("=== Test 11: Delete Line and Add New Line ===\n");
+    
+    // 1. SETUP
+    const char* original[] = {
+        "line 1",
+        "line 2 to delete",
+        "line 3"
+    };
+    
+    const char* modified[] = {
+        "line 1",
+        "line 3",
+        "line 4 added"
+    };
+    
+    // 2. AFTER STEP 1 (Myers)
+    SequenceDiffArray* after_step1 = create_diff_array(10);
+    add_diff(after_step1, 1, 2, 1, 1);  // Delete "line 2 to delete"
+    add_diff(after_step1, 3, 3, 2, 3);  // Add "line 4 added"
+    
+    StringHashMap* hash_map = string_hash_map_create();
+    ISequence* seq1 = line_sequence_create(original, 3, false, hash_map);
+    ISequence* seq2 = line_sequence_create(modified, 3, false, hash_map);
+    bool timeout = false;
+    SequenceDiffArray* myers = run_step1_myers(seq1, seq2, &timeout);
+    print_sequence_diff_array("After Step 1 (Myers)", myers);
+    printf("  Step 1 (Myers): ");
+    assert_diffs_equal(myers, after_step1);
+    printf("verified\n");
+    
+    // 3. AFTER STEP 2 (optimize)
+    SequenceDiffArray* after_step2 = create_diff_array(10);
+    add_diff(after_step2, 1, 2, 1, 1);
+    add_diff(after_step2, 3, 3, 2, 3);
+    
+    SequenceDiffArray* step2_actual = copy_diff_array(myers);
+    optimize_sequence_diffs(seq1, seq2, step2_actual);
+    print_sequence_diff_array("After Step 2 (optimize)", step2_actual);
+    printf("  Step 2 (optimize): ");
+    assert_diffs_equal(step2_actual, after_step2);
+    printf("verified\n");
+    
+    // 4. AFTER STEP 3 (removeVeryShort)
+    SequenceDiffArray* expected_final = create_diff_array(10);
+    add_diff(expected_final, 1, 2, 1, 1);
+    add_diff(expected_final, 3, 3, 2, 3);
+    
+    SequenceDiffArray* actual_final = copy_diff_array(step2_actual);
+    remove_very_short_matching_lines_between_diffs(seq1, seq2, actual_final);
+    print_sequence_diff_array("After Step 3 (removeVeryShort)", actual_final);
+    printf("  Step 3 (removeVeryShort): ");
+    assert_diffs_equal(actual_final, expected_final);
+    printf("verified\n");
+    
+    printf("  ✓ Line optimization pipeline complete\n");
+    
+    // 5. CLEANUP
+    seq1->destroy(seq1);
+    seq2->destroy(seq2);
+    string_hash_map_destroy(hash_map);
+    free_diff_array(myers);
+    free_diff_array(after_step1);
+    free_diff_array(step2_actual);
+    free_diff_array(after_step2);
+    free_diff_array(actual_final);
+    free_diff_array(expected_final);
+}
+
+// ============================================================================
 // Main Test Runner
 // ============================================================================
 
@@ -775,6 +848,7 @@ int main(void) {
     RUN_TEST(line_opt_scattered_edits);
     RUN_TEST(line_opt_mixed_changes);
     RUN_TEST(line_opt_multiline_string);
+    RUN_TEST(line_opt_delete_and_add);
     
     printf("\n");
     printf("=======================================================\n");

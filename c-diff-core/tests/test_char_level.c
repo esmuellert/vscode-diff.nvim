@@ -528,6 +528,76 @@ TEST(cross_line_range_mapping) {
     
 }
 
+/**
+ * Test 12: Delete and add lines
+ * 
+ * Input:
+ *   Line A1: "line 1"
+ *   Line A2: "line 2 to delete"
+ *   Line A3: "line 3"
+ *   Line B1: "line 1"
+ *   Line B2: "line 3"
+ *   Line B3: "line 4 added"
+ * 
+ * Expected: Character mappings for deleted and added content
+ */
+TEST(delete_and_add) {
+    const char* original[] = {
+        "line 1",
+        "line 2 to delete",
+        "line 3"
+    };
+    
+    const char* modified[] = {
+        "line 1",
+        "line 3",
+        "line 4 added"
+    };
+    
+    // Line diff for deletion
+    SequenceDiff line_diff1 = {1, 2, 1, 1};
+    
+    CharLevelOptions opts = {
+        .consider_whitespace_changes = true,
+        .extend_to_subwords = false
+    };
+    
+    RangeMappingArray* result1 = refine_diff_char_level(&line_diff1, original, 3, modified, 3, &opts, NULL);
+    
+    ASSERT(result1 != NULL, "Result for deletion should not be NULL");
+    
+    printf("  Got %d char mappings for deletion\n", result1->count);
+    for (int i = 0; i < result1->count; i++) {
+        RangeMapping* m = &result1->mappings[i];
+        printf("    [%d] L%d:C%d-L%d:C%d -> L%d:C%d-L%d:C%d\n", i,
+               m->original.start_line, m->original.start_col,
+               m->original.end_line, m->original.end_col,
+               m->modified.start_line, m->modified.start_col,
+               m->modified.end_line, m->modified.end_col);
+    }
+    
+    // Line diff for addition
+    SequenceDiff line_diff2 = {3, 3, 2, 3};
+    
+    RangeMappingArray* result2 = refine_diff_char_level(&line_diff2, original, 3, modified, 3, &opts, NULL);
+    
+    ASSERT(result2 != NULL, "Result for addition should not be NULL");
+    
+    printf("  Got %d char mappings for addition\n", result2->count);
+    for (int i = 0; i < result2->count; i++) {
+        RangeMapping* m = &result2->mappings[i];
+        printf("    [%d] L%d:C%d-L%d:C%d -> L%d:C%d-L%d:C%d\n", i,
+               m->original.start_line, m->original.start_col,
+               m->original.end_line, m->original.end_col,
+               m->modified.start_line, m->modified.start_col,
+               m->modified.end_line, m->modified.end_col);
+    }
+    
+    free_range_mapping_array(result1);
+    free_range_mapping_array(result2);
+    
+}
+
 // =============================================================================
 // Main Test Runner
 // =============================================================================
@@ -546,6 +616,7 @@ int main(void) {
     RUN_TEST(short_match_removal);
     RUN_TEST(real_code_function_rename);
     RUN_TEST(cross_line_range_mapping);
+    RUN_TEST(delete_and_add);
     
     printf("\n");
     printf("=======================================================\n");
