@@ -21,6 +21,7 @@
 #include <ctype.h>
 #include <math.h>
 #include <stdio.h>
+#include <limits.h>
 
 // =============================================================================
 // Helper Functions
@@ -28,6 +29,162 @@
 
 static inline int min_int(int a, int b) { return a < b ? a : b; }
 static inline int max_int(int a, int b) { return a > b ? a : b; }
+
+static bool is_valid_line_number(int line_number, int line_count) {
+    return line_number >= 1 && line_number <= line_count;
+}
+
+static bool line_range_is_empty(LineRange range) {
+    return range.start_line >= range.end_line;
+}
+
+static int safe_line_length(const char** lines, int line_count, int line_number) {
+    if (line_number < 1 || line_number > line_count) {
+        return 0;
+    }
+    const char* line = lines[line_number - 1];
+    return line ? (int)strlen(line) : 0;
+}
+
+static void normalize_position(int* line, int* column, const char** lines, int line_count) {
+    if (!line || !column) {
+        return;
+    }
+
+    if (line_count <= 0) {
+        *line = 1;
+        *column = 1;
+        return;
+    }
+
+    if (*line < 1) {
+        *line = 1;
+        *column = 1;
+        return;
+    }
+
+    if (*line > line_count) {
+        *line = line_count;
+        int len = safe_line_length(lines, line_count, *line);
+        if (*column > len + 1) {
+            *column = len + 1;
+        }
+        if (*column < 1) {
+            *column = 1;
+        }
+        return;
+    }
+
+    int len = safe_line_length(lines, line_count, *line);
+    if (*column > len + 1) {
+        *column = len + 1;
+    }
+    if (*column < 1) {
+        *column = 1;
+    }
+}
+
+static RangeMapping line_range_mapping_to_range_mapping2(
+    LineRange original,
+    LineRange modified,
+    const char** original_lines,
+    int original_count,
+    const char** modified_lines,
+    int modified_count
+) {
+    RangeMapping mapping;
+    memset(&mapping, 0, sizeof(RangeMapping));
+
+    bool original_valid = is_valid_line_number(original.end_line, original_count);
+    bool modified_valid = is_valid_line_number(modified.end_line, modified_count);
+
+    if (original_valid && modified_valid) {
+        mapping.original.start_line = original.start_line;
+        mapping.original.start_col = 1;
+        mapping.original.end_line = original.end_line;
+        mapping.original.end_col = 1;
+
+        mapping.modified.start_line = modified.start_line;
+        mapping.modified.start_col = 1;
+        mapping.modified.end_line = modified.end_line;
+        mapping.modified.end_col = 1;
+        return mapping;
+    }
+
+    bool original_empty = line_range_is_empty(original);
+    bool modified_empty = line_range_is_empty(modified);
+
+    if (!original_empty && !modified_empty) {
+        int orig_start_line = original.start_line;
+        int orig_end_line = original.end_line - 1;
+        int orig_end_col = INT_MAX / 2;
+        normalize_position(&orig_end_line, &orig_end_col, original_lines, original_count);
+
+        int mod_start_line = modified.start_line;
+        int mod_end_line = modified.end_line - 1;
+        int mod_end_col = INT_MAX / 2;
+        normalize_position(&mod_end_line, &mod_end_col, modified_lines, modified_count);
+
+        mapping.original.start_line = orig_start_line;
+        mapping.original.start_col = 1;
+        mapping.original.end_line = orig_end_line;
+        mapping.original.end_col = orig_end_col;
+
+        mapping.modified.start_line = mod_start_line;
+        mapping.modified.start_col = 1;
+        mapping.modified.end_line = mod_end_line;
+        mapping.modified.end_col = mod_end_col;
+        return mapping;
+    }
+
+    if (original.start_line > 1 && modified.start_line > 1) {
+        int orig_start_line = original.start_line - 1;
+        int orig_start_col = INT_MAX / 2;
+        normalize_position(&orig_start_line, &orig_start_col, original_lines, original_count);
+
+        int orig_end_line = original.end_line - 1;
+        int orig_end_col = INT_MAX / 2;
+        normalize_position(&orig_end_line, &orig_end_col, original_lines, original_count);
+
+        int mod_start_line = modified.start_line - 1;
+        int mod_start_col = INT_MAX / 2;
+        normalize_position(&mod_start_line, &mod_start_col, modified_lines, modified_count);
+
+        int mod_end_line = modified.end_line - 1;
+        int mod_end_col = INT_MAX / 2;
+        normalize_position(&mod_end_line, &mod_end_col, modified_lines, modified_count);
+
+        mapping.original.start_line = orig_start_line;
+        mapping.original.start_col = orig_start_col;
+        mapping.original.end_line = orig_end_line;
+        mapping.original.end_col = orig_end_col;
+
+        mapping.modified.start_line = mod_start_line;
+        mapping.modified.start_col = mod_start_col;
+        mapping.modified.end_line = mod_end_line;
+        mapping.modified.end_col = mod_end_col;
+        return mapping;
+    }
+
+    int orig_line = original.start_line;
+    int orig_col = 1;
+    normalize_position(&orig_line, &orig_col, original_lines, original_count);
+
+    int mod_line = modified.start_line;
+    int mod_col = 1;
+    normalize_position(&mod_line, &mod_col, modified_lines, modified_count);
+
+    mapping.original.start_line = orig_line;
+    mapping.original.start_col = orig_col;
+    mapping.original.end_line = orig_line;
+    mapping.original.end_col = orig_col;
+
+    mapping.modified.start_line = mod_line;
+    mapping.modified.start_col = mod_col;
+    mapping.modified.end_line = mod_line;
+    mapping.modified.end_col = mod_col;
+    return mapping;
+}
 
 /**
  * Create RangeMappingArray with initial capacity
@@ -510,6 +667,7 @@ static SequenceDiffArray* remove_very_short_text(
         
         // Check prefix
         if (full_start < cur->seq1_start && is_large_diff) {
+            int text_len = cur->seq1_start - full_start;
             char* prefix = char_sequence_get_text(seq1, full_start, cur->seq1_start);
             if (prefix) {
                 // Trim whitespace
@@ -517,10 +675,10 @@ static SequenceDiffArray* remove_very_short_text(
                 const char* end = prefix + strlen(prefix) - 1;
                 while (*start && isspace((unsigned char)*start)) start++;
                 while (end > start && isspace((unsigned char)*end)) end--;
-                
-                int trimmed_len = (int)(end - start + 1);
-                bool should_include = (trimmed_len > 0 && trimmed_len <= 3);
-                
+
+                int trimmed_len = (start > end) ? 0 : (int)(end - start + 1);
+                bool should_include = (text_len > 0 && trimmed_len <= 3);
+
                 if (should_include) {
                     int prefix_len = cur->seq1_start - full_start;
                     new_diff.seq1_start -= prefix_len;
@@ -532,6 +690,7 @@ static SequenceDiffArray* remove_very_short_text(
         
         // Check suffix
         if (cur->seq1_end < full_end && is_large_diff) {
+            int text_len = full_end - cur->seq1_end;
             char* suffix = char_sequence_get_text(seq1, cur->seq1_end, full_end);
             if (suffix) {
                 // Trim whitespace
@@ -539,10 +698,10 @@ static SequenceDiffArray* remove_very_short_text(
                 const char* end = suffix + strlen(suffix) - 1;
                 while (*start && isspace((unsigned char)*start)) start++;
                 while (end > start && isspace((unsigned char)*end)) end--;
-                
-                int trimmed_len = (int)(end - start + 1);
-                bool should_include = (trimmed_len > 0 && trimmed_len <= 3);
-                
+
+                int trimmed_len = (start > end) ? 0 : (int)(end - start + 1);
+                bool should_include = (text_len > 0 && trimmed_len <= 3);
+
                 if (should_include) {
                     int suffix_len = full_end - cur->seq1_end;
                     new_diff.seq1_end += suffix_len;
@@ -635,9 +794,6 @@ RangeMappingArray* refine_diff_char_level(
     const CharLevelOptions* options,
     bool* out_hit_timeout
 ) {
-    (void)len_a;  // Used for bounds checking in real implementation
-    (void)len_b;
-    
     // Initialize timeout flag
     if (out_hit_timeout) {
         *out_hit_timeout = false;
@@ -647,14 +803,38 @@ RangeMappingArray* refine_diff_char_level(
         return NULL;
     }
     
-    // Step 1: Create character sequences for the line range
-    ISequence* seq1_iface = char_sequence_create(lines_a, line_diff->seq1_start, 
-                                                 line_diff->seq1_end, 
-                                                 options->consider_whitespace_changes);
-    ISequence* seq2_iface = char_sequence_create(lines_b, line_diff->seq2_start,
-                                                 line_diff->seq2_end,
-                                                 options->consider_whitespace_changes);
-    
+    // Step 1: Map line diff to character ranges using VSCode's toRangeMapping2 logic
+    LineRange original_line_range = {
+        .start_line = line_diff->seq1_start + 1,
+        .end_line = line_diff->seq1_end + 1
+    };
+    LineRange modified_line_range = {
+        .start_line = line_diff->seq2_start + 1,
+        .end_line = line_diff->seq2_end + 1
+    };
+
+    RangeMapping base_range = line_range_mapping_to_range_mapping2(
+        original_line_range,
+        modified_line_range,
+        lines_a,
+        len_a,
+        lines_b,
+        len_b
+    );
+
+    ISequence* seq1_iface = char_sequence_create_from_range(
+        lines_a,
+        len_a,
+        &base_range.original,
+        options->consider_whitespace_changes
+    );
+    ISequence* seq2_iface = char_sequence_create_from_range(
+        lines_b,
+        len_b,
+        &base_range.modified,
+        options->consider_whitespace_changes
+    );
+
     if (!seq1_iface || !seq2_iface) {
         if (seq1_iface) seq1_iface->destroy(seq1_iface);
         if (seq2_iface) seq2_iface->destroy(seq2_iface);
@@ -665,6 +845,9 @@ RangeMappingArray* refine_diff_char_level(
     // (In our implementation, ISequence contains CharSequence as data)
     CharSequence* seq1 = (CharSequence*)seq1_iface->data;
     CharSequence* seq2 = (CharSequence*)seq2_iface->data;
+
+    int base_line1 = base_range.original.start_line - 1;
+    int base_line2 = base_range.modified.start_line - 1;
     
     // Step 2: Run Myers on characters
     // VSCode uses DP if length < 500, otherwise Myers O(ND)
@@ -687,7 +870,7 @@ RangeMappingArray* refine_diff_char_level(
         seq2_iface->destroy(seq2_iface);
         return NULL;
     }
-    
+
     // Step 3: optimizeSequenceDiffs() - Reuse Step 2 optimization
     optimize_sequence_diffs(seq1_iface, seq2_iface, diffs);
     
@@ -704,10 +887,10 @@ RangeMappingArray* refine_diff_char_level(
         free(diffs);
         diffs = extended;
     }
-    
+
     // Step 6: removeShortMatches() - Remove ≤2 char gaps
     remove_short_matches(seq1_iface, seq2_iface, diffs);
-    
+
     // Step 7: removeVeryShortMatchingTextBetweenLongDiffs()
     remove_very_short_text(seq1, seq2, diffs);
     
@@ -724,7 +907,7 @@ RangeMappingArray* refine_diff_char_level(
     for (int i = 0; i < diffs->count; i++) {
         RangeMapping mapping = translate_diff_to_range(
             seq1, seq2, &diffs->diffs[i],
-            line_diff->seq1_start, line_diff->seq2_start
+            base_line1, base_line2
         );
         add_range_mapping(result, &mapping);
     }

@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <limits.h>
 
 // ============================================================================
 // String Trimming Utilities
@@ -335,115 +336,266 @@ static void char_seq_destroy(ISequence* self) {
  * 
  * REUSED BY: Step 4 (char_level.c) for each line-level diff
  */
-ISequence* char_sequence_create(const char** lines, int start_line, int end_line, 
-                                bool consider_whitespace) {
-    if (start_line >= end_line) {
-        // Empty sequence
-        CharSequence* seq = (CharSequence*)malloc(sizeof(CharSequence));
-        seq->elements = NULL;
-        seq->length = 0;
-        seq->line_start_offsets = NULL;
-        seq->trimmed_ws_lengths = NULL;
-        seq->original_line_start_cols = NULL;
-        seq->line_count = 0;
-        seq->consider_whitespace = consider_whitespace;
-        
-        ISequence* iseq = (ISequence*)malloc(sizeof(ISequence));
-        iseq->data = seq;
-        iseq->getElement = char_seq_get_element;
-        iseq->getLength = char_seq_get_length;
-        iseq->isStronglyEqual = char_seq_is_strongly_equal;
-        iseq->getBoundaryScore = char_seq_get_boundary_score;
-        iseq->destroy = char_seq_destroy;
-        return iseq;
-    }
-    
+static ISequence* char_sequence_create_empty(bool consider_whitespace) {
     CharSequence* seq = (CharSequence*)malloc(sizeof(CharSequence));
+    if (!seq) {
+        return NULL;
+    }
+    seq->elements = NULL;
+    seq->length = 0;
+    seq->line_start_offsets = NULL;
+    seq->trimmed_ws_lengths = NULL;
+    seq->original_line_start_cols = NULL;
+    seq->line_count = 0;
     seq->consider_whitespace = consider_whitespace;
-    seq->line_count = end_line - start_line;
-    seq->line_start_offsets = (int*)malloc(sizeof(int) * (seq->line_count + 1));
-    seq->trimmed_ws_lengths = (int*)malloc(sizeof(int) * seq->line_count);
-    seq->original_line_start_cols = (int*)malloc(sizeof(int) * seq->line_count);
-    
-    // First pass: calculate total length and track trim info
-    int total_len = 0;
-    for (int i = start_line; i < end_line; i++) {
-        const char* line = lines[i];
-        const char* line_start = line;
-        int trimmed_leading = 0;
-        
-        if (!consider_whitespace) {
-            // Count and skip leading whitespace
-            while (*line_start && isspace((unsigned char)*line_start)) {
-                line_start++;
-                trimmed_leading++;
-            }
-            // Find end (trim trailing whitespace)
-            const char* line_end = line_start + strlen(line_start);
-            while (line_end > line_start && isspace((unsigned char)*(line_end - 1))) {
-                line_end--;
-            }
-            total_len += (line_end - line_start);
-        } else {
-            total_len += strlen(line);
-        }
-        
-        // Store trim info (VSCode: trimmedWsLengthsByLineIdx and lineStartOffsets)
-        seq->trimmed_ws_lengths[i - start_line] = trimmed_leading;
-        seq->original_line_start_cols[i - start_line] = 0; // Will be set if needed for range support
-        
-        // Add newline except for last line
-        if (i < end_line - 1) {
-            total_len++;
-        }
-    }
-    
-    // Allocate elements array
-    seq->elements = (uint32_t*)malloc(sizeof(uint32_t) * (total_len + 1));
-    seq->length = total_len;
-    
-    // Second pass: fill elements and track line boundaries
-    int offset = 0;
-    for (int i = start_line; i < end_line; i++) {
-        seq->line_start_offsets[i - start_line] = offset;
-        
-        const char* line = lines[i];
-        const char* line_start = line;
-        const char* line_end = line + strlen(line);
-        
-        if (!consider_whitespace) {
-            // Trim whitespace
-            while (*line_start && isspace((unsigned char)*line_start)) {
-                line_start++;
-            }
-            while (line_end > line_start && isspace((unsigned char)*(line_end - 1))) {
-                line_end--;
-            }
-        }
-        
-        // Copy characters
-        for (const char* p = line_start; p < line_end; p++) {
-            seq->elements[offset++] = (uint32_t)(unsigned char)*p;
-        }
-        
-        // Add newline except for last line
-        if (i < end_line - 1) {
-            seq->elements[offset++] = '\n';
-        }
-    }
-    
-    // Store final offset (for bounds checking)
-    seq->line_start_offsets[seq->line_count] = offset;
-    
-    // Create ISequence wrapper
+
     ISequence* iseq = (ISequence*)malloc(sizeof(ISequence));
+    if (!iseq) {
+        free(seq);
+        return NULL;
+    }
     iseq->data = seq;
     iseq->getElement = char_seq_get_element;
     iseq->getLength = char_seq_get_length;
     iseq->isStronglyEqual = char_seq_is_strongly_equal;
     iseq->getBoundaryScore = char_seq_get_boundary_score;
     iseq->destroy = char_seq_destroy;
-    
+    return iseq;
+}
+
+ISequence* char_sequence_create(const char** lines, int start_line, int end_line,
+                                bool consider_whitespace) {
+    if (start_line >= end_line) {
+        return char_sequence_create_empty(consider_whitespace);
+    }
+
+    CharRange range;
+    range.start_line = start_line + 1;
+    range.start_col = 1;
+
+    int last_line_index = end_line - 1;
+    if (last_line_index < start_line) {
+        range.end_line = range.start_line;
+        range.end_col = range.start_col;
+    } else {
+        range.end_line = last_line_index + 1;
+        const char* last_line = lines[last_line_index];
+        int last_length = last_line ? (int)strlen(last_line) : 0;
+        range.end_col = last_length + 1;
+    }
+
+    return char_sequence_create_from_range(lines, end_line, &range, consider_whitespace);
+}
+
+ISequence* char_sequence_create_from_range(const char** lines,
+                                           int line_count,
+                                           const CharRange* range,
+                                           bool consider_whitespace) {
+    if (!range || !lines) {
+        return char_sequence_create_empty(consider_whitespace);
+    }
+
+    if (range->start_line > range->end_line) {
+        return char_sequence_create_empty(consider_whitespace);
+    }
+
+    if (line_count <= 0) {
+        return char_sequence_create_empty(consider_whitespace);
+    }
+
+    int start_line_num = range->start_line;
+    int end_line_num = range->end_line;
+
+    if (start_line_num < 1) {
+        start_line_num = 1;
+    }
+    if (start_line_num > line_count) {
+        start_line_num = line_count;
+    }
+
+    if (end_line_num < start_line_num) {
+        end_line_num = start_line_num;
+    }
+    if (end_line_num > line_count) {
+        end_line_num = line_count;
+    }
+
+    int line_span = end_line_num - start_line_num + 1;
+    if (line_span <= 0) {
+        return char_sequence_create_empty(consider_whitespace);
+    }
+
+    CharSequence* seq = (CharSequence*)malloc(sizeof(CharSequence));
+    if (!seq) {
+        return NULL;
+    }
+    seq->consider_whitespace = consider_whitespace;
+    seq->line_count = line_span;
+    seq->elements = NULL;
+    seq->line_start_offsets = (int*)malloc(sizeof(int) * (line_span + 1));
+    seq->trimmed_ws_lengths = (int*)malloc(sizeof(int) * line_span);
+    seq->original_line_start_cols = (int*)malloc(sizeof(int) * line_span);
+    if (!seq->line_start_offsets || !seq->trimmed_ws_lengths || !seq->original_line_start_cols) {
+        free(seq->line_start_offsets);
+        free(seq->trimmed_ws_lengths);
+        free(seq->original_line_start_cols);
+        free(seq);
+        return NULL;
+    }
+
+    int* effective_lengths = (int*)malloc(sizeof(int) * line_span);
+    if (!effective_lengths) {
+        free(seq->line_start_offsets);
+        free(seq->trimmed_ws_lengths);
+        free(seq->original_line_start_cols);
+        free(seq);
+        return NULL;
+    }
+
+    int total_len = 0;
+    for (int idx = 0; idx < line_span; idx++) {
+        int line_number = start_line_num + idx;
+        const char* line = (line_number >= 1 && line_number <= line_count)
+                               ? lines[line_number - 1]
+                               : "";
+        if (!line) {
+            line = "";
+        }
+        int line_len = (int)strlen(line);
+
+        int line_start_offset = 0;
+        if (line_number == range->start_line && range->start_col > 1) {
+            line_start_offset = range->start_col - 1;
+            if (line_start_offset > line_len) {
+                line_start_offset = line_len;
+            }
+        }
+        seq->original_line_start_cols[idx] = line_start_offset;
+
+        const char* substring_start = line + line_start_offset;
+        int substring_len = line_len - line_start_offset;
+        if (substring_len < 0) {
+            substring_len = 0;
+        }
+
+        int trimmed_ws_length = 0;
+        const char* trimmed_start = substring_start;
+        const char* trimmed_end = substring_start + substring_len;
+
+        if (!consider_whitespace) {
+            while (trimmed_start < trimmed_end && isspace((unsigned char)*trimmed_start)) {
+                trimmed_start++;
+                trimmed_ws_length++;
+            }
+            while (trimmed_end > trimmed_start && isspace((unsigned char)*(trimmed_end - 1))) {
+                trimmed_end--;
+            }
+        }
+
+        int trimmed_len = (int)(trimmed_end - trimmed_start);
+        if (trimmed_len < 0) {
+            trimmed_len = 0;
+        }
+
+        int line_length = trimmed_len;
+        if (line_number == end_line_num) {
+            long long end_column_exclusive = (long long)range->end_col - 1;
+            long long available = end_column_exclusive - line_start_offset - trimmed_ws_length;
+            if (available < 0) {
+                line_length = 0;
+            } else if (available < line_length) {
+                line_length = (int)available;
+            }
+        }
+
+        if (line_length < 0) {
+            line_length = 0;
+        }
+        if (line_length > trimmed_len) {
+            line_length = trimmed_len;
+        }
+
+        seq->trimmed_ws_lengths[idx] = trimmed_ws_length;
+        effective_lengths[idx] = line_length;
+
+        total_len += line_length;
+        if (line_number < end_line_num) {
+            total_len += 1;
+        }
+    }
+
+    seq->elements = (uint32_t*)malloc(sizeof(uint32_t) * (total_len + 1));
+    if (!seq->elements) {
+        free(effective_lengths);
+        free(seq->line_start_offsets);
+        free(seq->trimmed_ws_lengths);
+        free(seq->original_line_start_cols);
+        free(seq);
+        return NULL;
+    }
+    seq->length = total_len;
+
+    int offset = 0;
+    for (int idx = 0; idx < line_span; idx++) {
+        int line_number = start_line_num + idx;
+        seq->line_start_offsets[idx] = offset;
+
+        const char* line = (line_number >= 1 && line_number <= line_count)
+                               ? lines[line_number - 1]
+                               : "";
+        if (!line) {
+            line = "";
+        }
+        int line_len = (int)strlen(line);
+
+        int start_col = seq->original_line_start_cols[idx];
+        if (!consider_whitespace) {
+            start_col += seq->trimmed_ws_lengths[idx];
+        }
+        if (start_col > line_len) {
+            start_col = line_len;
+        }
+
+        int len = effective_lengths[idx];
+        if (len < 0) {
+            len = 0;
+        }
+        if (start_col + len > line_len) {
+            len = line_len - start_col;
+            if (len < 0) {
+                len = 0;
+            }
+        }
+
+        const char* src = line + start_col;
+        for (int j = 0; j < len; j++) {
+            seq->elements[offset++] = (uint32_t)(unsigned char)src[j];
+        }
+
+        if (line_number < end_line_num) {
+            seq->elements[offset++] = '\n';
+        }
+    }
+    seq->line_start_offsets[line_span] = offset;
+
+    free(effective_lengths);
+
+    ISequence* iseq = (ISequence*)malloc(sizeof(ISequence));
+    if (!iseq) {
+        free(seq->elements);
+        free(seq->line_start_offsets);
+        free(seq->trimmed_ws_lengths);
+        free(seq->original_line_start_cols);
+        free(seq);
+        return NULL;
+    }
+    iseq->data = seq;
+    iseq->getElement = char_seq_get_element;
+    iseq->getLength = char_seq_get_length;
+    iseq->isStronglyEqual = char_seq_is_strongly_equal;
+    iseq->getBoundaryScore = char_seq_get_boundary_score;
+    iseq->destroy = char_seq_destroy;
+
     return iseq;
 }
 
@@ -703,4 +855,3 @@ void char_sequence_extend_to_full_lines(const CharSequence* seq,
     *out_start = extended_start;
     *out_end = extended_end;
 }
-

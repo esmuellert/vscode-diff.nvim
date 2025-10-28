@@ -51,9 +51,6 @@ static int read_file_lines(const char* filename, char*** lines_out) {
             buffer[len - 1] = '\0';
             len--;
         }
-        if (len > 0 && buffer[len - 1] == '\r') {
-            buffer[len - 1] = '\0';
-        }
         
         // Expand capacity if needed
         if (count >= capacity) {
@@ -140,7 +137,7 @@ int main(int argc, char* argv[]) {
         .ignore_trim_whitespace = false,
         .max_computation_time_ms = 0,  // No timeout
         .compute_moves = false,
-        .extend_to_subwords = true
+        .extend_to_subwords = false
     };
     
     // Compute diff

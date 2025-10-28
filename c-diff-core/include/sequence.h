@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "types.h"
 
 /**
  * Generic Sequence Interface
@@ -154,6 +155,23 @@ typedef struct {
  */
 ISequence* char_sequence_create(const char** lines, int start_line, int end_line, 
                                 bool consider_whitespace);
+
+/**
+ * Create a CharSequence from an arbitrary character range.
+ *
+ * Matches VSCode's LinesSliceCharSequence constructor, accepting exact start/end
+ * line & column positions (1-based, end exclusive).
+ *
+ * @param lines Array of line strings
+ * @param line_count Total number of lines in the buffer
+ * @param range Character range (1-based line/column, end exclusive)
+ * @param consider_whitespace If false, trim whitespace before diffing
+ * @return ISequence* that wraps the CharSequence
+ */
+ISequence* char_sequence_create_from_range(const char** lines,
+                                           int line_count,
+                                           const CharRange* range,
+                                           bool consider_whitespace);
 
 /**
  * Offset preference for translate operations - VSCode Parity
