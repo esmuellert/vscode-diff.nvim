@@ -416,9 +416,6 @@ LinesDiff* compute_diff(
         seq2_last_start = diff->seq2_end;
         
         // Refine this diff region
-        fprintf(stderr, "[DBG-LOOP] === Refining line diff #%d (lines %d-%d -> %d-%d) ===\n", 
-                diff_idx, diff->seq1_start+1, diff->seq1_end, diff->seq2_start+1, diff->seq2_end);
-        fflush(stderr);
         bool local_timeout = false;
         RangeMappingArray* character_diffs = refine_diff(
             diff,
