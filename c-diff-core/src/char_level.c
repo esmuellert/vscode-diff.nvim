@@ -599,9 +599,15 @@ static SequenceDiffArray* remove_very_short_text(
             }
             bool single_line = (newline_count <= 1);
             
+            fprintf(stderr, "[DEBUG unchanged_text] gap len=%d, trimmed_len=%zu, newline_count=%d, text='%s'\n",
+                    unchanged_end - unchanged_start, strlen(trimmed), newline_count,
+                    (strlen(trimmed) < 50 ? trimmed : "..."));
+            
             free(unchanged_text);
             
             if (!short_text || !single_line) {
+                fprintf(stderr, "[DEBUG unchanged_text] Rejecting: short_text=%d, single_line=%d\n",
+                        short_text, single_line);
                 result[result_count++] = cur;
                 continue;
             }
@@ -617,6 +623,11 @@ static SequenceDiffArray* remove_very_short_text(
             int after_line2 = char_sequence_count_lines_in(seq2, cur.seq2_start, cur.seq2_end);
             int after_len2 = cur.seq2_end - cur.seq2_start;
             
+            fprintf(stderr, "[DEBUG score_calc] before: line1=%d len1=%d line2=%d len2=%d\n",
+                    before_line1, before_len1, before_line2, before_len2);
+            fprintf(stderr, "[DEBUG score_calc] after: line1=%d len1=%d line2=%d len2=%d\n",
+                    after_line1, after_len1, after_line2, after_len2);
+            
             // VSCode's formula
             const int max = 2 * 40 + 50;
             #define CAP(v) (min_int((v), max))
@@ -631,10 +642,14 @@ static SequenceDiffArray* remove_very_short_text(
             
             if (before_score + after_score > threshold) {
                 // Merge
+                fprintf(stderr, "[DEBUG merge_decision] MERGING: before_score=%.2f + after_score=%.2f = %.2f > threshold=%.2f\n",
+                        before_score, after_score, before_score + after_score, threshold);
                 last_result->seq1_end = cur.seq1_end;
                 last_result->seq2_end = cur.seq2_end;
                 should_repeat = true;
             } else {
+                fprintf(stderr, "[DEBUG merge_decision] NOT merging: before_score=%.2f + after_score=%.2f = %.2f <= threshold=%.2f\n",
+                        before_score, after_score, before_score + after_score, threshold);
                 result[result_count++] = cur;
             }
         }
@@ -890,9 +905,27 @@ RangeMappingArray* refine_diff_char_level(
 
     // Step 6: removeShortMatches() - Remove ≤2 char gaps
     remove_short_matches(seq1_iface, seq2_iface, diffs);
+    
+    // DEBUG: After removeShortMatches
+    fprintf(stderr, "[DEBUG after_step6] Lines %d-%d: After removeShortMatches, %d diffs:\n", 
+            base_line1, base_line2, diffs->count);
+    for (int dbg = 0; dbg < diffs->count; dbg++) {
+        fprintf(stderr, "[DEBUG after_step6]   [%d] seq1[%d-%d] -> seq2[%d-%d]\n", 
+                dbg, diffs->diffs[dbg].seq1_start, diffs->diffs[dbg].seq1_end,
+                diffs->diffs[dbg].seq2_start, diffs->diffs[dbg].seq2_end);
+    }
 
     // Step 7: removeVeryShortMatchingTextBetweenLongDiffs()
     remove_very_short_text(seq1, seq2, diffs);
+    
+    // DEBUG: Print diffs after all optimization
+    fprintf(stderr, "[DEBUG refine_end] Lines %d-%d: After all steps, we have %d inner changes:\n", 
+            base_line1, base_line2, diffs->count);
+    for (int dbg = 0; dbg < diffs->count; dbg++) {
+        fprintf(stderr, "[DEBUG refine_end]   [%d] seq1[%d-%d] -> seq2[%d-%d]\n", 
+                dbg, diffs->diffs[dbg].seq1_start, diffs->diffs[dbg].seq1_end,
+                diffs->diffs[dbg].seq2_start, diffs->diffs[dbg].seq2_end);
+    }
     
     // Step 8: Translate to RangeMapping with (line, column) positions
     RangeMappingArray* result = create_range_mapping_array(diffs->count);
@@ -955,6 +988,9 @@ RangeMappingArray* refine_all_diffs_char_level(
     // Refine each line diff
     for (int i = 0; i < line_diffs->count; i++) {
         bool local_timeout = false;
+        fprintf(stderr, "[DEBUG] Refining line diff [%d]: Lines %d-%d -> Lines %d-%d\n",
+                i, line_diffs->diffs[i].seq1_start + 1, line_diffs->diffs[i].seq1_end,
+                line_diffs->diffs[i].seq2_start + 1, line_diffs->diffs[i].seq2_end);
         RangeMappingArray* char_mappings = refine_diff_char_level(
             &line_diffs->diffs[i], lines_a, len_a, lines_b, len_b, options,
             &local_timeout
