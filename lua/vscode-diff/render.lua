@@ -173,32 +173,42 @@ local function apply_char_highlight(bufnr, char_range, hl_group, lines)
   end
   
   if start_line == end_line then
-    -- Single line range
+    -- Single line range - use extmark with HIGH priority to override line_hl_group
     local line_idx = start_line - 1  -- Convert to 0-indexed
     if line_idx >= 0 then
-      vim.api.nvim_buf_add_highlight(bufnr, ns_highlight, hl_group,
-                                     line_idx,
-                                     start_col - 1,  -- Convert to 0-indexed
-                                     end_col - 1)
+      vim.api.nvim_buf_set_extmark(bufnr, ns_highlight, line_idx, start_col - 1, {
+        end_col = end_col - 1,
+        hl_group = hl_group,
+        priority = 200,  -- Higher than line_hl_group (100)
+        hl_mode = "combine",  -- Combine with other highlights
+      })
     end
   else
-    -- Multi-line range
+    -- Multi-line range - use extmarks with HIGH priority
     
     -- First line: from start_col to end of line
     local first_line_idx = start_line - 1
     if first_line_idx >= 0 then
-      vim.api.nvim_buf_add_highlight(bufnr, ns_highlight, hl_group,
-                                     first_line_idx,
-                                     start_col - 1,
-                                     -1)  -- To end of line
+      vim.api.nvim_buf_set_extmark(bufnr, ns_highlight, first_line_idx, start_col - 1, {
+        end_line = first_line_idx + 1,
+        end_col = 0,  -- To start of next line (= end of this line)
+        hl_group = hl_group,
+        priority = 200,
+        hl_mode = "combine",
+      })
     end
     
     -- Middle lines: entire line
     for line = start_line + 1, end_line - 1 do
       local line_idx = line - 1
       if line_idx >= 0 then
-        vim.api.nvim_buf_add_highlight(bufnr, ns_highlight, hl_group,
-                                       line_idx, 0, -1)
+        vim.api.nvim_buf_set_extmark(bufnr, ns_highlight, line_idx, 0, {
+          end_line = line_idx + 1,
+          end_col = 0,  -- Entire line
+          hl_group = hl_group,
+          priority = 200,
+          hl_mode = "combine",
+        })
       end
     end
     
@@ -206,8 +216,12 @@ local function apply_char_highlight(bufnr, char_range, hl_group, lines)
     if end_col > 1 then
       local last_line_idx = end_line - 1
       if last_line_idx >= 0 then
-        vim.api.nvim_buf_add_highlight(bufnr, ns_highlight, hl_group,
-                                       last_line_idx, 0, end_col - 1)
+        vim.api.nvim_buf_set_extmark(bufnr, ns_highlight, last_line_idx, 0, {
+          end_col = end_col - 1,
+          hl_group = hl_group,
+          priority = 200,
+          hl_mode = "combine",
+        })
       end
     end
   end
