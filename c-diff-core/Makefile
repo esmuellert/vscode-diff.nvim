@@ -34,8 +34,8 @@ else
     CFLAGS_SHARED = $(CFLAGS_SHARED_BASE) -D_POSIX_C_SOURCE=200809L
 endif
 
-LDFLAGS = 
-LDFLAGS_SHARED = -shared
+LDFLAGS = -lutf8proc
+LDFLAGS_SHARED = -shared -lutf8proc
 
 # Directories
 SRC_DIR = src
@@ -96,7 +96,7 @@ $(BUILD_DIR):
 
 # Build shared library for Lua integration
 lib: $(BUILD_DIR)
-	$(CC) $(CFLAGS_SHARED) $(LDFLAGS_SHARED) $(ALL_SRCS) -o $(SHARED_LIB) -lm
+	$(CC) $(CFLAGS_SHARED) $(ALL_SRCS) -o $(SHARED_LIB) $(LDFLAGS_SHARED) -lm
 	@echo ""
 	@echo "✓ Built shared library: $(SHARED_LIB)"
 	@echo ""
@@ -207,7 +207,7 @@ test-render-plan: $(BUILD_DIR)
 
 # Build standalone diff tool executable
 diff-tool: $(BUILD_DIR)
-	$(CC) $(CFLAGS) diff_tool.c $(ALL_SRCS) -o $(DIFF_TOOL) -lm
+	$(CC) $(CFLAGS) diff_tool.c $(ALL_SRCS) -o $(DIFF_TOOL) $(LDFLAGS) -lm
 	@echo ""
 	@echo "✓ Built standalone diff tool: $(DIFF_TOOL)"
 	@echo "  Usage: $(DIFF_TOOL) <original_file> <modified_file>"

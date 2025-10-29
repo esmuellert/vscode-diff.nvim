@@ -37,12 +37,12 @@ function M.setup_highlights()
 
   -- Line-level highlights: DARKER versions (70% of native)
   vim.api.nvim_set_hl(0, "VscodeDiffLineInsert", {
-    bg = adjust_brightness(diff_add.bg, 0.7) or 0x1d3042,  -- Darker green
+    bg = adjust_brightness(diff_add.bg, 0.6) or 0x1d3042,  -- Darker green
     default = true,
   })
 
   vim.api.nvim_set_hl(0, "VscodeDiffLineDelete", {
-    bg = adjust_brightness(diff_delete.bg, 0.7) or 0x351d2b,  -- Darker red
+    bg = adjust_brightness(diff_delete.bg, 0.6) or 0x351d2b,  -- Darker red
     default = true,
   })
 
@@ -320,11 +320,13 @@ local function calculate_fillers(mapping, original_lines, modified_lines)
     -- Check if the change ends before the end of the line
     local orig_line_len = original_lines[inner.original.end_line] and #original_lines[inner.original.end_line] or 0
     if inner.original.end_col <= orig_line_len then
+      -- VSCode uses inner.originalRange.endLineNumber directly (inclusive)
+      -- See diffEditorViewZones.ts line 495
       emit_alignment(inner.original.end_line, inner.modified.end_line)
     end
   end
   
-  -- Final alignment at the end of the mapping
+  -- Final alignment at the end of the mapping (mapping ranges use EXCLUSIVE end)
   emit_alignment(mapping.original.end_line, mapping.modified.end_line)
   
   -- Convert alignments to fillers
