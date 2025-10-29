@@ -19,6 +19,107 @@
 #include <string.h>
 #include <ctype.h>
 #include <limits.h>
+#include <stdint.h>
+
+// ============================================================================
+// UTF-8 Character Counting
+// ============================================================================
+
+/**
+ * Count UTF-8 characters in a string (NOT bytes)
+ * JavaScript counts Unicode characters, not bytes.
+ * This matches JavaScript's string.length behavior.
+ */
+static int utf8_strlen(const char* str) {
+    if (!str) return 0;
+    
+    int char_count = 0;
+    const unsigned char* p = (const unsigned char*)str;
+    
+    while (*p) {
+        if (*p < 0x80) {
+            // ASCII (1 byte)
+            p++;
+        } else if ((*p & 0xE0) == 0xC0) {
+            // 2-byte sequence
+            p += 2;
+        } else if ((*p & 0xF0) == 0xE0) {
+            // 3-byte sequence
+            p += 3;
+        } else if ((*p & 0xF8) == 0xF0) {
+            // 4-byte sequence
+            p += 4;
+        } else {
+            // Invalid UTF-8, skip byte
+            p++;
+        }
+        char_count++;
+    }
+    
+    return char_count;
+}
+
+/**
+ * Convert character position to byte offset in UTF-8 string
+ * @param str The UTF-8 string
+ * @param char_pos Character position (0-based)
+ * @return Byte offset (0-based)
+ */
+static int utf8_char_to_byte_offset(const char* str, int char_pos) {
+    if (!str || char_pos <= 0) return 0;
+    
+    int char_count = 0;
+    const unsigned char* p = (const unsigned char*)str;
+    const unsigned char* start = p;
+    
+    while (*p && char_count < char_pos) {
+        if (*p < 0x80) {
+            p++;
+        } else if ((*p & 0xE0) == 0xC0) {
+            if (p[1]) p += 2; else p++;
+        } else if ((*p & 0xF0) == 0xE0) {
+            if (p[1] && p[2]) p += 3; else p++;
+        } else if ((*p & 0xF8) == 0xF0) {
+            if (p[1] && p[2] && p[3]) p += 4; else p++;
+        } else {
+            p++;
+        }
+        char_count++;
+    }
+    
+    return (int)(p - start);
+}
+
+/**
+ * Convert byte offset to character position in UTF-8 string
+ * @param str The UTF-8 string
+ * @param byte_offset Byte offset (0-based)
+ * @return Character position (0-based)
+ */
+static int utf8_byte_to_char_offset(const char* str, int byte_offset) {
+    if (!str || byte_offset <= 0) return 0;
+    
+    int char_count = 0;
+    const unsigned char* p = (const unsigned char*)str;
+    const unsigned char* end = p + byte_offset;
+    
+    while (*p && p < end) {
+        if (*p < 0x80) {
+            p++;
+        } else if ((*p & 0xE0) == 0xC0) {
+            p += 2;
+        } else if ((*p & 0xF0) == 0xE0) {
+            p += 3;
+        } else if ((*p & 0xF8) == 0xF0) {
+            p += 4;
+        } else {
+            p++;
+        }
+        char_count++;
+    }
+    
+    return char_count;
+}
 
 // ============================================================================
 // String Trimming Utilities
@@ -461,66 +562,82 @@ ISequence* char_sequence_create_from_range(const char** lines,
         if (!line) {
             line = "";
         }
-        int line_len = (int)strlen(line);
+        int line_len_bytes = (int)strlen(line);
+        int line_len_chars = utf8_strlen(line);
 
-        int line_start_offset = 0;
+        // range->start_col is a CHARACTER position, convert to byte offset
+        int line_start_char_offset = 0;
+        int line_start_byte_offset = 0;
         if (line_number == range->start_line && range->start_col > 1) {
-            line_start_offset = range->start_col - 1;
-            if (line_start_offset > line_len) {
-                line_start_offset = line_len;
+            line_start_char_offset = range->start_col - 1;
+            if (line_start_char_offset > line_len_chars) {
+                line_start_char_offset = line_len_chars;
             }
+            line_start_byte_offset = utf8_char_to_byte_offset(line, line_start_char_offset);
         }
-        seq->original_line_start_cols[idx] = line_start_offset;
+        seq->original_line_start_cols[idx] = line_start_char_offset;
 
-        const char* substring_start = line + line_start_offset;
-        int substring_len = line_len - line_start_offset;
+        const char* substring_start = line + line_start_byte_offset;
+        int substring_len = line_len_bytes - line_start_byte_offset;
         if (substring_len < 0) {
             substring_len = 0;
         }
 
-        int trimmed_ws_length = 0;
+        int trimmed_ws_length_chars = 0;
         const char* trimmed_start = substring_start;
         const char* trimmed_end = substring_start + substring_len;
 
         if (!consider_whitespace) {
+            const char* ws_start = trimmed_start;
             while (trimmed_start < trimmed_end && isspace((unsigned char)*trimmed_start)) {
                 trimmed_start++;
-                trimmed_ws_length++;
             }
+            // Count characters, not bytes, in the trimmed whitespace
+            trimmed_ws_length_chars = utf8_byte_to_char_offset(ws_start, (int)(trimmed_start - ws_start));
+            
             while (trimmed_end > trimmed_start && isspace((unsigned char)*(trimmed_end - 1))) {
                 trimmed_end--;
             }
         }
 
-        int trimmed_len = (int)(trimmed_end - trimmed_start);
-        if (trimmed_len < 0) {
-            trimmed_len = 0;
+        int trimmed_len_bytes = (int)(trimmed_end - trimmed_start);
+        if (trimmed_len_bytes < 0) {
+            trimmed_len_bytes = 0;
         }
+        int trimmed_len_chars = utf8_byte_to_char_offset(trimmed_start, trimmed_len_bytes);
 
-        int line_length = trimmed_len;
+        // line_length is in CHARACTERS for column calculation
+        int line_length_chars = trimmed_len_chars;
+        int line_length_bytes = trimmed_len_bytes;
+        
         if (line_number == end_line_num) {
             long long end_column_exclusive = (long long)range->end_col - 1;
-            long long available = end_column_exclusive - line_start_offset - trimmed_ws_length;
-            if (available < 0) {
-                line_length = 0;
-            } else if (available < line_length) {
-                line_length = (int)available;
+            long long available_chars = end_column_exclusive - line_start_char_offset - trimmed_ws_length_chars;
+            if (available_chars < 0) {
+                line_length_chars = 0;
+                line_length_bytes = 0;
+            } else if (available_chars < line_length_chars) {
+                line_length_chars = (int)available_chars;
+                // Convert character length to byte length
+                line_length_bytes = utf8_char_to_byte_offset(trimmed_start, line_length_chars);
             }
         }
 
-        if (line_length < 0) {
-            line_length = 0;
+        if (line_length_chars < 0) {
+            line_length_chars = 0;
+            line_length_bytes = 0;
         }
-        if (line_length > trimmed_len) {
-            line_length = trimmed_len;
+        if (line_length_chars > trimmed_len_chars) {
+            line_length_chars = trimmed_len_chars;
+            line_length_bytes = trimmed_len_bytes;
         }
 
-        seq->trimmed_ws_lengths[idx] = trimmed_ws_length;
-        effective_lengths[idx] = line_length;
+        seq->trimmed_ws_lengths[idx] = trimmed_ws_length_chars;
+        effective_lengths[idx] = line_length_bytes;  // Store BYTES for elements array
 
-        total_len += line_length;
+        total_len += line_length_bytes;  // Count BYTES for elements array
         if (line_number < end_line_num) {
-            total_len += 1;
+            total_len += 1;  // For '\n'
         }
     }
 
@@ -546,29 +663,26 @@ ISequence* char_sequence_create_from_range(const char** lines,
         if (!line) {
             line = "";
         }
-        int line_len = (int)strlen(line);
+        int line_len_chars = utf8_strlen(line);
 
-        int start_col = seq->original_line_start_cols[idx];
+        int start_col_chars = seq->original_line_start_cols[idx];
         if (!consider_whitespace) {
-            start_col += seq->trimmed_ws_lengths[idx];
+            start_col_chars += seq->trimmed_ws_lengths[idx];
         }
-        if (start_col > line_len) {
-            start_col = line_len;
-        }
-
-        int len = effective_lengths[idx];
-        if (len < 0) {
-            len = 0;
-        }
-        if (start_col + len > line_len) {
-            len = line_len - start_col;
-            if (len < 0) {
-                len = 0;
-            }
+        if (start_col_chars > line_len_chars) {
+            start_col_chars = line_len_chars;
         }
 
-        const char* src = line + start_col;
-        for (int j = 0; j < len; j++) {
+        int len_bytes = effective_lengths[idx];  // This is already in bytes
+        if (len_bytes < 0) {
+            len_bytes = 0;
+        }
+
+        // Convert character position to byte offset for actual string access
+        int start_col_bytes = utf8_char_to_byte_offset(line, start_col_chars);
+
+        const char* src = line + start_col_bytes;
+        for (int j = 0; j < len_bytes; j++) {
             seq->elements[offset++] = (uint32_t)(unsigned char)src[j];
         }
 

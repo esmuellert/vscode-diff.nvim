@@ -213,9 +213,10 @@ local function apply_char_highlight(bufnr, char_range, hl_group, lines)
     end
     
     -- Last line: from start to end_col
-    if end_col > 1 then
+    -- Only process if end_col > 1 OR if end_line is different from first_line
+    if end_col > 1 or end_line ~= start_line then
       local last_line_idx = end_line - 1
-      if last_line_idx >= 0 then
+      if last_line_idx >= 0 and last_line_idx ~= first_line_idx then
         vim.api.nvim_buf_set_extmark(bufnr, ns_highlight, last_line_idx, 0, {
           end_col = end_col - 1,
           hl_group = hl_group,
