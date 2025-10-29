@@ -19,6 +19,7 @@
 #include "../include/utils.h"
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -150,8 +151,12 @@ static SequenceDiffArray* join_sequence_diffs_by_shifting(
                 }
                 
                 // Check if shifted position still matches
-                if (seq1->getElement(seq1, pos1_start) != seq1->getElement(seq1, pos1_end) ||
-                    seq2->getElement(seq2, pos2_start) != seq2->getElement(seq2, pos2_end)) {
+                int elem1_start = seq1->getElement(seq1, pos1_start);
+                int elem1_end = seq1->getElement(seq1, pos1_end);
+                int elem2_start = seq2->getElement(seq2, pos2_start);
+                int elem2_end = seq2->getElement(seq2, pos2_end);
+                
+                if (elem1_start != elem1_end || elem2_start != elem2_end) {
                     break;
                 }
             }

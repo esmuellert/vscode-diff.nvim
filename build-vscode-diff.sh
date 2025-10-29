@@ -40,6 +40,8 @@ function main() {
     const file1Content = readFileSync(file1Path, 'utf-8');
     const file2Content = readFileSync(file2Path, 'utf-8');
 
+    // Split by newline - this matches VSCode's behavior where a file ending
+    // with \n will have a trailing empty string in the array
     const file1Lines = file1Content.split('\n');
     const file2Lines = file2Content.split('\n');
 
@@ -57,6 +59,7 @@ function main() {
         ignoreTrimWhitespace: false,
         maxComputationTimeMs: 0,
         computeMoves: false,
+        extendToSubwords: false,
     });
 
     // Print results

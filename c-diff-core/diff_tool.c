@@ -25,6 +25,11 @@
 /**
  * Read lines from a file into a dynamically allocated array.
  * Returns the number of lines read, or -1 on error.
+ * 
+ * IMPORTANT: Matches JavaScript's split('\n') behavior:
+ *   - "a\nb\nc".split('\n') -> ["a", "b", "c"] (3 lines)
+ *   - "a\nb\nc\n".split('\n') -> ["a", "b", "c", ""] (4 lines with trailing empty)
+ *   - Keeps '\r' if present (doesn't strip it like fgets does)
  */
 static int read_file_lines(const char* filename, char*** lines_out) {
     FILE* file = fopen(filename, "r");
@@ -33,56 +38,68 @@ static int read_file_lines(const char* filename, char*** lines_out) {
         return -1;
     }
     
-    // Allocate initial capacity
-    int capacity = 16;
-    int count = 0;
-    char** lines = (char**)malloc(capacity * sizeof(char*));
-    if (!lines) {
+    // Read entire file content
+    fseek(file, 0, SEEK_END);
+    long file_size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    
+    char* content = (char*)malloc(file_size + 1);
+    if (!content) {
         fclose(file);
         return -1;
     }
     
-    // Read lines
-    char buffer[4096];
-    while (fgets(buffer, sizeof(buffer), file)) {
-        // Remove newline if present
-        size_t len = strlen(buffer);
-        if (len > 0 && buffer[len - 1] == '\n') {
-            buffer[len - 1] = '\0';
-            len--;
+    size_t bytes_read = fread(content, 1, file_size, file);
+    content[bytes_read] = '\0';
+    fclose(file);
+    
+    // Count lines by counting '\n' characters (matching JavaScript split('\n'))
+    // This matches: "a\nb\nc".split('\n') -> ["a", "b", "c"] (3 lines)
+    //               "a\nb\nc\n".split('\n') -> ["a", "b", "c", ""] (4 lines)
+    int line_count = 1;  // At least one line (even empty file has 1 empty line)
+    for (size_t i = 0; i < bytes_read; i++) {
+        if (content[i] == '\n') {
+            line_count++;
         }
-        
-        // Expand capacity if needed
-        if (count >= capacity) {
-            capacity *= 2;
-            char** new_lines = (char**)realloc(lines, capacity * sizeof(char*));
-            if (!new_lines) {
-                for (int i = 0; i < count; i++) {
-                    free(lines[i]);
-                }
-                free(lines);
-                fclose(file);
-                return -1;
-            }
-            lines = new_lines;
-        }
-        
-        // Duplicate the line
-        lines[count] = strdup(buffer);
-        if (!lines[count]) {
-            for (int i = 0; i < count; i++) {
-                free(lines[i]);
-            }
-            free(lines);
-            fclose(file);
-            return -1;
-        }
-        count++;
     }
     
-    fclose(file);
+    // Allocate lines array
+    char** lines = (char**)malloc(line_count * sizeof(char*));
+    if (!lines) {
+        free(content);
+        return -1;
+    }
+    
+    // Split by '\n' only, keeping '\r' if present (matching JavaScript behavior)
+    // JavaScript: "line1\r\nline2\r\n".split('\n') -> ["line1\r", "line2\r", ""]
+    int line_idx = 0;
+    size_t line_start = 0;
+    
+    for (size_t i = 0; i <= bytes_read; i++) {
+        if (i == bytes_read || content[i] == '\n') {
+            // Extract line: everything from line_start to current position (excluding '\n')
+            size_t line_len = i - line_start;
+            
+            lines[line_idx] = (char*)malloc(line_len + 1);
+            if (!lines[line_idx]) {
+                for (int j = 0; j < line_idx; j++) {
+                    free(lines[j]);
+                }
+                free(lines);
+                free(content);
+                return -1;
+            }
+            
+            memcpy(lines[line_idx], content + line_start, line_len);
+            lines[line_idx][line_len] = '\0';
+            line_idx++;
+            line_start = i + 1;
+        }
+    }
+    
+    free(content);
     *lines_out = lines;
-    return count;
+    return line_count;
 }
 
 /**

@@ -694,12 +694,13 @@ void char_sequence_translate_range(const CharSequence* seq,
 // =============================================================================
 
 /**
- * Helper: Check if character is word character (alphanumeric)
+ * Helper: Check if character is word character (alphanumeric + underscore)
  */
 static bool is_word_char(uint32_t ch) {
     return (ch >= 'a' && ch <= 'z') ||
            (ch >= 'A' && ch <= 'Z') ||
-           (ch >= '0' && ch <= '9');
+           (ch >= '0' && ch <= '9') ||
+           (ch == '_');
 }
 
 /**

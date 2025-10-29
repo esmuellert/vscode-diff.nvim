@@ -434,15 +434,15 @@ static void scan_word(ScanWordContext* ctx, int offset1, int offset2,
     }
     
     // Check if we should extend to include this word
+    // VSCode: if (force && equalChars1 + equalChars2 < w.seq1Range.length + w.seq2Range.length || 
+    //             equalChars1 + equalChars2 < (w.seq1Range.length + w.seq2Range.length) * 2 / 3)
+    // Due to operator precedence, this is: (force && condition1) || condition2
+    // CRITICAL: Use floating-point math to match JavaScript's behavior!
     int word_len = (word.seq1_end - word.seq1_start) + (word.seq2_end - word.seq2_start);
     int equal_len = equal_chars1 + equal_chars2;
     
-    bool should_extend;
-    if (ctx->force) {
-        should_extend = (equal_len < word_len);
-    } else {
-        should_extend = (equal_len < word_len * 2 / 3);
-    }
+    bool should_extend = (ctx->force && equal_len < word_len) || 
+                        (equal_len < word_len * 2.0 / 3.0);
     
     if (should_extend) {
         if (ctx->additional->count >= ctx->additional->capacity) {
