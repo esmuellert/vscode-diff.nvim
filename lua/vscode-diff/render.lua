@@ -13,6 +13,7 @@ local ns_filler = vim.api.nvim_create_namespace("vscode-diff-filler")
 -- Setup VSCode-style highlight groups
 function M.setup_highlights()
   -- Line-level highlights (light background - covers whole line)
+  -- Use slightly darker colors that are visible
   vim.api.nvim_set_hl(0, "VscodeDiffLineInsert", {
     bg = "#1e3a1e",  -- Light green
     default = true,
@@ -34,10 +35,10 @@ function M.setup_highlights()
     default = true,
   })
   
-  -- Filler lines (gray diagonal pattern)
+  -- Filler lines (subtle gray - similar to native diff)
   vim.api.nvim_set_hl(0, "VscodeDiffFiller", {
-    bg = "#2c2c2c",  -- Dark gray
-    fg = "#5c5c5c",
+    bg = "#2d2d2d",  -- Subtle gray background
+    fg = "#444444",  -- Slightly lighter for any text
     default = true,
   })
 end
@@ -63,6 +64,7 @@ local function is_past_line_content(line_number, column, lines)
 end
 
 -- Insert virtual filler lines using extmarks
+-- Style similar to diffview.nvim - simple background with optional character
 local function insert_filler_lines(bufnr, after_line_0idx, count)
   if count <= 0 then
     return
@@ -73,10 +75,13 @@ local function insert_filler_lines(bufnr, after_line_0idx, count)
     after_line_0idx = 0
   end
   
-  -- Create virtual lines with filler pattern
+  -- Create virtual lines with simple background
+  -- Use "─" (horizontal line) character for a clean look
   local virt_lines_content = {}
   for i = 1, count do
-    table.insert(virt_lines_content, {{"~", "VscodeDiffFiller"}})
+    -- Simple approach: just empty line with highlight
+    -- The background color will fill the line
+    table.insert(virt_lines_content, {{" ", "VscodeDiffFiller"}})
   end
   
   vim.api.nvim_buf_set_extmark(bufnr, ns_filler, after_line_0idx, 0, {
@@ -90,17 +95,30 @@ end
 -- ============================================================================
 
 -- Apply light background color to entire line ranges in the mapping
+-- Use line_hl_group to highlight the whole line including trailing space
 local function apply_line_highlights(bufnr, line_range, hl_group)
   -- Skip empty ranges
   if line_range.end_line <= line_range.start_line then
     return
   end
   
-  -- Apply highlight to entire lines (from column 0 to end of line)
+  -- Get buffer line count to avoid going out of bounds
+  local line_count = vim.api.nvim_buf_line_count(bufnr)
+  
+  -- Apply highlight to entire lines using line_hl_group
+  -- This highlights the entire line including trailing space
   for line = line_range.start_line, line_range.end_line - 1 do
+    if line > line_count then
+      break
+    end
+    
     local line_idx = line - 1  -- Convert to 0-indexed
-    vim.api.nvim_buf_add_highlight(bufnr, ns_highlight, hl_group,
-                                   line_idx, 0, -1)  -- 0 to -1 = whole line
+    
+    -- Use line_hl_group for proper whole-line background
+    vim.api.nvim_buf_set_extmark(bufnr, ns_highlight, line_idx, 0, {
+      line_hl_group = hl_group,
+      priority = 100,
+    })
   end
 end
 
