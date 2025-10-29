@@ -8,6 +8,8 @@ test_diff_core
 
 # Generated VSCode diff bundle (can be regenerated with ./build-vscode-diff.sh)
 vscode-diff.mjs
+example
+example/
 
 # Neovim
 *.swp
@@ -17,5 +19,3 @@ vscode-diff.mjs
 # OS
 .DS_Store
 Thumbs.db
-example
-example/
