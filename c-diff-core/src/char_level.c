@@ -633,6 +633,9 @@ static SequenceDiffArray* remove_very_short_text(
             
             if (before_score + after_score > threshold) {
                 // Merge
+                fprintf(stderr, "[DBG-MERGE] Merging diffs %d-%d and %d-%d (scores: before=%.1f after=%.1f threshold=%.1f)\n",
+                        last_result->seq1_start, last_result->seq1_end, cur.seq1_start, cur.seq1_end,
+                        before_score, after_score, threshold);
                 last_result->seq1_end = cur.seq1_end;
                 last_result->seq2_end = cur.seq2_end;
                 should_repeat = true;
@@ -874,13 +877,16 @@ RangeMappingArray* refine_diff_char_level(
     }
 
     // Step 3: optimizeSequenceDiffs() - Reuse Step 2 optimization
+    fprintf(stderr, "[DBG] Before optimize_sequence_diffs: %d diffs\n", diffs->count);
     optimize_sequence_diffs(seq1_iface, seq2_iface, diffs);
+    fprintf(stderr, "[DBG] After optimize_sequence_diffs: %d diffs\n", diffs->count);
     
     // Step 4: extendDiffsToEntireWordIfAppropriate() - Word boundaries
     SequenceDiffArray* extended = extend_diffs_to_entire_word(seq1, seq2, diffs, false, false);
     free(diffs->diffs);
     free(diffs);
     diffs = extended;
+    fprintf(stderr, "[DBG] After extend_diffs_to_entire_word(word=false): %d diffs\n", diffs->count);
     
     // Step 5: extendDiffsToEntireWordIfAppropriate() for subwords (if enabled)
     if (options->extend_to_subwords) {
@@ -888,13 +894,16 @@ RangeMappingArray* refine_diff_char_level(
         free(diffs->diffs);
         free(diffs);
         diffs = extended;
+        fprintf(stderr, "[DBG] After extend_diffs_to_entire_word(word=true): %d diffs\n", diffs->count);
     }
 
     // Step 6: removeShortMatches() - Remove ≤2 char gaps
     remove_short_matches(seq1_iface, seq2_iface, diffs);
+    fprintf(stderr, "[DBG] After remove_short_matches: %d diffs\n", diffs->count);
 
     // Step 7: removeVeryShortMatchingTextBetweenLongDiffs()
     remove_very_short_text(seq1, seq2, diffs);
+    fprintf(stderr, "[DBG] After remove_very_short_text: %d diffs\n", diffs->count);
     
     // Step 8: Translate to RangeMapping with (line, column) positions
     RangeMappingArray* result = create_range_mapping_array(diffs->count);
@@ -956,6 +965,8 @@ RangeMappingArray* refine_all_diffs_char_level(
     
     // Refine each line diff
     for (int i = 0; i < line_diffs->count; i++) {
+        fprintf(stderr, "[DBG-REFINE] === Refining line diff #%d ===\n", i);
+        fflush(stderr);
         bool local_timeout = false;
         RangeMappingArray* char_mappings = refine_diff_char_level(
             &line_diffs->diffs[i], lines_a, len_a, lines_b, len_b, options,

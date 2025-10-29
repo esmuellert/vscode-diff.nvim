@@ -1,0 +1,541 @@
+Found 23 Makefile versions
+Found 16 render.lua versions
+C diff tool: /home/yanuoma/.local/share/nvim/vscode-diff.nvim/c-diff-core/build/diff
+Node diff tool: /home/yanuoma/.local/share/nvim/vscode-diff.nvim/vscode-diff.mjs
+
+Testing Makefile version pairs...
+Progress: 20 tests completed, 0 mismatches found
+Progress: 40 tests completed, 3 mismatches found
+Progress: 60 tests completed, 3 mismatches found
+Progress: 80 tests completed, 3 mismatches found
+Progress: 100 tests completed, 3 mismatches found
+Testing render.lua version pairs...
+Progress: 120 tests completed, 14 mismatches found
+Progress: 140 tests completed, 17 mismatches found
+Progress: 160 tests completed, 27 mismatches found
+Progress: 180 tests completed, 33 mismatches found
+Progress: 200 tests completed, 42 mismatches found
+
+========================================
+SUMMARY
+========================================
+Total tests run: 200
+Mismatches found: 42
+
+MISMATCH DETAILS:
+========================================
+Mismatch #1 (Test #24):
+  Files: Makefile_1a3615d53acac7eaa54a884e44f8fed810c446d3 vs Makefile_27db96e01e2913d467c48c704437385c963a97bb
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_makefile_1_3.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_makefile_1_3.txt
+
+Mismatch #2 (Test #28):
+  Files: Makefile_1a3615d53acac7eaa54a884e44f8fed810c446d3 vs Makefile_515a91226d1da2c6075982cde37ad7691daeeabe
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_makefile_1_7.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_makefile_1_7.txt
+
+Mismatch #3 (Test #36):
+  Files: Makefile_1a3615d53acac7eaa54a884e44f8fed810c446d3 vs Makefile_9b29c1cbd4b1c08cd3a55e3963e328c278034270
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_makefile_1_15.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_makefile_1_15.txt
+
+Mismatch #4 (Test #101):
+  Files: render.lua_084143a6e1bd01337a5871b130e0d5ab38453b3a vs render.lua_2ea5bd233e23b532cb5648db420581f29d2e8994
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_0_1.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_0_1.txt
+
+Mismatch #5 (Test #102):
+  Files: render.lua_084143a6e1bd01337a5871b130e0d5ab38453b3a vs render.lua_516b9decc32505552f268df4c9937c93b76d6bb5
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_0_2.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_0_2.txt
+
+Mismatch #6 (Test #104):
+  Files: render.lua_084143a6e1bd01337a5871b130e0d5ab38453b3a vs render.lua_615cb61d3fa43b5a197484d628e196ba4e15512b
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_0_4.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_0_4.txt
+
+Mismatch #7 (Test #105):
+  Files: render.lua_084143a6e1bd01337a5871b130e0d5ab38453b3a vs render.lua_7eb0183a851d14378268939083fd78976d6af842
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_0_5.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_0_5.txt
+
+Mismatch #8 (Test #106):
+  Files: render.lua_084143a6e1bd01337a5871b130e0d5ab38453b3a vs render.lua_87918da9a7668bede7f3854edec766440b2bf9e7
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_0_6.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_0_6.txt
+
+Mismatch #9 (Test #107):
+  Files: render.lua_084143a6e1bd01337a5871b130e0d5ab38453b3a vs render.lua_923de8d1c24159c91edd4bf9013ce6b93112630f
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_0_7.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_0_7.txt
+
+Mismatch #10 (Test #108):
+  Files: render.lua_084143a6e1bd01337a5871b130e0d5ab38453b3a vs render.lua_af1f272a2387464ef2c8b06db7d3fc3f96ac6d23
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_0_8.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_0_8.txt
+
+Mismatch #11 (Test #109):
+  Files: render.lua_084143a6e1bd01337a5871b130e0d5ab38453b3a vs render.lua_b84982e6aa780cf166ec394b7537a3694f7a27b9
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_0_9.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_0_9.txt
+
+Mismatch #12 (Test #110):
+  Files: render.lua_084143a6e1bd01337a5871b130e0d5ab38453b3a vs render.lua_bc8a6249313eeeec11f7bca71344ac701244c985
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_0_10.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_0_10.txt
+
+Mismatch #13 (Test #111):
+  Files: render.lua_084143a6e1bd01337a5871b130e0d5ab38453b3a vs render.lua_cca46173ed68c900322df054793de43e946572b9
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_0_11.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_0_11.txt
+
+Mismatch #14 (Test #115):
+  Files: render.lua_084143a6e1bd01337a5871b130e0d5ab38453b3a vs render.lua_f87101ead47201754c84feb93e2c9de5e487fdff
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_0_15.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_0_15.txt
+
+Mismatch #15 (Test #130):
+  Files: render.lua_516b9decc32505552f268df4c9937c93b76d6bb5 vs render.lua_580b49f593d97ee41a483be82eef3ac6bc0091e0
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_2_3.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_2_3.txt
+
+Mismatch #16 (Test #139):
+  Files: render.lua_516b9decc32505552f268df4c9937c93b76d6bb5 vs render.lua_d244f89f873822427c62ef31bee38895ef235785
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_2_12.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_2_12.txt
+
+Mismatch #17 (Test #140):
+  Files: render.lua_516b9decc32505552f268df4c9937c93b76d6bb5 vs render.lua_ec1d62fe988e9f1db9c0be745a8bf2edb0ce4a40
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_2_13.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_2_13.txt
+
+Mismatch #18 (Test #141):
+  Files: render.lua_516b9decc32505552f268df4c9937c93b76d6bb5 vs render.lua_efacb786eb2e1a50c10a6340ff5e00072575c435
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_2_14.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_2_14.txt
+
+Mismatch #19 (Test #143):
+  Files: render.lua_580b49f593d97ee41a483be82eef3ac6bc0091e0 vs render.lua_615cb61d3fa43b5a197484d628e196ba4e15512b
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_3_4.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_3_4.txt
+
+Mismatch #20 (Test #144):
+  Files: render.lua_580b49f593d97ee41a483be82eef3ac6bc0091e0 vs render.lua_7eb0183a851d14378268939083fd78976d6af842
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_3_5.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_3_5.txt
+
+Mismatch #21 (Test #145):
+  Files: render.lua_580b49f593d97ee41a483be82eef3ac6bc0091e0 vs render.lua_87918da9a7668bede7f3854edec766440b2bf9e7
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_3_6.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_3_6.txt
+
+Mismatch #22 (Test #146):
+  Files: render.lua_580b49f593d97ee41a483be82eef3ac6bc0091e0 vs render.lua_923de8d1c24159c91edd4bf9013ce6b93112630f
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_3_7.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_3_7.txt
+
+Mismatch #23 (Test #147):
+  Files: render.lua_580b49f593d97ee41a483be82eef3ac6bc0091e0 vs render.lua_af1f272a2387464ef2c8b06db7d3fc3f96ac6d23
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_3_8.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_3_8.txt
+
+Mismatch #24 (Test #148):
+  Files: render.lua_580b49f593d97ee41a483be82eef3ac6bc0091e0 vs render.lua_b84982e6aa780cf166ec394b7537a3694f7a27b9
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_3_9.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_3_9.txt
+
+Mismatch #25 (Test #149):
+  Files: render.lua_580b49f593d97ee41a483be82eef3ac6bc0091e0 vs render.lua_bc8a6249313eeeec11f7bca71344ac701244c985
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_3_10.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_3_10.txt
+
+Mismatch #26 (Test #150):
+  Files: render.lua_580b49f593d97ee41a483be82eef3ac6bc0091e0 vs render.lua_cca46173ed68c900322df054793de43e946572b9
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_3_11.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_3_11.txt
+
+Mismatch #27 (Test #154):
+  Files: render.lua_580b49f593d97ee41a483be82eef3ac6bc0091e0 vs render.lua_f87101ead47201754c84feb93e2c9de5e487fdff
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_3_15.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_3_15.txt
+
+Mismatch #28 (Test #162):
+  Files: render.lua_615cb61d3fa43b5a197484d628e196ba4e15512b vs render.lua_d244f89f873822427c62ef31bee38895ef235785
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_4_12.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_4_12.txt
+
+Mismatch #29 (Test #163):
+  Files: render.lua_615cb61d3fa43b5a197484d628e196ba4e15512b vs render.lua_ec1d62fe988e9f1db9c0be745a8bf2edb0ce4a40
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_4_13.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_4_13.txt
+
+Mismatch #30 (Test #164):
+  Files: render.lua_615cb61d3fa43b5a197484d628e196ba4e15512b vs render.lua_efacb786eb2e1a50c10a6340ff5e00072575c435
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_4_14.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_4_14.txt
+
+Mismatch #31 (Test #172):
+  Files: render.lua_7eb0183a851d14378268939083fd78976d6af842 vs render.lua_d244f89f873822427c62ef31bee38895ef235785
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_5_12.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_5_12.txt
+
+Mismatch #32 (Test #173):
+  Files: render.lua_7eb0183a851d14378268939083fd78976d6af842 vs render.lua_ec1d62fe988e9f1db9c0be745a8bf2edb0ce4a40
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_5_13.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_5_13.txt
+
+Mismatch #33 (Test #174):
+  Files: render.lua_7eb0183a851d14378268939083fd78976d6af842 vs render.lua_efacb786eb2e1a50c10a6340ff5e00072575c435
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_5_14.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_5_14.txt
+
+Mismatch #34 (Test #181):
+  Files: render.lua_87918da9a7668bede7f3854edec766440b2bf9e7 vs render.lua_d244f89f873822427c62ef31bee38895ef235785
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_6_12.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_6_12.txt
+
+Mismatch #35 (Test #182):
+  Files: render.lua_87918da9a7668bede7f3854edec766440b2bf9e7 vs render.lua_ec1d62fe988e9f1db9c0be745a8bf2edb0ce4a40
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_6_13.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_6_13.txt
+
+Mismatch #36 (Test #183):
+  Files: render.lua_87918da9a7668bede7f3854edec766440b2bf9e7 vs render.lua_efacb786eb2e1a50c10a6340ff5e00072575c435
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_6_14.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_6_14.txt
+
+Mismatch #37 (Test #189):
+  Files: render.lua_923de8d1c24159c91edd4bf9013ce6b93112630f vs render.lua_d244f89f873822427c62ef31bee38895ef235785
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_7_12.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_7_12.txt
+
+Mismatch #38 (Test #190):
+  Files: render.lua_923de8d1c24159c91edd4bf9013ce6b93112630f vs render.lua_ec1d62fe988e9f1db9c0be745a8bf2edb0ce4a40
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_7_13.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_7_13.txt
+
+Mismatch #39 (Test #191):
+  Files: render.lua_923de8d1c24159c91edd4bf9013ce6b93112630f vs render.lua_efacb786eb2e1a50c10a6340ff5e00072575c435
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_7_14.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_7_14.txt
+
+Mismatch #40 (Test #196):
+  Files: render.lua_af1f272a2387464ef2c8b06db7d3fc3f96ac6d23 vs render.lua_d244f89f873822427c62ef31bee38895ef235785
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_8_12.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_8_12.txt
+
+Mismatch #41 (Test #197):
+  Files: render.lua_af1f272a2387464ef2c8b06db7d3fc3f96ac6d23 vs render.lua_ec1d62fe988e9f1db9c0be745a8bf2edb0ce4a40
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_8_13.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_8_13.txt
+
+Mismatch #42 (Test #198):
+  Files: render.lua_af1f272a2387464ef2c8b06db7d3fc3f96ac6d23 vs render.lua_efacb786eb2e1a50c10a6340ff5e00072575c435
+  C exit: 0, Node exit: 0
+  C output: /tmp/diff_comparison_1253904/c_output_render_8_14.txt
+  Node output: /tmp/diff_comparison_1253904/node_output_render_8_14.txt
+
+
+
+List of all mismatched file pairs:
+========================================
+1. Makefile_1a3615d53acac7eaa54a884e44f8fed810c446d3 vs Makefile_27db96e01e2913d467c48c704437385c963a97bb
+2. Makefile_1a3615d53acac7eaa54a884e44f8fed810c446d3 vs Makefile_515a91226d1da2c6075982cde37ad7691daeeabe
+3. Makefile_1a3615d53acac7eaa54a884e44f8fed810c446d3 vs Makefile_9b29c1cbd4b1c08cd3a55e3963e328c278034270
+4. render.lua_084143a6e1bd01337a5871b130e0d5ab38453b3a vs render.lua_2ea5bd233e23b532cb5648db420581f29d2e8994
+5. render.lua_084143a6e1bd01337a5871b130e0d5ab38453b3a vs render.lua_516b9decc32505552f268df4c9937c93b76d6bb5
+6. render.lua_084143a6e1bd01337a5871b130e0d5ab38453b3a vs render.lua_615cb61d3fa43b5a197484d628e196ba4e15512b
+7. render.lua_084143a6e1bd01337a5871b130e0d5ab38453b3a vs render.lua_7eb0183a851d14378268939083fd78976d6af842
+8. render.lua_084143a6e1bd01337a5871b130e0d5ab38453b3a vs render.lua_87918da9a7668bede7f3854edec766440b2bf9e7
+9. render.lua_084143a6e1bd01337a5871b130e0d5ab38453b3a vs render.lua_923de8d1c24159c91edd4bf9013ce6b93112630f
+10. render.lua_084143a6e1bd01337a5871b130e0d5ab38453b3a vs render.lua_af1f272a2387464ef2c8b06db7d3fc3f96ac6d23
+11. render.lua_084143a6e1bd01337a5871b130e0d5ab38453b3a vs render.lua_b84982e6aa780cf166ec394b7537a3694f7a27b9
+12. render.lua_084143a6e1bd01337a5871b130e0d5ab38453b3a vs render.lua_bc8a6249313eeeec11f7bca71344ac701244c985
+13. render.lua_084143a6e1bd01337a5871b130e0d5ab38453b3a vs render.lua_cca46173ed68c900322df054793de43e946572b9
+14. render.lua_084143a6e1bd01337a5871b130e0d5ab38453b3a vs render.lua_f87101ead47201754c84feb93e2c9de5e487fdff
+15. render.lua_516b9decc32505552f268df4c9937c93b76d6bb5 vs render.lua_580b49f593d97ee41a483be82eef3ac6bc0091e0
+16. render.lua_516b9decc32505552f268df4c9937c93b76d6bb5 vs render.lua_d244f89f873822427c62ef31bee38895ef235785
+17. render.lua_516b9decc32505552f268df4c9937c93b76d6bb5 vs render.lua_ec1d62fe988e9f1db9c0be745a8bf2edb0ce4a40
+18. render.lua_516b9decc32505552f268df4c9937c93b76d6bb5 vs render.lua_efacb786eb2e1a50c10a6340ff5e00072575c435
+19. render.lua_580b49f593d97ee41a483be82eef3ac6bc0091e0 vs render.lua_615cb61d3fa43b5a197484d628e196ba4e15512b
+20. render.lua_580b49f593d97ee41a483be82eef3ac6bc0091e0 vs render.lua_7eb0183a851d14378268939083fd78976d6af842
+21. render.lua_580b49f593d97ee41a483be82eef3ac6bc0091e0 vs render.lua_87918da9a7668bede7f3854edec766440b2bf9e7
+22. render.lua_580b49f593d97ee41a483be82eef3ac6bc0091e0 vs render.lua_923de8d1c24159c91edd4bf9013ce6b93112630f
+23. render.lua_580b49f593d97ee41a483be82eef3ac6bc0091e0 vs render.lua_af1f272a2387464ef2c8b06db7d3fc3f96ac6d23
+24. render.lua_580b49f593d97ee41a483be82eef3ac6bc0091e0 vs render.lua_b84982e6aa780cf166ec394b7537a3694f7a27b9
+25. render.lua_580b49f593d97ee41a483be82eef3ac6bc0091e0 vs render.lua_bc8a6249313eeeec11f7bca71344ac701244c985
+26. render.lua_580b49f593d97ee41a483be82eef3ac6bc0091e0 vs render.lua_cca46173ed68c900322df054793de43e946572b9
+27. render.lua_580b49f593d97ee41a483be82eef3ac6bc0091e0 vs render.lua_f87101ead47201754c84feb93e2c9de5e487fdff
+28. render.lua_615cb61d3fa43b5a197484d628e196ba4e15512b vs render.lua_d244f89f873822427c62ef31bee38895ef235785
+29. render.lua_615cb61d3fa43b5a197484d628e196ba4e15512b vs render.lua_ec1d62fe988e9f1db9c0be745a8bf2edb0ce4a40
+30. render.lua_615cb61d3fa43b5a197484d628e196ba4e15512b vs render.lua_efacb786eb2e1a50c10a6340ff5e00072575c435
+31. render.lua_7eb0183a851d14378268939083fd78976d6af842 vs render.lua_d244f89f873822427c62ef31bee38895ef235785
+32. render.lua_7eb0183a851d14378268939083fd78976d6af842 vs render.lua_ec1d62fe988e9f1db9c0be745a8bf2edb0ce4a40
+33. render.lua_7eb0183a851d14378268939083fd78976d6af842 vs render.lua_efacb786eb2e1a50c10a6340ff5e00072575c435
+34. render.lua_87918da9a7668bede7f3854edec766440b2bf9e7 vs render.lua_d244f89f873822427c62ef31bee38895ef235785
+35. render.lua_87918da9a7668bede7f3854edec766440b2bf9e7 vs render.lua_ec1d62fe988e9f1db9c0be745a8bf2edb0ce4a40
+36. render.lua_87918da9a7668bede7f3854edec766440b2bf9e7 vs render.lua_efacb786eb2e1a50c10a6340ff5e00072575c435
+37. render.lua_923de8d1c24159c91edd4bf9013ce6b93112630f vs render.lua_d244f89f873822427c62ef31bee38895ef235785
+38. render.lua_923de8d1c24159c91edd4bf9013ce6b93112630f vs render.lua_ec1d62fe988e9f1db9c0be745a8bf2edb0ce4a40
+39. render.lua_923de8d1c24159c91edd4bf9013ce6b93112630f vs render.lua_efacb786eb2e1a50c10a6340ff5e00072575c435
+40. render.lua_af1f272a2387464ef2c8b06db7d3fc3f96ac6d23 vs render.lua_d244f89f873822427c62ef31bee38895ef235785
+41. render.lua_af1f272a2387464ef2c8b06db7d3fc3f96ac6d23 vs render.lua_ec1d62fe988e9f1db9c0be745a8bf2edb0ce4a40
+42. render.lua_af1f272a2387464ef2c8b06db7d3fc3f96ac6d23 vs render.lua_efacb786eb2e1a50c10a6340ff5e00072575c435
+
+Showing first mismatch in detail:
+========================================
+C diff output:
+---
+=================================================================
+Diff Tool - Computing differences
+=================================================================
+Original: /home/yanuoma/.local/share/nvim/vscode-diff.nvim/example/Makefile_00713df1748267f144d31009b14844a21283abd6 (77 lines)
+Modified: /home/yanuoma/.local/share/nvim/vscode-diff.nvim/example/Makefile_1a3615d53acac7eaa54a884e44f8fed810c446d3 (177 lines)
+=================================================================
+
+Diff Results:
+=================================================================
+Number of changes: 24
+Hit timeout: no
+
+  Changes: 24 line mapping(s)
+    [0] Lines 2-1 -> Lines 2-17 (1 inner change)
+         Inner: L2:C1-L2:C1 -> L2:C1-L18:C1
+    [1] Lines 3-3 -> Lines 19-36 (3 inner changes)
+         Inner: L3:C1-L3:C1 -> L19:C1-L20:C1
+         Inner: L3:C7-L3:C7 -> L20:C7-L20:C12
+         Inner: L4:C1-L4:C1 -> L21:C1-L37:C1
+    [2] Lines 5-4 -> Lines 38-38 (1 inner change)
+         Inner: L5:C1-L5:C1 -> L38:C1-L39:C1
+    [3] Lines 15-14 -> Lines 49-49 (1 inner change)
+         Inner: L15:C1-L15:C1 -> L49:C1-L50:C1
+    [4] Lines 18-18 -> Lines 53-71 (3 inner changes)
+         Inner: L18:C1-L18:C12 -> L53:C1-L58:C10
+         Inner: L18:C16-L18:C16 -> L58:C14-L58:C42
+         Inner: L18:C19-L19:C1 -> L58:C45-L72:C1
+    [5] Lines 22-24 -> Lines 75-78 (7 inner changes)
+         Inner: L22:C6-L22:C20 -> L75:C6-L75:C14
+         Inner: L22:C41-L22:C55 -> L75:C35-L75:C43
+         Inner: L23:C5-L23:C14 -> L76:C5-L76:C14
+         Inner: L23:C34-L23:C34 -> L76:C34-L76:C39
+         Inner: L23:C42-L23:C43 -> L76:C47-L76:C52
+         Inner: L24:C6-L24:C12 -> L77:C6-L77:C19
+         Inner: L24:C33-L24:C39 -> L77:C40-L78:C47
+    [6] Lines 26-25 -> Lines 80-81 (1 inner change)
+         Inner: L26:C1-L26:C1 -> L80:C1-L82:C1
+    [7] Lines 27-27 -> Lines 83-84 (4 inner changes)
+         Inner: L27:C40-L27:C54 -> L83:C40-L83:C48
+         Inner: L27:C59-L27:C68 -> L83:C53-L83:C62
+         Inner: L27:C74-L27:C80 -> L83:C68-L84:C24
+         Inner: L27:C97-L27:C97 -> L84:C41-L84:C80
+    [8] Lines 29-29 -> Lines 86-87 (2 inner changes)
+         Inner: L29:C1-L29:C1 -> L86:C1-L87:C1
+         Inner: L29:C6-L29:C18 -> L87:C6-L87:C13
+    [9] Lines 34-33 -> Lines 92-106 (1 inner change)
+         Inner: L34:C1-L34:C1 -> L92:C1-L107:C1
+    [10] Lines 36-36 -> Lines 109-109 (2 inner changes)
+         Inner: L36:C71-L36:C71 -> L109:C71-L109:C94
+         Inner: L36:C120-L36:C120 -> L109:C143-L109:C147
+    [11] Lines 42-44 -> Lines 115-125 (6 inner changes)
+         Inner: L42:C17-L42:C31 -> L115:C17-L115:C25
+         Inner: L42:C76-L42:C76 -> L115:C70-L115:C90
+         Inner: L43:C6-L43:C20 -> L116:C6-L116:C14
+         Inner: L44:C35-L44:C49 -> L117:C35-L117:C43
+         Inner: L44:C80-L44:C80 -> L117:C74-L117:C97
+         Inner: L44:C104-L45:C1 -> L117:C121-L126:C1
+    [12] Lines 46-46 -> Lines 127-127 (2 inner changes)
+         Inner: L46:C17-L46:C31 -> L127:C17-L127:C40
+         Inner: L46:C37-L46:C37 -> L127:C46-L127:C60
+    [13] Lines 48-48 -> Lines 129-129 (1 inner change)
+         Inner: L48:C10-L48:C24 -> L129:C10-L129:C18
+    [14] Lines 50-52 -> Lines 131-133 (7 inner changes)
+         Inner: L50:C17-L50:C25 -> L131:C17-L131:C38
+         Inner: L50:C30-L50:C43 -> L131:C43-L131:C89
+         Inner: L51:C6-L51:C14 -> L132:C6-L132:C19
+         Inner: L52:C35-L52:C43 -> L133:C35-L133:C56
+         Inner: L52:C46-L52:C46 -> L133:C59-L133:C90
+         Inner: L52:C77-L52:C77 -> L133:C121-L133:C144
+         Inner: L52:C120-L52:C129 -> L133:C187-L133:C205
+    [15] Lines 54-54 -> Lines 135-135 (2 inner changes)
+         Inner: L54:C16-L54:C16 -> L135:C16-L135:C57
+         Inner: L54:C25-L54:C48 -> L135:C66-L135:C67
+    [16] Lines 56-56 -> Lines 137-137 (1 inner change)
+         Inner: L56:C10-L56:C18 -> L137:C10-L137:C23
+    [17] Lines 58-60 -> Lines 139-141 (7 inner changes)
+         Inner: L58:C17-L58:C23 -> L139:C17-L139:C32
+         Inner: L58:C37-L58:C37 -> L139:C46-L139:C62
+         Inner: L59:C6-L59:C12 -> L140:C6-L140:C16
+         Inner: L60:C35-L60:C41 -> L141:C35-L141:C45
+         Inner: L60:C46-L60:C52 -> L141:C50-L141:C78
+         Inner: L60:C89-L60:C94 -> L141:C115-L141:C159
+         Inner: L60:C129-L60:C136 -> L141:C194-L141:C209
+    [18] Lines 62-62 -> Lines 143-143 (2 inner changes)
+         Inner: L62:C26-L62:C37 -> L143:C26-L143:C45
+         Inner: L62:C51-L62:C51 -> L143:C59-L143:C75
+    [19] Lines 64-64 -> Lines 145-145 (1 inner change)
+         Inner: L64:C10-L64:C16 -> L145:C10-L145:C20
+    [20] Lines 68-68 -> Lines 149-149 (4 inner changes)
+         Inner: L68:C49-L68:C49 -> L149:C49-L149:C85
+         Inner: L68:C80-L68:C86 -> L149:C116-L149:C124
+         Inner: L68:C91-L68:C91 -> L149:C129-L149:C152
+         Inner: L68:C146-L68:C146 -> L149:C207-L149:C211
+    [21] Lines 71-70 -> Lines 152-167 (1 inner change)
+         Inner: L71:C1-L71:C1 -> L152:C1-L168:C1
+    [22] Lines 72-72 -> Lines 169-169 (3 inner changes)
+         Inner: L72:C23-L72:C31 -> L169:C23-L169:C31
+         Inner: L72:C37-L72:C43 -> L169:C37-L169:C45
+         Inner: L72:C49-L72:C60 -> L169:C51-L169:C107
+    [23] Lines 77-76 -> Lines 174-176 (1 inner change)
+         Inner: L77:C1-L77:C1 -> L174:C1-L177:C1
+
+=================================================================
+
+Node diff output:
+---
+=================================================================
+Diff Tool - Computing differences
+=================================================================
+Original: /home/yanuoma/.local/share/nvim/vscode-diff.nvim/example/Makefile_00713df1748267f144d31009b14844a21283abd6 (77 lines)
+Modified: /home/yanuoma/.local/share/nvim/vscode-diff.nvim/example/Makefile_1a3615d53acac7eaa54a884e44f8fed810c446d3 (177 lines)
+=================================================================
+
+Diff Results:
+=================================================================
+Number of changes: 24
+Hit timeout: no
+
+  Changes: 24 line mapping(s)
+    [0] Lines 2-1 -> Lines 2-17 (1 inner change)
+         Inner: L2:C1-L2:C1 -> L2:C1-L18:C1
+    [1] Lines 3-3 -> Lines 19-36 (3 inner changes)
+         Inner: L3:C1-L3:C1 -> L19:C1-L20:C1
+         Inner: L3:C7-L3:C7 -> L20:C7-L20:C12
+         Inner: L4:C1-L4:C1 -> L21:C1-L37:C1
+    [2] Lines 5-4 -> Lines 38-38 (1 inner change)
+         Inner: L5:C1-L5:C1 -> L38:C1-L39:C1
+    [3] Lines 15-14 -> Lines 49-49 (1 inner change)
+         Inner: L15:C1-L15:C1 -> L49:C1-L50:C1
+    [4] Lines 18-18 -> Lines 53-71 (3 inner changes)
+         Inner: L18:C1-L18:C12 -> L53:C1-L58:C10
+         Inner: L18:C16-L18:C16 -> L58:C14-L58:C42
+         Inner: L18:C19-L19:C1 -> L58:C45-L72:C1
+    [5] Lines 22-24 -> Lines 75-78 (7 inner changes)
+         Inner: L22:C6-L22:C20 -> L75:C6-L75:C14
+         Inner: L22:C41-L22:C55 -> L75:C35-L75:C43
+         Inner: L23:C5-L23:C14 -> L76:C5-L76:C14
+         Inner: L23:C34-L23:C34 -> L76:C34-L76:C39
+         Inner: L23:C42-L23:C43 -> L76:C47-L76:C52
+         Inner: L24:C6-L24:C12 -> L77:C6-L77:C19
+         Inner: L24:C33-L24:C39 -> L77:C40-L78:C47
+    [6] Lines 26-25 -> Lines 80-81 (1 inner change)
+         Inner: L26:C1-L26:C1 -> L80:C1-L82:C1
+    [7] Lines 27-27 -> Lines 83-84 (4 inner changes)
+         Inner: L27:C40-L27:C54 -> L83:C40-L83:C48
+         Inner: L27:C59-L27:C68 -> L83:C53-L83:C62
+         Inner: L27:C74-L27:C80 -> L83:C68-L84:C24
+         Inner: L27:C97-L27:C97 -> L84:C41-L84:C80
+    [8] Lines 29-29 -> Lines 86-87 (2 inner changes)
+         Inner: L29:C1-L29:C1 -> L86:C1-L87:C1
+         Inner: L29:C6-L29:C18 -> L87:C6-L87:C13
+    [9] Lines 34-33 -> Lines 92-106 (1 inner change)
+         Inner: L34:C1-L34:C1 -> L92:C1-L107:C1
+    [10] Lines 36-36 -> Lines 109-109 (2 inner changes)
+         Inner: L36:C71-L36:C71 -> L109:C71-L109:C94
+         Inner: L36:C120-L36:C120 -> L109:C143-L109:C147
+    [11] Lines 42-44 -> Lines 115-125 (6 inner changes)
+         Inner: L42:C17-L42:C31 -> L115:C17-L115:C25
+         Inner: L42:C76-L42:C76 -> L115:C70-L115:C90
+         Inner: L43:C6-L43:C20 -> L116:C6-L116:C14
+         Inner: L44:C35-L44:C49 -> L117:C35-L117:C43
+         Inner: L44:C80-L44:C80 -> L117:C74-L117:C97
+         Inner: L44:C104-L45:C1 -> L117:C121-L126:C1
+    [12] Lines 46-46 -> Lines 127-127 (2 inner changes)
+         Inner: L46:C17-L46:C31 -> L127:C17-L127:C40
+         Inner: L46:C37-L46:C37 -> L127:C46-L127:C60
+    [13] Lines 48-48 -> Lines 129-129 (1 inner change)
+         Inner: L48:C10-L48:C24 -> L129:C10-L129:C18
+    [14] Lines 50-52 -> Lines 131-133 (7 inner changes)
+         Inner: L50:C17-L50:C25 -> L131:C17-L131:C38
+         Inner: L50:C30-L50:C43 -> L131:C43-L131:C89
+         Inner: L51:C6-L51:C14 -> L132:C6-L132:C19
+         Inner: L52:C35-L52:C43 -> L133:C35-L133:C56
+         Inner: L52:C46-L52:C46 -> L133:C59-L133:C90
+         Inner: L52:C77-L52:C77 -> L133:C121-L133:C144
+         Inner: L52:C120-L52:C129 -> L133:C187-L133:C205
+    [15] Lines 54-54 -> Lines 135-135 (2 inner changes)
+         Inner: L54:C16-L54:C16 -> L135:C16-L135:C57
+         Inner: L54:C25-L54:C48 -> L135:C66-L135:C67
+    [16] Lines 56-56 -> Lines 137-137 (1 inner change)
+         Inner: L56:C10-L56:C18 -> L137:C10-L137:C23
+    [17] Lines 58-60 -> Lines 139-141 (7 inner changes)
+         Inner: L58:C17-L58:C23 -> L139:C17-L139:C32
+         Inner: L58:C37-L58:C37 -> L139:C46-L139:C62
+         Inner: L59:C6-L59:C12 -> L140:C6-L140:C16
+         Inner: L60:C35-L60:C41 -> L141:C35-L141:C45
+         Inner: L60:C46-L60:C52 -> L141:C50-L141:C78
+         Inner: L60:C89-L60:C94 -> L141:C115-L141:C159
+         Inner: L60:C129-L60:C136 -> L141:C194-L141:C209
+    [18] Lines 62-62 -> Lines 143-143 (2 inner changes)
+         Inner: L62:C26-L62:C37 -> L143:C26-L143:C45
+         Inner: L62:C51-L62:C51 -> L143:C59-L143:C75
+    [19] Lines 64-64 -> Lines 145-145 (1 inner change)
+         Inner: L64:C10-L64:C16 -> L145:C10-L145:C20
+    [20] Lines 68-68 -> Lines 149-149 (4 inner changes)
+         Inner: L68:C49-L68:C49 -> L149:C49-L149:C85
+         Inner: L68:C80-L68:C86 -> L149:C116-L149:C124
+         Inner: L68:C91-L68:C91 -> L149:C129-L149:C152
+         Inner: L68:C146-L68:C146 -> L149:C207-L149:C211
+    [21] Lines 71-70 -> Lines 152-167 (1 inner change)
+         Inner: L71:C1-L71:C1 -> L152:C1-L168:C1
+    [22] Lines 72-72 -> Lines 169-169 (3 inner changes)
+         Inner: L72:C23-L72:C31 -> L169:C23-L169:C31
+         Inner: L72:C37-L72:C43 -> L169:C37-L169:C45
+         Inner: L72:C49-L72:C60 -> L169:C51-L169:C107
+    [23] Lines 77-76 -> Lines 174-176 (1 inner change)
+         Inner: L77:C1-L77:C1 -> L174:C1-L177:C1
+
+=================================================================
+
+Diff between outputs:
+---
