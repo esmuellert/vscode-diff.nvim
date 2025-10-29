@@ -10,14 +10,25 @@ C_DIFF="$REPO_ROOT/c-diff-core/build/diff"
 NODE_DIFF="$REPO_ROOT/vscode-diff.mjs"
 TEMP_DIR="/tmp/diff_comparison_$$"
 
+# Configuration: Number of top revised files to test
+NUM_TOP_FILES=5
+TESTS_PER_FILE=10
+
+mkdir -p "$TEMP_DIR"
+
 # Auto-build binaries if they don't exist
 if [ ! -f "$C_DIFF" ]; then
     echo "C diff binary not found. Building..."
-    "$SCRIPT_DIR/build-c-diff.sh"
+    cd "$REPO_ROOT/c-diff-core"
+    mkdir -p build
+    cd build
+    cmake ..
+    make
     if [ ! -f "$C_DIFF" ]; then
         echo "Error: Failed to build C diff binary"
         exit 1
     fi
+    cd "$REPO_ROOT"
 fi
 
 if [ ! -f "$NODE_DIFF" ]; then
@@ -29,16 +40,87 @@ if [ ! -f "$NODE_DIFF" ]; then
     fi
 fi
 
-# Configuration: Number of top revised files to test
-NUM_TOP_FILES=5
-TESTS_PER_FILE=10
-
-mkdir -p "$TEMP_DIR"
+# Function to generate example files for top N most revised files
+generate_example_files() {
+    local num_files=$1
+    echo "Generating example files for top $num_files most revised files..."
+    
+    # Create example directory
+    mkdir -p "$EXAMPLE_DIR"
+    
+    # Get top N most revised files from git history
+    local files=($(git -C "$REPO_ROOT" log --all --pretty=format: --name-only | \
+        grep -v '^$' | sort | uniq -c | sort -rn | head -$num_files | awk '{print $2}'))
+    
+    echo "Top $num_files most revised files:"
+    for i in "${!files[@]}"; do
+        local file="${files[$i]}"
+        local revisions=$(git -C "$REPO_ROOT" log --all --oneline -- "$file" | wc -l)
+        echo "  $((i+1)). $file ($revisions revisions)"
+    done
+    echo ""
+    
+    # For each top file, save all its git history versions
+    for file in "${files[@]}"; do
+        echo "Processing $file..."
+        
+        # Check if file exists in current working tree
+        if [ ! -f "$REPO_ROOT/$file" ]; then
+            echo "  Warning: $file not in current working tree, skipping"
+            continue
+        fi
+        
+        local basename=$(basename "$file")
+        
+        # Get all commits that modified this file
+        local commits=($(git -C "$REPO_ROOT" log --all --pretty=format:%H -- "$file"))
+        
+        echo "  Found ${#commits[@]} commits"
+        
+        # Save each version with commit hash
+        local count=0
+        for commit in "${commits[@]}"; do
+            local output_file="$EXAMPLE_DIR/${basename}_${commit}"
+            
+            # Extract file content at this commit
+            git -C "$REPO_ROOT" show "$commit:$file" > "$output_file" 2>/dev/null
+            
+            if [ $? -eq 0 ]; then
+                count=$((count + 1))
+            else
+                rm -f "$output_file"
+            fi
+        done
+        
+        echo "  Saved $count versions"
+    done
+    
+    echo ""
+    echo "Done! Example files generated in $EXAMPLE_DIR"
+    echo "Total files: $(ls -1 "$EXAMPLE_DIR" | wc -l)"
+}
 
 # Get top N most revised files from git history
 echo "Finding top $NUM_TOP_FILES most revised files from git history..."
 TOP_FILES=($(git -C "$REPO_ROOT" log --all --pretty=format: --name-only | \
     grep -v '^$' | sort | uniq -c | sort -rn | head -$NUM_TOP_FILES | awk '{print $2}'))
+
+# Check if we need to regenerate example files
+NEED_REGENERATE=false
+for TOP_FILE in "${TOP_FILES[@]}"; do
+    BASENAME=$(basename "$TOP_FILE")
+    FILES_COUNT=$(ls -1 "$EXAMPLE_DIR"/${BASENAME}_* 2>/dev/null | wc -l)
+    if [ $FILES_COUNT -eq 0 ]; then
+        NEED_REGENERATE=true
+        break
+    fi
+done
+
+if [ "$NEED_REGENERATE" = true ]; then
+    echo "Example files missing or incomplete. Regenerating..."
+    generate_example_files $NUM_TOP_FILES
+    echo ""
+fi
 
 echo "Top revised files:"
 for i in "${!TOP_FILES[@]}"; do

@@ -101,12 +101,12 @@ local function insert_filler_lines(bufnr, after_line_0idx, count)
   -- Create virtual lines with diagonal slash pattern (diffview.nvim style)
   -- Uses "╱" (U+2571 BOX DRAWINGS LIGHT DIAGONAL UPPER RIGHT TO LOWER LEFT)
   local virt_lines_content = {}
-  
+
   -- Use a large number of characters to ensure it fills any reasonable window width
   -- The rendering will clip it to the actual window width automatically
   local filler_text = string.rep("╱", 500)
-  
-  for i = 1, count do
+
+  for _ = 1, count do
     table.insert(virt_lines_content, {{filler_text, "VscodeDiffFiller"}})
   end
 
@@ -255,14 +255,14 @@ end
 -- For leading insertions (like line 1216), no alignment is created at the start
 -- (since col=1), so the alignment from the previous region ends BEFORE the insertion,
 -- placing fillers above the inserted content.
-local function calculate_fillers(mapping, original_lines, modified_lines)
+local function calculate_fillers(mapping, original_lines, _modified_lines)
   local fillers = {}
 
   if not mapping.inner_changes or #mapping.inner_changes == 0 then
     -- Fallback: no inner changes, use simple line count difference
     local mapping_orig_lines = mapping.original.end_line - mapping.original.start_line
     local mapping_mod_lines = mapping.modified.end_line - mapping.modified.start_line
-    
+
     if mapping_orig_lines > mapping_mod_lines then
       local diff = mapping_orig_lines - mapping_mod_lines
       table.insert(fillers, {
@@ -285,15 +285,15 @@ local function calculate_fillers(mapping, original_lines, modified_lines)
   local alignments = {}
   local last_orig_line = mapping.original.start_line
   local last_mod_line = mapping.modified.start_line
-  
+
   local function emit_alignment(orig_line_exclusive, mod_line_exclusive)
     if orig_line_exclusive <= last_orig_line and mod_line_exclusive <= last_mod_line then
       return
     end
-    
+
     local orig_range_len = orig_line_exclusive - last_orig_line
     local mod_range_len = mod_line_exclusive - last_mod_line
-    
+
     if orig_range_len > 0 or mod_range_len > 0 then
       table.insert(alignments, {
         orig_start = last_orig_line,
@@ -304,18 +304,18 @@ local function calculate_fillers(mapping, original_lines, modified_lines)
         mod_len = mod_range_len
       })
     end
-    
+
     last_orig_line = orig_line_exclusive
     last_mod_line = mod_line_exclusive
   end
-  
+
   -- Process inner changes to create alignments (VSCode's innerHunkAlignment logic)
   for _, inner in ipairs(mapping.inner_changes) do
     -- If there's unmodified text BEFORE the diff on this line (column > 1)
     if inner.original.start_col > 1 and inner.modified.start_col > 1 then
       emit_alignment(inner.original.start_line, inner.modified.start_line)
     end
-    
+
     -- If there's unmodified text AFTER the diff on this line
     -- Check if the change ends before the end of the line
     local orig_line_len = original_lines[inner.original.end_line] and #original_lines[inner.original.end_line] or 0
@@ -325,16 +325,16 @@ local function calculate_fillers(mapping, original_lines, modified_lines)
       emit_alignment(inner.original.end_line, inner.modified.end_line)
     end
   end
-  
+
   -- Final alignment at the end of the mapping (mapping ranges use EXCLUSIVE end)
   emit_alignment(mapping.original.end_line, mapping.modified.end_line)
-  
+
   -- Convert alignments to fillers
   -- VSCode: afterLineNumber = range.endLineNumberExclusive - 1
   -- Our ranges are inclusive, so: after_line = end_line - 1
   for _, align in ipairs(alignments) do
     local line_diff = align.mod_len - align.orig_len
-    
+
     if line_diff > 0 then
       -- Modified has more lines
       table.insert(fillers, {
@@ -440,20 +440,20 @@ function M.create_diff_view(original_lines, modified_lines, lines_diff)
   }
 
   for opt, val in pairs(buf_opts) do
-    vim.api.nvim_buf_set_option(left_buf, opt, val)
-    vim.api.nvim_buf_set_option(right_buf, opt, val)
+    vim.bo[left_buf][opt] = val
+    vim.bo[right_buf][opt] = val
   end
 
   -- Temporarily make buffers modifiable for content and filler insertion
-  vim.api.nvim_buf_set_option(left_buf, "modifiable", true)
-  vim.api.nvim_buf_set_option(right_buf, "modifiable", true)
+  vim.bo[left_buf].modifiable = true
+  vim.bo[right_buf].modifiable = true
 
   -- Render diff (this inserts fillers and applies highlights)
   local result = M.render_diff(left_buf, right_buf, original_lines, modified_lines, lines_diff)
 
   -- Make buffers read-only again
-  vim.api.nvim_buf_set_option(left_buf, "modifiable", false)
-  vim.api.nvim_buf_set_option(right_buf, "modifiable", false)
+  vim.bo[left_buf].modifiable = false
+  vim.bo[right_buf].modifiable = false
 
   -- Create side-by-side windows
   vim.cmd("tabnew")
@@ -473,8 +473,8 @@ function M.create_diff_view(original_lines, modified_lines, lines_diff)
   }
 
   for opt, val in pairs(win_opts) do
-    vim.api.nvim_win_set_option(left_win, opt, val)
-    vim.api.nvim_win_set_option(right_win, opt, val)
+    vim.wo[left_win][opt] = val
+    vim.wo[right_win][opt] = val
   end
 
   -- Set buffer names (make unique)
