@@ -874,6 +874,19 @@ RangeMappingArray* refine_diff_char_level(
     // Step 3: optimizeSequenceDiffs() - Reuse Step 2 optimization
     optimize_sequence_diffs(seq1_iface, seq2_iface, diffs);
     
+    // DEBUG: Print diffs BEFORE step 4 for Lines 17-52
+    if (base_line1 == 17 && base_line2 == 52) {
+        fprintf(stderr, "[DEBUG_BEFORE_STEP4] Lines %d-%d has %d diffs before extendToEntireWord (whole words):\n",
+                base_line1, base_line2, diffs->count);
+        for (int dbg = 0; dbg < diffs->count; dbg++) {
+            fprintf(stderr, "[DEBUG_BEFORE_STEP4]   [%d] seq1[%d-%d] (len=%d) -> seq2[%d-%d] (len=%d)\n",
+                    dbg, diffs->diffs[dbg].seq1_start, diffs->diffs[dbg].seq1_end,
+                    diffs->diffs[dbg].seq1_end - diffs->diffs[dbg].seq1_start,
+                    diffs->diffs[dbg].seq2_start, diffs->diffs[dbg].seq2_end,
+                    diffs->diffs[dbg].seq2_end - diffs->diffs[dbg].seq2_start);
+        }
+    }
+    
     // Step 4: extendDiffsToEntireWordIfAppropriate() - Word boundaries
     SequenceDiffArray* extended = extend_diffs_to_entire_word(seq1, seq2, diffs, false, false);
     free(diffs->diffs);
@@ -888,8 +901,34 @@ RangeMappingArray* refine_diff_char_level(
         diffs = extended;
     }
 
+    // DEBUG: Print diffs BEFORE removeShortMatches for Lines 17-52
+    if (base_line1 == 17 && base_line2 == 52) {
+        fprintf(stderr, "[DEBUG_BEFORE_STEP6] Lines %d-%d has %d diffs before removeShortMatches:\n",
+                base_line1, base_line2, diffs->count);
+        for (int dbg = 0; dbg < diffs->count; dbg++) {
+            fprintf(stderr, "[DEBUG_BEFORE_STEP6]   [%d] seq1[%d-%d] (len=%d) -> seq2[%d-%d] (len=%d)\n",
+                    dbg, diffs->diffs[dbg].seq1_start, diffs->diffs[dbg].seq1_end,
+                    diffs->diffs[dbg].seq1_end - diffs->diffs[dbg].seq1_start,
+                    diffs->diffs[dbg].seq2_start, diffs->diffs[dbg].seq2_end,
+                    diffs->diffs[dbg].seq2_end - diffs->diffs[dbg].seq2_start);
+        }
+    }
+
     // Step 6: removeShortMatches() - Remove ≤2 char gaps
     remove_short_matches(seq1_iface, seq2_iface, diffs);
+
+    // DEBUG: Print diffs BEFORE removeVeryShortText for Lines 17-52
+    if (base_line1 == 17 && base_line2 == 52) {
+        fprintf(stderr, "[DEBUG_BEFORE_STEP7] Lines %d-%d has %d diffs before removeVeryShortText:\n",
+                base_line1, base_line2, diffs->count);
+        for (int dbg = 0; dbg < diffs->count; dbg++) {
+            fprintf(stderr, "[DEBUG_BEFORE_STEP7]   [%d] seq1[%d-%d] (len=%d) -> seq2[%d-%d] (len=%d)\n",
+                    dbg, diffs->diffs[dbg].seq1_start, diffs->diffs[dbg].seq1_end,
+                    diffs->diffs[dbg].seq1_end - diffs->diffs[dbg].seq1_start,
+                    diffs->diffs[dbg].seq2_start, diffs->diffs[dbg].seq2_end,
+                    diffs->diffs[dbg].seq2_end - diffs->diffs[dbg].seq2_start);
+        }
+    }
 
     // Step 7: removeVeryShortMatchingTextBetweenLongDiffs()
     remove_very_short_text(seq1, seq2, diffs);

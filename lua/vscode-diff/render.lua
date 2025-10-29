@@ -185,18 +185,37 @@ local function calculate_fillers(mapping, original_lines, modified_lines)
     return fillers
   end
   
-  for _, inner in ipairs(mapping.inner_changes) do
+  for idx, inner in ipairs(mapping.inner_changes) do
     local orig_empty = is_empty_range(inner.original)
     local mod_empty = is_empty_range(inner.modified)
     
+    -- Debug logging
+    print(string.format("[DEBUG] Inner change #%d:", idx))
+    print(string.format("  Original: L%d:C%d-L%d:C%d (empty=%s)", 
+      inner.original.start_line, inner.original.start_col,
+      inner.original.end_line, inner.original.end_col,
+      tostring(orig_empty)))
+    print(string.format("  Modified: L%d:C%d-L%d:C%d (empty=%s)",
+      inner.modified.start_line, inner.modified.start_col,
+      inner.modified.end_line, inner.modified.end_col,
+      tostring(mod_empty)))
+    
     -- Skip if both are empty or both are non-empty
     if orig_empty == mod_empty then
+      print("  → Skip: both same state")
       goto continue
     end
     
+    -- Check line-ending
+    local orig_past_content = is_past_line_content(inner.original.start_line, inner.original.start_col, original_lines)
+    local mod_past_content = is_past_line_content(inner.modified.start_line, inner.modified.start_col, modified_lines)
+    
+    print(string.format("  Original past content: %s", tostring(orig_past_content)))
+    print(string.format("  Modified past content: %s", tostring(mod_past_content)))
+    
     -- Skip line-ending-only changes
-    if is_past_line_content(inner.original.start_line, inner.original.start_col, original_lines) or
-       is_past_line_content(inner.modified.start_line, inner.modified.start_col, modified_lines) then
+    if orig_past_content or mod_past_content then
+      print("  → Skip: line-ending change")
       goto continue
     end
     
@@ -208,6 +227,9 @@ local function calculate_fillers(mapping, original_lines, modified_lines)
       if inner.original.end_col > 1 then
         line_count = line_count + 1
       end
+      
+      print(string.format("  → DELETION: Add %d filler(s) to MODIFIED after line %d",
+        line_count, inner.modified.start_line - 1))
       
       if line_count > 0 then
         table.insert(fillers, {
@@ -225,6 +247,9 @@ local function calculate_fillers(mapping, original_lines, modified_lines)
       if inner.modified.end_col > 1 then
         line_count = line_count + 1
       end
+      
+      print(string.format("  → INSERTION: Add %d filler(s) to ORIGINAL after line %d",
+        line_count, inner.original.start_line - 1))
       
       if line_count > 0 then
         table.insert(fillers, {
@@ -261,18 +286,26 @@ function M.render_diff(left_bufnr, right_bufnr, original_lines, modified_lines, 
   local total_right_fillers = 0
   
   -- Process each change mapping
-  for _, mapping in ipairs(lines_diff.changes) do
+  for mapping_idx, mapping in ipairs(lines_diff.changes) do
+    print(string.format("\n[DEBUG] Processing mapping #%d", mapping_idx))
+    print(string.format("  Original range: L%d-%d", mapping.original.start_line, mapping.original.end_line))
+    print(string.format("  Modified range: L%d-%d", mapping.modified.start_line, mapping.modified.end_line))
+    
     -- Check if ranges are empty
     local orig_is_empty = (mapping.original.end_line <= mapping.original.start_line)
     local mod_is_empty = (mapping.modified.end_line <= mapping.modified.start_line)
     
+    print(string.format("  Original empty: %s, Modified empty: %s", tostring(orig_is_empty), tostring(mod_is_empty)))
+    
     -- STEP 1: Apply line-level highlights (light colors, whole lines)
     if not orig_is_empty then
       apply_line_highlights(left_bufnr, mapping.original, "VscodeDiffLineDelete")
+      print("  → Applied line highlight to ORIGINAL")
     end
     
     if not mod_is_empty then
       apply_line_highlights(right_bufnr, mapping.modified, "VscodeDiffLineInsert")
+      print("  → Applied line highlight to MODIFIED")
     end
     
     -- STEP 2: Apply character-level highlights (dark colors, specific text)
@@ -295,7 +328,12 @@ function M.render_diff(left_bufnr, right_bufnr, original_lines, modified_lines, 
     -- STEP 3: Calculate and insert filler lines
     local fillers = calculate_fillers(mapping, original_lines, modified_lines)
     
+    print(string.format("  Calculated %d filler(s)", #fillers))
+    
     for _, filler in ipairs(fillers) do
+      print(string.format("  → Inserting %d filler(s) to %s after line %d (0-indexed: %d)",
+        filler.count, filler.buffer, filler.after_line, filler.after_line - 1))
+      
       if filler.buffer == 'original' then
         insert_filler_lines(left_bufnr, filler.after_line - 1, filler.count)
         total_left_fillers = total_left_fillers + filler.count
@@ -305,6 +343,8 @@ function M.render_diff(left_bufnr, right_bufnr, original_lines, modified_lines, 
       end
     end
   end
+  
+  print(string.format("\n[DEBUG] Total fillers: left=%d, right=%d", total_left_fillers, total_right_fillers))
   
   return {
     left_fillers = total_left_fillers,
