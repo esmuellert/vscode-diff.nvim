@@ -58,11 +58,11 @@ function M.setup_highlights()
     default = true,
   })
 
-  -- Filler lines (subtle gray)
+  -- Filler lines (no highlight, inherits editor default background)
   vim.api.nvim_set_hl(0, "VscodeDiffFiller", {
-    bg = "#2d2d2d",  -- Subtle gray background
-    fg = "#444444",  -- Slightly lighter for any text
+    fg = "#444444",  -- Subtle gray for the slash character
     default = true,
+    -- No bg set - uses editor's default background
   })
 end
 
@@ -87,7 +87,7 @@ local function is_past_line_content(line_number, column, lines)
 end
 
 -- Insert virtual filler lines using extmarks
--- Style similar to diffview.nvim - simple background with optional character
+-- Style matching diffview.nvim - uses diagonal slash pattern filling the whole line
 local function insert_filler_lines(bufnr, after_line_0idx, count)
   if count <= 0 then
     return
@@ -98,13 +98,16 @@ local function insert_filler_lines(bufnr, after_line_0idx, count)
     after_line_0idx = 0
   end
 
-  -- Create virtual lines with simple background
-  -- Use "─" (horizontal line) character for a clean look
+  -- Create virtual lines with diagonal slash pattern (diffview.nvim style)
+  -- Uses "╱" (U+2571 BOX DRAWINGS LIGHT DIAGONAL UPPER RIGHT TO LOWER LEFT)
   local virt_lines_content = {}
+  
+  -- Use a large number of characters to ensure it fills any reasonable window width
+  -- The rendering will clip it to the actual window width automatically
+  local filler_text = string.rep("╱", 500)
+  
   for i = 1, count do
-    -- Simple approach: just empty line with highlight
-    -- The background color will fill the line
-    table.insert(virt_lines_content, {{" ", "VscodeDiffFiller"}})
+    table.insert(virt_lines_content, {{filler_text, "VscodeDiffFiller"}})
   end
 
   vim.api.nvim_buf_set_extmark(bufnr, ns_filler, after_line_0idx, 0, {
