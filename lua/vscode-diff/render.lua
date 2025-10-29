@@ -236,94 +236,118 @@ end
 -- ============================================================================
 
 -- Calculate filler lines based on inner changes
--- Simple rule: For each inner change, if one side is single-line but the other is multi-line,
--- add filler lines to align them.
--- Positioning:
---   - Leading insertions/deletions (first inner change at column 1): BEFORE the line
---   - All other insertions/expansions: AFTER the line  
---   - All other deletions/collapses: BEFORE the line (because content was removed)
+-- VSCode rule (from diffEditorViewZones.ts): 
+--   Fillers are placed after `range.endLineNumberExclusive - 1`
+-- 
+-- Important: VSCode uses EXCLUSIVE end ranges [start, end), we use INCLUSIVE [start, end]
+-- Conversion: VSCode's `endLineExclusive - 1` equals our `end_line`
+--   Example for single line 35:
+--     VSCode: startLine=35, endLineExclusive=36 → afterLineNumber = 36-1 = 35
+--     Us:     start_line=35, end_line=35       → after_line = 35
+-- Calculate filler lines based on inner changes
+-- Based on VSCode's computeRangeAlignment in diffEditorViewZones.ts
+--
+-- VSCode's approach: Create alignments at the START and END lines of inner changes
+-- - If inner change starts mid-line (col > 1): create alignment at START line
+-- - If inner change ends before EOL: create alignment at END line
+-- - Then view zones (fillers) are placed at alignment.endLineNumberExclusive - 1
+--
+-- For leading insertions (like line 1216), no alignment is created at the start
+-- (since col=1), so the alignment from the previous region ends BEFORE the insertion,
+-- placing fillers above the inserted content.
 local function calculate_fillers(mapping, original_lines, modified_lines)
   local fillers = {}
 
-  -- Process each inner change
-  if mapping.inner_changes and #mapping.inner_changes > 0 then
-    for idx, inner in ipairs(mapping.inner_changes) do
-      local orig_line_count = inner.original.end_line - inner.original.start_line
-      local mod_line_count = inner.modified.end_line - inner.modified.start_line
-      
-      -- Calculate the difference in line counts
-      local line_diff = mod_line_count - orig_line_count
-      
-      -- Skip if both sides are single-line (no multi-line expansion/collapse)
-      if orig_line_count == 0 and mod_line_count == 0 then
-        goto continue
-      end
-      
-      -- Determine if this is a LEADING change (first inner change starting at column 1)
-      local is_first_change = (idx == 1)
-      local starts_at_col_1 = (inner.original.start_col == 1 and inner.modified.start_col == 1)
-      local is_leading_change = is_first_change and starts_at_col_1
-      
-      -- If there's a difference, one side needs fillers
-      if line_diff > 0 then
-        -- Modified has more lines: add fillers to original
-        local after_line
-        if is_leading_change then
-          -- Leading insertion: BEFORE the line
-          after_line = inner.original.start_line - 1
-        else
-          -- Inline expansion: AFTER the line
-          after_line = inner.original.start_line
-        end
-        
-        table.insert(fillers, {
-          buffer = 'original',
-          after_line = after_line,
-          count = line_diff
-        })
-      elseif line_diff < 0 then
-        -- Original has more lines: add fillers to modified
-        local after_line
-        if is_leading_change then
-          -- Leading deletion: BEFORE the line
-          after_line = inner.modified.start_line - 1
-        else
-          -- Trailing/inline deletion: BEFORE the line (content was removed)
-          after_line = inner.modified.start_line - 1
-        end
-        
-        table.insert(fillers, {
-          buffer = 'modified',
-          after_line = after_line,
-          count = -line_diff
-        })
-      end
-      
-      ::continue::
-    end
+  if not mapping.inner_changes or #mapping.inner_changes == 0 then
+    -- Fallback: no inner changes, use simple line count difference
+    local mapping_orig_lines = mapping.original.end_line - mapping.original.start_line
+    local mapping_mod_lines = mapping.modified.end_line - mapping.modified.start_line
     
+    if mapping_orig_lines > mapping_mod_lines then
+      local diff = mapping_orig_lines - mapping_mod_lines
+      table.insert(fillers, {
+        buffer = 'modified',
+        after_line = mapping.modified.start_line - 1,
+        count = diff
+      })
+    elseif mapping_mod_lines > mapping_orig_lines then
+      local diff = mapping_mod_lines - mapping_orig_lines
+      table.insert(fillers, {
+        buffer = 'original',
+        after_line = mapping.original.start_line - 1,
+        count = diff
+      })
+    end
     return fillers
   end
+
+  -- Track alignments (where original and modified lines should align)
+  local alignments = {}
+  local last_orig_line = mapping.original.start_line
+  local last_mod_line = mapping.modified.start_line
   
-  -- Fallback: Use simple line count difference for mappings without inner changes
-  -- This handles cases where entire blocks are added/removed
-  local mapping_orig_lines = mapping.original.end_line - mapping.original.start_line
-  local mapping_mod_lines = mapping.modified.end_line - mapping.modified.start_line
+  local function emit_alignment(orig_line_exclusive, mod_line_exclusive)
+    if orig_line_exclusive <= last_orig_line and mod_line_exclusive <= last_mod_line then
+      return
+    end
+    
+    local orig_range_len = orig_line_exclusive - last_orig_line
+    local mod_range_len = mod_line_exclusive - last_mod_line
+    
+    if orig_range_len > 0 or mod_range_len > 0 then
+      table.insert(alignments, {
+        orig_start = last_orig_line,
+        orig_end = orig_line_exclusive,
+        mod_start = last_mod_line,
+        mod_end = mod_line_exclusive,
+        orig_len = orig_range_len,
+        mod_len = mod_range_len
+      })
+    end
+    
+    last_orig_line = orig_line_exclusive
+    last_mod_line = mod_line_exclusive
+  end
   
-  if mapping_orig_lines > mapping_mod_lines then
-    local diff = mapping_orig_lines - mapping_mod_lines
-    table.insert(fillers, {
-      buffer = 'modified',
-      after_line = mapping.modified.start_line - 1,
-      count = diff
-    })
-  elseif mapping_mod_lines > mapping_orig_lines then
-    local diff = mapping_mod_lines - mapping_orig_lines
-    table.insert(fillers, {
-      buffer = 'original',
-      after_line = mapping.original.start_line - 1,
-      count = diff
-    })
+  -- Process inner changes to create alignments (VSCode's innerHunkAlignment logic)
+  for _, inner in ipairs(mapping.inner_changes) do
+    -- If there's unmodified text BEFORE the diff on this line (column > 1)
+    if inner.original.start_col > 1 and inner.modified.start_col > 1 then
+      emit_alignment(inner.original.start_line, inner.modified.start_line)
+    end
+    
+    -- If there's unmodified text AFTER the diff on this line
+    -- Check if the change ends before the end of the line
+    local orig_line_len = original_lines[inner.original.end_line] and #original_lines[inner.original.end_line] or 0
+    if inner.original.end_col <= orig_line_len then
+      emit_alignment(inner.original.end_line, inner.modified.end_line)
+    end
+  end
+  
+  -- Final alignment at the end of the mapping
+  emit_alignment(mapping.original.end_line, mapping.modified.end_line)
+  
+  -- Convert alignments to fillers
+  -- VSCode: afterLineNumber = range.endLineNumberExclusive - 1
+  -- Our ranges are inclusive, so: after_line = end_line - 1
+  for _, align in ipairs(alignments) do
+    local line_diff = align.mod_len - align.orig_len
+    
+    if line_diff > 0 then
+      -- Modified has more lines
+      table.insert(fillers, {
+        buffer = 'original',
+        after_line = align.orig_end - 1,
+        count = line_diff
+      })
+    elseif line_diff < 0 then
+      -- Original has more lines
+      table.insert(fillers, {
+        buffer = 'modified',
+        after_line = align.mod_end - 1,
+        count = -line_diff
+      })
+    end
   end
 
   return fillers

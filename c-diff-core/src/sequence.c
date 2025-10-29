@@ -465,19 +465,19 @@ ISequence* char_sequence_create_from_range(const char** lines,
             line = "";
         }
         int line_len_bytes = (int)strlen(line);
-        int line_len_chars = utf8_strlen(line);
+        int line_len_utf16_units = utf8_to_utf16_length(line);
 
-        // range->start_col is a CHARACTER position, convert to byte offset
-        int line_start_char_offset = 0;
+        // range->start_col is a UTF-16 code unit position (JS string index)
+        int line_start_utf16_offset = 0;
         int line_start_byte_offset = 0;
         if (line_number == range->start_line && range->start_col > 1) {
-            line_start_char_offset = range->start_col - 1;
-            if (line_start_char_offset > line_len_chars) {
-                line_start_char_offset = line_len_chars;
+            line_start_utf16_offset = range->start_col - 1;
+            if (line_start_utf16_offset > line_len_utf16_units) {
+                line_start_utf16_offset = line_len_utf16_units;
             }
-            line_start_byte_offset = utf8_char_to_byte_offset(line, line_start_char_offset);
+            line_start_byte_offset = utf16_pos_to_utf8_byte(line, line_start_utf16_offset);
         }
-        seq->original_line_start_cols[idx] = line_start_char_offset;
+        seq->original_line_start_cols[idx] = line_start_utf16_offset;
 
         const char* substring_start = line + line_start_byte_offset;
         int substring_len = line_len_bytes - line_start_byte_offset;
@@ -485,7 +485,7 @@ ISequence* char_sequence_create_from_range(const char** lines,
             substring_len = 0;
         }
 
-        int trimmed_ws_length_chars = 0;
+        int trimmed_ws_length_utf16_units = 0;
         const char* trimmed_start = substring_start;
         const char* trimmed_end = substring_start + substring_len;
 
@@ -494,8 +494,11 @@ ISequence* char_sequence_create_from_range(const char** lines,
             while (trimmed_start < trimmed_end && isspace((unsigned char)*trimmed_start)) {
                 trimmed_start++;
             }
-            // Count characters, not bytes, in the trimmed whitespace
-            trimmed_ws_length_chars = utf8_byte_to_char_offset(ws_start, (int)(trimmed_start - ws_start));
+            // Count UTF-16 code units in the trimmed whitespace
+            char saved_char = trimmed_start[0];
+            ((char*)trimmed_start)[0] = '\0';  // Temporarily null-terminate
+            trimmed_ws_length_utf16_units = utf8_to_utf16_length(ws_start);
+            ((char*)trimmed_start)[0] = saved_char;  // Restore
             
             while (trimmed_end > trimmed_start && isspace((unsigned char)*(trimmed_end - 1))) {
                 trimmed_end--;
@@ -506,38 +509,56 @@ ISequence* char_sequence_create_from_range(const char** lines,
         if (trimmed_len_bytes < 0) {
             trimmed_len_bytes = 0;
         }
-        int trimmed_len_chars = utf8_byte_to_char_offset(trimmed_start, trimmed_len_bytes);
+        // Count UTF-16 code units in trimmed content
+        char saved_char = *trimmed_end;
+        ((char*)trimmed_end)[0] = '\0';
+        int trimmed_len_utf16_units = utf8_to_utf16_length(trimmed_start);
+        ((char*)trimmed_end)[0] = saved_char;
 
-        // line_length is in CHARACTERS for column calculation
-        int line_length_chars = trimmed_len_chars;
+        // line_length is in UTF-16 code units for column calculation
+        int line_length_utf16_units = trimmed_len_utf16_units;
         int line_length_bytes = trimmed_len_bytes;
         
         if (line_number == end_line_num) {
             long long end_column_exclusive = (long long)range->end_col - 1;
-            long long available_chars = end_column_exclusive - line_start_char_offset - trimmed_ws_length_chars;
-            if (available_chars < 0) {
-                line_length_chars = 0;
+            long long available_utf16_units = end_column_exclusive - line_start_utf16_offset - trimmed_ws_length_utf16_units;
+            if (available_utf16_units < 0) {
+                line_length_utf16_units = 0;
                 line_length_bytes = 0;
-            } else if (available_chars < line_length_chars) {
-                line_length_chars = (int)available_chars;
-                // Convert character length to byte length
-                line_length_bytes = utf8_char_to_byte_offset(trimmed_start, line_length_chars);
+            } else if (available_utf16_units < line_length_utf16_units) {
+                line_length_utf16_units = (int)available_utf16_units;
+                // Convert UTF-16 length to byte length for trimmed content
+                // This is complex - we need to iterate UTF-8 and count UTF-16 units
+                int byte_count = 0;
+                int utf16_count = 0;
+                int temp_byte_pos = 0;
+                while (utf16_count < line_length_utf16_units && temp_byte_pos < trimmed_len_bytes) {
+                    uint32_t cp = utf8_decode_char(trimmed_start, &temp_byte_pos);
+                    int cp_utf16_units = (cp < 0x10000) ? 1 : 2;
+                    if (utf16_count + cp_utf16_units <= line_length_utf16_units) {
+                        byte_count = temp_byte_pos;
+                        utf16_count += cp_utf16_units;
+                    } else {
+                        break;
+                    }
+                }
+                line_length_bytes = byte_count;
             }
         }
 
-        if (line_length_chars < 0) {
-            line_length_chars = 0;
+        if (line_length_utf16_units < 0) {
+            line_length_utf16_units = 0;
             line_length_bytes = 0;
         }
-        if (line_length_chars > trimmed_len_chars) {
-            line_length_chars = trimmed_len_chars;
+        if (line_length_utf16_units > trimmed_len_utf16_units) {
+            line_length_utf16_units = trimmed_len_utf16_units;
             line_length_bytes = trimmed_len_bytes;
         }
 
-        seq->trimmed_ws_lengths[idx] = trimmed_ws_length_chars;
-        effective_lengths[idx] = line_length_chars;  // Store CHARACTERS (UTF-16 code units)
+        seq->trimmed_ws_lengths[idx] = trimmed_ws_length_utf16_units;
+        effective_lengths[idx] = line_length_utf16_units;  // Store UTF-16 code units
 
-        total_len += line_length_chars;  // Count CHARACTERS (UTF-16 code units)
+        total_len += line_length_utf16_units;  // Count UTF-16 code units
         if (line_number < end_line_num) {
             total_len += 1;  // For '\n'
         }
@@ -566,34 +587,54 @@ ISequence* char_sequence_create_from_range(const char** lines,
         if (!line) {
             line = "";
         }
-        int line_len_chars = utf8_strlen(line);
+        int line_len_utf16_units = utf8_to_utf16_length(line);
 
-        int start_col_chars = seq->original_line_start_cols[idx];
+        int start_col_utf16_units = seq->original_line_start_cols[idx];
         if (!consider_whitespace) {
-            start_col_chars += seq->trimmed_ws_lengths[idx];
+            start_col_utf16_units += seq->trimmed_ws_lengths[idx];
         }
-        if (start_col_chars > line_len_chars) {
-            start_col_chars = line_len_chars;
-        }
-
-        int num_chars = effective_lengths[idx];  // This is now in CHARACTERS
-        if (num_chars < 0) {
-            num_chars = 0;
+        if (start_col_utf16_units > line_len_utf16_units) {
+            start_col_utf16_units = line_len_utf16_units;
         }
 
-        // Convert character position to byte offset for actual string access
-        int start_col_bytes = utf8_char_to_byte_offset(line, start_col_chars);
+        int num_utf16_units = effective_lengths[idx];  // This is now in UTF-16 code units
+        if (num_utf16_units < 0) {
+            num_utf16_units = 0;
+        }
 
-        // Decode UTF-8 to UTF-16 code units
+        // Convert UTF-16 position to byte offset for actual string access
+        int start_col_bytes = utf16_pos_to_utf8_byte(line, start_col_utf16_units);
+
+        // Decode UTF-8 to UTF-16 code units (matching JavaScript string indexing)
         const char* src = line + start_col_bytes;
         int byte_pos = 0;
-        int chars_read = 0;
-        while (chars_read < num_chars && src[byte_pos] != '\0') {
+        int utf16_units_written = 0;
+        while (utf16_units_written < num_utf16_units && src[byte_pos] != '\0') {
             uint32_t codepoint = utf8_decode_char(src, &byte_pos);
-            // For BMP characters, codepoint equals UTF-16 code unit
-            // For non-BMP, we'd need surrogate pairs, but for now use codepoint directly
-            seq->elements[offset++] = codepoint;
-            chars_read++;
+            if (codepoint == 0) break;
+            
+            if (codepoint < 0x10000) {
+                // BMP character: 1 UTF-16 code unit
+                seq->elements[offset++] = codepoint;
+                utf16_units_written++;
+            } else {
+                // Non-BMP: 2 UTF-16 code units (surrogate pair)
+                codepoint -= 0x10000;
+                uint16_t high = 0xD800 + (codepoint >> 10);
+                uint16_t low = 0xDC00 + (codepoint & 0x3FF);
+                if (utf16_units_written + 1 < num_utf16_units) {
+                    seq->elements[offset++] = high;
+                    seq->elements[offset++] = low;
+                    utf16_units_written += 2;
+                } else if (utf16_units_written < num_utf16_units) {
+                    // Only write high surrogate if we have room for 1 more
+                    seq->elements[offset++] = high;
+                    utf16_units_written++;
+                    break;
+                } else {
+                    break;
+                }
+            }
         }
 
         if (line_number < end_line_num) {

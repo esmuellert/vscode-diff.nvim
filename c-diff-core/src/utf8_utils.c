@@ -1,6 +1,7 @@
 #include "utf8_utils.h"
 #include <string.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 // Get the number of bytes in a UTF-8 character starting at the given byte
 int utf8_char_bytes(const char* str, int byte_pos) {
@@ -190,4 +191,105 @@ uint32_t utf8_decode_char(const char* str, int* byte_pos) {
     // Invalid UTF-8 start byte
     (*byte_pos)++;
     return 0xFFFD;  // Replacement character
+}
+
+// Count UTF-16 code units in a UTF-8 string (matches JavaScript string.length)
+int utf8_to_utf16_length(const char* str) {
+    if (!str) return 0;
+    
+    int utf16_length = 0;
+    int byte_pos = 0;
+    
+    while (str[byte_pos] != '\0') {
+        uint32_t codepoint = utf8_decode_char(str, &byte_pos);
+        
+        if (codepoint == 0 && str[byte_pos] == '\0') {
+            break;  // End of string
+        }
+        
+        // BMP characters (U+0000 to U+FFFF): 1 UTF-16 code unit
+        // Non-BMP (U+10000 to U+10FFFF): 2 UTF-16 code units (surrogate pair)
+        if (codepoint < 0x10000) {
+            utf16_length += 1;
+        } else {
+            utf16_length += 2;
+        }
+    }
+    
+    return utf16_length;
+}
+
+// Convert UTF-8 string to UTF-16 code units array
+uint16_t* utf8_to_utf16(const char* str, int* out_length) {
+    if (!str || !out_length) {
+        if (out_length) *out_length = 0;
+        return NULL;
+    }
+    
+    // First pass: count UTF-16 code units
+    int utf16_len = utf8_to_utf16_length(str);
+    *out_length = utf16_len;
+    
+    if (utf16_len == 0) {
+        return NULL;
+    }
+    
+    // Allocate array
+    uint16_t* utf16_array = (uint16_t*)malloc(utf16_len * sizeof(uint16_t));
+    if (!utf16_array) {
+        *out_length = 0;
+        return NULL;
+    }
+    
+    // Second pass: convert to UTF-16 code units
+    int byte_pos = 0;
+    int utf16_pos = 0;
+    
+    while (str[byte_pos] != '\0' && utf16_pos < utf16_len) {
+        uint32_t codepoint = utf8_decode_char(str, &byte_pos);
+        
+        if (codepoint == 0 && str[byte_pos] == '\0') {
+            break;
+        }
+        
+        if (codepoint < 0x10000) {
+            // BMP character: direct representation
+            utf16_array[utf16_pos++] = (uint16_t)codepoint;
+        } else {
+            // Non-BMP: encode as surrogate pair
+            codepoint -= 0x10000;
+            utf16_array[utf16_pos++] = (uint16_t)(0xD800 + (codepoint >> 10));     // High surrogate
+            utf16_array[utf16_pos++] = (uint16_t)(0xDC00 + (codepoint & 0x3FF));   // Low surrogate
+        }
+    }
+    
+    return utf16_array;
+}
+
+// Convert UTF-16 code unit position to UTF-8 byte position
+int utf16_pos_to_utf8_byte(const char* str, int utf16_pos) {
+    if (!str || utf16_pos < 0) return 0;
+    
+    int byte_pos = 0;
+    int current_utf16_pos = 0;
+    
+    while (str[byte_pos] != '\0' && current_utf16_pos < utf16_pos) {
+        int start_byte = byte_pos;
+        uint32_t codepoint = utf8_decode_char(str, &byte_pos);
+        
+        if (codepoint == 0 && str[byte_pos] == '\0') {
+            break;
+        }
+        
+        // Count UTF-16 code units for this character
+        int utf16_units = (codepoint < 0x10000) ? 1 : 2;
+        current_utf16_pos += utf16_units;
+        
+        // If we've reached or passed the target, return the byte position
+        if (current_utf16_pos > utf16_pos) {
+            return start_byte;  // Return start of current character
+        }
+    }
+    
+    return byte_pos;
 }

@@ -53,4 +53,25 @@ int utf8_is_char_boundary(const char* str, int byte_pos);
  */
 uint32_t utf8_decode_char(const char* str, int* byte_pos);
 
+/**
+ * Count UTF-16 code units in a UTF-8 string
+ * (matches JavaScript string.length behavior)
+ * - BMP characters (U+0000-U+FFFF): 1 code unit each
+ * - Non-BMP characters (U+10000-U+10FFFF): 2 code units each (surrogate pair)
+ */
+int utf8_to_utf16_length(const char* str);
+
+/**
+ * Convert UTF-8 string to UTF-16 code units array
+ * Returns malloc'd array of uint16_t that must be freed by caller
+ * Sets *out_length to the number of UTF-16 code units
+ */
+uint16_t* utf8_to_utf16(const char* str, int* out_length);
+
+/**
+ * Convert UTF-16 code unit position to UTF-8 byte position in string
+ * Useful for reporting positions in original UTF-8 text
+ */
+int utf16_pos_to_utf8_byte(const char* str, int utf16_pos);
+
 #endif // UTF8_UTILS_H
