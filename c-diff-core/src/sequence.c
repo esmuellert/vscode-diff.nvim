@@ -755,7 +755,28 @@ void char_sequence_translate_offset(const CharSequence* seq, int offset,
     
     // Calculate column offset within the line
     // VSCode: const lineOffset = offset - this.firstElementOffsetByLineIdx[i];
-    int line_offset = offset - seq->line_start_offsets[line_idx];
+    
+    // CRITICAL UTF-8 FIX: offset and line_start_offsets are in BYTES (because elements stores bytes),
+    // but we need CHARACTER count for column calculation.
+    // Count UTF-8 characters in the byte range [line_start_offset, offset)
+    int line_offset_chars = 0;
+    int byte_idx = seq->line_start_offsets[line_idx];
+    while (byte_idx < offset && byte_idx < seq->length) {
+        // Get byte count for this UTF-8 character
+        unsigned char c = (unsigned char)seq->elements[byte_idx];
+        int char_bytes = 1;
+        if ((c & 0x80) == 0) {
+            char_bytes = 1;  // ASCII
+        } else if ((c & 0xE0) == 0xC0) {
+            char_bytes = 2;  // 2-byte UTF-8
+        } else if ((c & 0xF0) == 0xE0) {
+            char_bytes = 3;  // 3-byte UTF-8
+        } else if ((c & 0xF8) == 0xF0) {
+            char_bytes = 4;  // 4-byte UTF-8
+        }
+        byte_idx += char_bytes;
+        line_offset_chars++;
+    }
     
     // VSCode: 1 + this.lineStartOffsets[i] + lineOffset + 
     //         ((lineOffset === 0 && preference === 'left') ? 0 : this.trimmedWsLengthsByLineIdx[i])
@@ -764,9 +785,9 @@ void char_sequence_translate_offset(const CharSequence* seq, int offset,
     int original_line_start = seq->original_line_start_cols ? seq->original_line_start_cols[line_idx] : 0;
     
     // Key parity fix: only add trimmed whitespace if NOT (at line start AND left preference)
-    int add_trimmed_ws = (line_offset == 0 && preference == OFFSET_PREFERENCE_LEFT) ? 0 : trimmed_ws;
+    int add_trimmed_ws = (line_offset_chars == 0 && preference == OFFSET_PREFERENCE_LEFT) ? 0 : trimmed_ws;
     
-    *out_col = original_line_start + line_offset + add_trimmed_ws;
+    *out_col = original_line_start + line_offset_chars + add_trimmed_ws;
 }
 
 /**

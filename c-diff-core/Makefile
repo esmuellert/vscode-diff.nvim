@@ -55,12 +55,13 @@ CHAR_LEVEL_SRC = $(SRC_DIR)/char_level.c
 RANGE_MAPPING_SRC = $(SRC_DIR)/range_mapping.c
 RENDER_PLAN_SRC = $(SRC_DIR)/render_plan.c
 DIFF_API_SRC = $(SRC_DIR)/diff_api.c
+UTF8_UTILS_SRC = $(SRC_DIR)/utf8_utils.c
 DEFAULT_LINES_DIFF_COMPUTER_SRC = default_lines_diff_computer.c
 
 # All source files for shared library
 ALL_SRCS = $(DIFF_API_SRC) $(RENDER_PLAN_SRC) $(DEFAULT_LINES_DIFF_COMPUTER_SRC) $(CHAR_LEVEL_SRC) \
            $(LINE_LEVEL_SRC) $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(RANGE_MAPPING_SRC) \
-           $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC)
+           $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) $(UTF8_UTILS_SRC)
 
 # Shared library output
 SHARED_LIB = libdiff_core.so
