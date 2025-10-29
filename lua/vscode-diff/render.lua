@@ -12,30 +12,53 @@ local ns_filler = vim.api.nvim_create_namespace("vscode-diff-filler")
 
 -- Setup VSCode-style highlight groups
 function M.setup_highlights()
-  -- Line-level highlights (light background - covers whole line)
-  -- Use slightly darker colors that are visible
+  -- Get native diff colors to use as base
+  local diff_add = vim.api.nvim_get_hl(0, {name = "DiffAdd"})
+  local diff_delete = vim.api.nvim_get_hl(0, {name = "DiffDelete"})
+  
+  -- Helper function to adjust color brightness
+  local function adjust_brightness(color, factor)
+    if not color then return nil end
+    local r = math.floor(color / 65536) % 256
+    local g = math.floor(color / 256) % 256
+    local b = color % 256
+    
+    -- Apply factor and clamp to 0-255
+    r = math.min(255, math.floor(r * factor))
+    g = math.min(255, math.floor(g * factor))
+    b = math.min(255, math.floor(b * factor))
+    
+    return r * 65536 + g * 256 + b
+  end
+  
+  -- REVERSED STRATEGY:
+  -- Line-level (whole line background): DARKER, subtle
+  -- Char-level (specific text): BRIGHTER, stands out
+  
+  -- Line-level highlights: DARKER versions (70% of native)
   vim.api.nvim_set_hl(0, "VscodeDiffLineInsert", {
-    bg = "#1e3a1e",  -- Light green
+    bg = adjust_brightness(diff_add.bg, 0.7) or 0x1d3042,  -- Darker green
     default = true,
   })
   
   vim.api.nvim_set_hl(0, "VscodeDiffLineDelete", {
-    bg = "#3a1e1e",  -- Light red
+    bg = adjust_brightness(diff_delete.bg, 0.7) or 0x351d2b,  -- Darker red
     default = true,
   })
   
-  -- Character-level highlights (darker background - for specific text)
+  -- Character-level highlights: BRIGHTER versions (use native or 1.2x)
+  -- These should stand out ON TOP of the darker line background
   vim.api.nvim_set_hl(0, "VscodeDiffCharInsert", {
-    bg = "#2d6d2d",  -- Dark green
+    bg = diff_add.bg or 0x2a4556,  -- Full brightness green (native DiffAdd)
     default = true,
   })
   
   vim.api.nvim_set_hl(0, "VscodeDiffCharDelete", {
-    bg = "#6d2d2d",  -- Dark red
+    bg = diff_delete.bg or 0x4b2a3d,  -- Full brightness red (native DiffDelete)
     default = true,
   })
   
-  -- Filler lines (subtle gray - similar to native diff)
+  -- Filler lines (subtle gray)
   vim.api.nvim_set_hl(0, "VscodeDiffFiller", {
     bg = "#2d2d2d",  -- Subtle gray background
     fg = "#444444",  -- Slightly lighter for any text
