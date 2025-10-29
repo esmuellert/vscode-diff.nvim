@@ -18,3 +18,4 @@ vscode-diff.mjs
 .DS_Store
 Thumbs.db
 example
+example/
