@@ -1,6 +1,8 @@
 #ifndef UTF8_UTILS_H
 #define UTF8_UTILS_H
 
+#include <stdint.h>
+
 /**
  * Get the number of bytes in a UTF-8 character starting at the given byte
  */
@@ -43,5 +45,12 @@ int utf8_byte_to_char_offset(const char* str, int byte_offset);
  * Check if byte position is at a UTF-8 character boundary
  */
 int utf8_is_char_boundary(const char* str, int byte_pos);
+
+/**
+ * Decode UTF-8 bytes at position to a Unicode code point (for UTF-16 code unit)
+ * Returns the code point and advances *byte_pos by the number of bytes consumed
+ * Returns 0 and doesn't advance on invalid UTF-8
+ */
+uint32_t utf8_decode_char(const char* str, int* byte_pos);
 
 #endif // UTF8_UTILS_H

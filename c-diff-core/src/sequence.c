@@ -454,6 +454,7 @@ ISequence* char_sequence_create_from_range(const char** lines,
         return NULL;
     }
 
+    // PASS 1: Count total UTF-16 code units (matching JS charCodeAt behavior)
     int total_len = 0;
     for (int idx = 0; idx < line_span; idx++) {
         int line_number = start_line_num + idx;
@@ -534,9 +535,9 @@ ISequence* char_sequence_create_from_range(const char** lines,
         }
 
         seq->trimmed_ws_lengths[idx] = trimmed_ws_length_chars;
-        effective_lengths[idx] = line_length_bytes;  // Store BYTES for elements array
+        effective_lengths[idx] = line_length_chars;  // Store CHARACTERS (UTF-16 code units)
 
-        total_len += line_length_bytes;  // Count BYTES for elements array
+        total_len += line_length_chars;  // Count CHARACTERS (UTF-16 code units)
         if (line_number < end_line_num) {
             total_len += 1;  // For '\n'
         }
@@ -553,6 +554,7 @@ ISequence* char_sequence_create_from_range(const char** lines,
     }
     seq->length = total_len;
 
+    // PASS 2: Build elements array with UTF-16 code units (matching JS charCodeAt)
     int offset = 0;
     for (int idx = 0; idx < line_span; idx++) {
         int line_number = start_line_num + idx;
@@ -574,17 +576,24 @@ ISequence* char_sequence_create_from_range(const char** lines,
             start_col_chars = line_len_chars;
         }
 
-        int len_bytes = effective_lengths[idx];  // This is already in bytes
-        if (len_bytes < 0) {
-            len_bytes = 0;
+        int num_chars = effective_lengths[idx];  // This is now in CHARACTERS
+        if (num_chars < 0) {
+            num_chars = 0;
         }
 
         // Convert character position to byte offset for actual string access
         int start_col_bytes = utf8_char_to_byte_offset(line, start_col_chars);
 
+        // Decode UTF-8 to UTF-16 code units
         const char* src = line + start_col_bytes;
-        for (int j = 0; j < len_bytes; j++) {
-            seq->elements[offset++] = (uint32_t)(unsigned char)src[j];
+        int byte_pos = 0;
+        int chars_read = 0;
+        while (chars_read < num_chars && src[byte_pos] != '\0') {
+            uint32_t codepoint = utf8_decode_char(src, &byte_pos);
+            // For BMP characters, codepoint equals UTF-16 code unit
+            // For non-BMP, we'd need surrogate pairs, but for now use codepoint directly
+            seq->elements[offset++] = codepoint;
+            chars_read++;
         }
 
         if (line_number < end_line_num) {

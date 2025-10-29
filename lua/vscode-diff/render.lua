@@ -238,12 +238,16 @@ end
 -- Calculate filler lines based on inner changes
 -- Simple rule: For each inner change, if one side is single-line but the other is multi-line,
 -- add filler lines to align them.
+-- Positioning:
+--   - Leading insertions/deletions (first inner change at column 1): BEFORE the line
+--   - All other insertions/expansions: AFTER the line  
+--   - All other deletions/collapses: BEFORE the line (because content was removed)
 local function calculate_fillers(mapping, original_lines, modified_lines)
   local fillers = {}
 
   -- Process each inner change
   if mapping.inner_changes and #mapping.inner_changes > 0 then
-    for _, inner in ipairs(mapping.inner_changes) do
+    for idx, inner in ipairs(mapping.inner_changes) do
       local orig_line_count = inner.original.end_line - inner.original.start_line
       local mod_line_count = inner.modified.end_line - inner.modified.start_line
       
@@ -255,23 +259,45 @@ local function calculate_fillers(mapping, original_lines, modified_lines)
         goto continue
       end
       
+      -- Determine if this is a LEADING change (first inner change starting at column 1)
+      local is_first_change = (idx == 1)
+      local starts_at_col_1 = (inner.original.start_col == 1 and inner.modified.start_col == 1)
+      local is_leading_change = is_first_change and starts_at_col_1
+      
       -- If there's a difference, one side needs fillers
       if line_diff > 0 then
-        -- Modified has more lines: add fillers to original after the original's start line
+        -- Modified has more lines: add fillers to original
+        local after_line
+        if is_leading_change then
+          -- Leading insertion: BEFORE the line
+          after_line = inner.original.start_line - 1
+        else
+          -- Inline expansion: AFTER the line
+          after_line = inner.original.start_line
+        end
+        
         table.insert(fillers, {
           buffer = 'original',
-          after_line = inner.original.start_line,
+          after_line = after_line,
           count = line_diff
         })
       elseif line_diff < 0 then
-        -- Original has more lines: add fillers to modified after the modified's start line
+        -- Original has more lines: add fillers to modified
+        local after_line
+        if is_leading_change then
+          -- Leading deletion: BEFORE the line
+          after_line = inner.modified.start_line - 1
+        else
+          -- Trailing/inline deletion: BEFORE the line (content was removed)
+          after_line = inner.modified.start_line - 1
+        end
+        
         table.insert(fillers, {
           buffer = 'modified',
-          after_line = inner.modified.start_line,
+          after_line = after_line,
           count = -line_diff
         })
       end
-      -- If line_diff == 0 (but not both 0), both sides have same multi-line count, no fillers needed
       
       ::continue::
     end
