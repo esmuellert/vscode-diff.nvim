@@ -49,7 +49,7 @@ function M.setup_highlights()
   -- Character-level highlights: BRIGHTER versions (use native or 1.2x)
   -- These should stand out ON TOP of the darker line background
   vim.api.nvim_set_hl(0, "VscodeDiffCharInsert", {
-    bg = "#999999",
+    bg = diff_add.bg or 0x2a4556,  -- Full brightness green (native DiffAdd)
     default = true,
   })
 
@@ -118,8 +118,7 @@ end
 -- ============================================================================
 
 -- Apply light background color to entire line ranges in the mapping
--- NOTE: Use hl_group with end_line instead of line_hl_group because line_hl_group
--- doesn't properly compose/blend with hl_group char highlights (priority doesn't work)
+-- Uses hl_eol to extend highlight to cover the whole screen line
 local function apply_line_highlights(bufnr, line_range, hl_group)
   -- Skip empty ranges
   if line_range.end_line <= line_range.start_line then
@@ -129,8 +128,8 @@ local function apply_line_highlights(bufnr, line_range, hl_group)
   -- Get buffer line count to avoid going out of bounds
   local line_count = vim.api.nvim_buf_line_count(bufnr)
 
-  -- Apply highlight to entire lines using hl_group with line range
-  -- This highlights the entire line including trailing space
+  -- Apply highlight to entire lines using hl_eol
+  -- This highlights the entire screen line including the area beyond EOL
   for line = line_range.start_line, line_range.end_line - 1 do
     if line > line_count then
       break
@@ -138,12 +137,13 @@ local function apply_line_highlights(bufnr, line_range, hl_group)
 
     local line_idx = line - 1  -- Convert to 0-indexed
 
-    -- Use hl_group with end_line for proper full-line background
-    -- Priority 100 = lower than char highlights (200)
+    -- Use hl_eol to extend highlight to the whole screen line
+    -- Priority 100 = lower than char highlights (200) so char highlights remain visible
     vim.api.nvim_buf_set_extmark(bufnr, ns_highlight, line_idx, 0, {
       end_line = line_idx + 1,
-      end_col = 0,  -- To end of line
+      end_col = 0,
       hl_group = hl_group,
+      hl_eol = true,  -- KEY: Extend highlight to cover the whole screen line
       priority = 100,
     })
   end
