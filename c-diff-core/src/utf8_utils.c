@@ -51,6 +51,58 @@ int utf8_column_to_byte(const char* str, int column) {
     return byte_pos;
 }
 
+// Convert character position to byte offset in UTF-8 string (alias for compatibility)
+int utf8_char_to_byte_offset(const char* str, int char_pos) {
+    if (!str || char_pos <= 0) return 0;
+    
+    int char_count = 0;
+    const unsigned char* p = (const unsigned char*)str;
+    const unsigned char* start = p;
+    
+    while (*p && char_count < char_pos) {
+        if (*p < 0x80) {
+            p++;
+        } else if ((*p & 0xE0) == 0xC0) {
+            if (p[1]) p += 2; else p++;
+        } else if ((*p & 0xF0) == 0xE0) {
+            if (p[1] && p[2]) p += 3; else p++;
+        } else if ((*p & 0xF8) == 0xF0) {
+            if (p[1] && p[2] && p[3]) p += 4; else p++;
+        } else {
+            p++;
+        }
+        char_count++;
+    }
+    
+    return (int)(p - start);
+}
+
+// Convert byte offset to character position in UTF-8 string (alias for compatibility)
+int utf8_byte_to_char_offset(const char* str, int byte_offset) {
+    if (!str || byte_offset <= 0) return 0;
+    
+    int char_count = 0;
+    const unsigned char* p = (const unsigned char*)str;
+    const unsigned char* end = p + byte_offset;
+    
+    while (*p && p < end) {
+        if (*p < 0x80) {
+            p++;
+        } else if ((*p & 0xE0) == 0xC0) {
+            p += 2;
+        } else if ((*p & 0xF0) == 0xE0) {
+            p += 3;
+        } else if ((*p & 0xF8) == 0xF0) {
+            p += 4;
+        } else {
+            p++;
+        }
+        char_count++;
+    }
+    
+    return char_count;
+}
+
 // Count UTF-8 characters (columns) in a string
 int utf8_strlen(const char* str) {
     if (!str) return 0;

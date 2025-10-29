@@ -118,7 +118,8 @@ end
 -- ============================================================================
 
 -- Apply light background color to entire line ranges in the mapping
--- Use line_hl_group to highlight the whole line including trailing space
+-- NOTE: Use hl_group with end_line instead of line_hl_group because line_hl_group
+-- doesn't properly compose/blend with hl_group char highlights (priority doesn't work)
 local function apply_line_highlights(bufnr, line_range, hl_group)
   -- Skip empty ranges
   if line_range.end_line <= line_range.start_line then
@@ -128,7 +129,7 @@ local function apply_line_highlights(bufnr, line_range, hl_group)
   -- Get buffer line count to avoid going out of bounds
   local line_count = vim.api.nvim_buf_line_count(bufnr)
 
-  -- Apply highlight to entire lines using line_hl_group
+  -- Apply highlight to entire lines using hl_group with line range
   -- This highlights the entire line including trailing space
   for line = line_range.start_line, line_range.end_line - 1 do
     if line > line_count then
@@ -137,9 +138,12 @@ local function apply_line_highlights(bufnr, line_range, hl_group)
 
     local line_idx = line - 1  -- Convert to 0-indexed
 
-    -- Use line_hl_group for proper whole-line background
+    -- Use hl_group with end_line for proper full-line background
+    -- Priority 100 = lower than char highlights (200)
     vim.api.nvim_buf_set_extmark(bufnr, ns_highlight, line_idx, 0, {
-      line_hl_group = hl_group,
+      end_line = line_idx + 1,
+      end_col = 0,  -- To end of line
+      hl_group = hl_group,
       priority = 100,
     })
   end
