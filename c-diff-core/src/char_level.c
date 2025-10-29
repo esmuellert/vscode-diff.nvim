@@ -375,6 +375,10 @@ static void scan_word(ScanWordContext* ctx, int offset1, int offset2,
     int equal_chars1 = max_int(0, equal_end1 - equal_start1);
     int equal_chars2 = max_int(0, equal_end2 - equal_start2);
     
+    fprintf(stderr, "[C_SCANWORD_START] pair=(%d,%d) w=seq1[%d-%d] seq2[%d-%d] equalChars=%d+%d=%d\n",
+            offset1, offset2, word.seq1_start, word.seq1_end, word.seq2_start, word.seq2_end,
+            equal_chars1, equal_chars2, equal_chars1 + equal_chars2);
+    
     // VSCode critical feature: Keep consuming and merging overlapping equal spans
     // from the remaining queue (starting at queue_start_pos).
     // This is where we achieve parity with VSCode's while(equalMappings.length > 0) loop.
@@ -384,6 +388,9 @@ static void scan_word(ScanWordContext* ctx, int offset1, int offset2,
         // Check if the next equal mapping intersects with our current word
         bool intersects = (next->seq1_start < word.seq1_end && next->seq1_end > word.seq1_start) ||
                          (next->seq2_start < word.seq2_end && next->seq2_end > word.seq2_start);
+        
+        fprintf(stderr, "[C_SCANWORD_LOOP] next=seq1[%d-%d] seq2[%d-%d] intersects=%d\n",
+                next->seq1_start, next->seq1_end, next->seq2_start, next->seq2_end, intersects);
         
         if (!intersects) {
             break;
@@ -416,6 +423,9 @@ static void scan_word(ScanWordContext* ctx, int offset1, int offset2,
         int v_equal_chars1 = max_int(0, v_equal_end1 - v_equal_start1);
         int v_equal_chars2 = max_int(0, v_equal_end2 - v_equal_start2);
         
+        fprintf(stderr, "[C_SCANWORD_LOOP] v=seq1[%d-%d] seq2[%d-%d] addedEqual=%d+%d\n",
+                v.seq1_start, v.seq1_end, v.seq2_start, v.seq2_end, v_equal_chars1, v_equal_chars2);
+        
         equal_chars1 += v_equal_chars1;
         equal_chars2 += v_equal_chars2;
         
@@ -425,10 +435,17 @@ static void scan_word(ScanWordContext* ctx, int offset1, int offset2,
         word.seq2_start = min_int(word.seq2_start, v.seq2_start);
         word.seq2_end = max_int(word.seq2_end, v.seq2_end);
         
+        fprintf(stderr, "[C_SCANWORD_LOOP] after join: w=seq1[%d-%d] seq2[%d-%d]\n",
+                word.seq1_start, word.seq1_end, word.seq2_start, word.seq2_end);
+        
         // If the word extends beyond the next equal mapping, consume it (shift)
         if (word.seq1_end >= next->seq1_end) {
+            fprintf(stderr, "[C_SCANWORD_LOOP] shifting next (w.end=%d >= next.end=%d)\n",
+                    word.seq1_end, next->seq1_end);
             (*queue_start_pos)++;  // Consume this mapping from the queue
         } else {
+            fprintf(stderr, "[C_SCANWORD_LOOP] breaking (w.end=%d < next.end=%d)\n",
+                    word.seq1_end, next->seq1_end);
             break;
         }
     }
@@ -443,6 +460,9 @@ static void scan_word(ScanWordContext* ctx, int offset1, int offset2,
     
     bool should_extend = (ctx->force && equal_len < word_len) || 
                         (equal_len < word_len * 2.0 / 3.0);
+    
+    fprintf(stderr, "[C_SCANWORD_END] wordLen=%d equalLen=%d shouldExtend=%d\n",
+            word_len, equal_len, should_extend);
     
     if (should_extend) {
         if (ctx->additional->count >= ctx->additional->capacity) {

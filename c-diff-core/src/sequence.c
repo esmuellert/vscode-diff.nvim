@@ -697,10 +697,11 @@ void char_sequence_translate_range(const CharSequence* seq,
  * Helper: Check if character is word character (alphanumeric + underscore)
  */
 static bool is_word_char(uint32_t ch) {
+    // VSCode's isWordChar: only alphanumeric (a-z, A-Z, 0-9)
+    // Does NOT include underscore!
     return (ch >= 'a' && ch <= 'z') ||
            (ch >= 'A' && ch <= 'Z') ||
-           (ch >= '0' && ch <= '9') ||
-           (ch == '_');
+           (ch >= '0' && ch <= '9');
 }
 
 /**
