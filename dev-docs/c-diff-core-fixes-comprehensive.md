@@ -352,7 +352,7 @@ All fixes verified against VSCode source:
 
 ## Testing Methodology
 
-### Test Script: `test_diff_comparison.sh`
+### Test Script: `scripts/test_diff_comparison.sh`
 ```bash
 # Extracts all git history versions of a file
 # Compares every adjacent pair using:
@@ -389,5 +389,5 @@ The C implementation now matches VSCode's diff algorithm with **91% exact parity
 
 - **VSCode Commit:** Used extraction from latest stable VSCode
 - **Test Files:** `example/` folder contains all git history versions
-- **Build Script:** `build-vscode-diff.sh` - VSCode diff algorithm extraction
-- **Verification:** `test_diff_comparison.sh` - automated parity testing
+- **Build Script:** `scripts/build-vscode-diff.sh` - VSCode diff algorithm extraction
+- **Verification:** `scripts/test_diff_comparison.sh` - automated parity testing

@@ -34,7 +34,7 @@ Created a wrapper script and bundled with esbuild:
 
 ### 4. Created Automated Build Script
 
-**Location:** `/tmp/build-vscode-diff.sh`
+**Location:** `scripts/build-vscode-diff.sh`
 
 Features:
 - Fully automated extraction and bundling
@@ -44,7 +44,7 @@ Features:
 
 **Usage:**
 ```bash
-bash build-vscode-diff.sh [output-filename.mjs]
+bash scripts/build-vscode-diff.sh [output-filename.mjs]
 ```
 
 **Default output:** `vscode-diff.mjs`
@@ -126,7 +126,7 @@ Since both tools use the **identical output format**, you can now:
 ## Files Generated
 
 ### 1. Build Script
-- **Location:** `/tmp/build-vscode-diff.sh`
+- **Location:** `scripts/build-vscode-diff.sh`
 - **Purpose:** Automated extraction and bundling
 - **Size:** ~4KB
 
@@ -154,7 +154,7 @@ Since both tools use the **identical output format**, you can now:
 
 1. **Document format differences:** Explain why outputs differ in structure but are algorithmically equivalent
 2. **Add "source of truth" section:** Reference VSCode's implementation
-3. **Include build instructions:** Add `build-vscode-diff.sh` to repo (optional)
+3. **Include build instructions:** Add `scripts/build-vscode-diff.sh` to repo (optional)
 
 ### For CI/CD
 

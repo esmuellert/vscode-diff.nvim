@@ -3,7 +3,8 @@
 # Test script to compare C diff tool and Node vscode-diff.mjs outputs
 # Tests 200 comparisons: 100 from Makefile versions, 100 from render.lua versions
 
-REPO_ROOT="/home/yanuoma/.local/share/nvim/vscode-diff.nvim"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 EXAMPLE_DIR="$REPO_ROOT/example"
 C_DIFF="$REPO_ROOT/c-diff-core/build/diff"
 NODE_DIFF="$REPO_ROOT/vscode-diff.mjs"
