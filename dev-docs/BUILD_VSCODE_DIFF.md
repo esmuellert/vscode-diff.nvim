@@ -6,11 +6,11 @@ This script extracts and bundles VSCode's diff algorithm into a standalone JavaS
 
 ```bash
 # Generate the standalone diff tool
-./build-vscode-diff.sh
+./scripts/build-vscode-diff.sh
 
 # This creates: vscode-diff.mjs (default name)
 # Or specify a custom name:
-./build-vscode-diff.sh my-diff-tool.mjs
+./scripts/build-vscode-diff.sh my-diff-tool.mjs
 ```
 
 ## Usage

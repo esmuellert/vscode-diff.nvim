@@ -311,7 +311,9 @@ static SequenceDiffArray* merge_diffs(SequenceDiffArray* arr1, SequenceDiffArray
         // Merge with previous if they overlap/touch
         if (result->count > 0 && result->diffs[result->count - 1].seq1_end >= next.seq1_start) {
             SequenceDiff* prev = &result->diffs[result->count - 1];
+            prev->seq1_start = min_int(prev->seq1_start, next.seq1_start);
             prev->seq1_end = max_int(prev->seq1_end, next.seq1_end);
+            prev->seq2_start = min_int(prev->seq2_start, next.seq2_start);
             prev->seq2_end = max_int(prev->seq2_end, next.seq2_end);
         } else {
             result->diffs[result->count++] = next;
@@ -385,7 +387,7 @@ static void scan_word(ScanWordContext* ctx, int offset1, int offset2,
         bool intersects = (next->seq1_start < word.seq1_end && next->seq1_end > word.seq1_start) ||
                          (next->seq2_start < word.seq2_end && next->seq2_end > word.seq2_start);
         
-        if (!intersects) {
+        if (! intersects) {
             break;
         }
         

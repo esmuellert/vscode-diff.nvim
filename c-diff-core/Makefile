@@ -34,8 +34,8 @@ else
     CFLAGS_SHARED = $(CFLAGS_SHARED_BASE) -D_POSIX_C_SOURCE=200809L
 endif
 
-LDFLAGS = 
-LDFLAGS_SHARED = -shared
+LDFLAGS = -lutf8proc
+LDFLAGS_SHARED = -shared -lutf8proc
 
 # Directories
 SRC_DIR = src
@@ -55,12 +55,13 @@ CHAR_LEVEL_SRC = $(SRC_DIR)/char_level.c
 RANGE_MAPPING_SRC = $(SRC_DIR)/range_mapping.c
 RENDER_PLAN_SRC = $(SRC_DIR)/render_plan.c
 DIFF_API_SRC = $(SRC_DIR)/diff_api.c
+UTF8_UTILS_SRC = $(SRC_DIR)/utf8_utils.c
 DEFAULT_LINES_DIFF_COMPUTER_SRC = default_lines_diff_computer.c
 
 # All source files for shared library
 ALL_SRCS = $(DIFF_API_SRC) $(RENDER_PLAN_SRC) $(DEFAULT_LINES_DIFF_COMPUTER_SRC) $(CHAR_LEVEL_SRC) \
            $(LINE_LEVEL_SRC) $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(RANGE_MAPPING_SRC) \
-           $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC)
+           $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) $(UTF8_UTILS_SRC)
 
 # Shared library output
 SHARED_LIB = libdiff_core.so
@@ -95,7 +96,7 @@ $(BUILD_DIR):
 
 # Build shared library for Lua integration
 lib: $(BUILD_DIR)
-	$(CC) $(CFLAGS_SHARED) $(LDFLAGS_SHARED) $(ALL_SRCS) -o $(SHARED_LIB) -lm
+	$(CC) $(CFLAGS_SHARED) $(ALL_SRCS) -o $(SHARED_LIB) $(LDFLAGS_SHARED) -lm
 	@echo ""
 	@echo "✓ Built shared library: $(SHARED_LIB)"
 	@echo ""
@@ -110,7 +111,7 @@ install: lib
 
 # Build and run Myers tests
 test-myers: $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(TEST_DIR)/test_myers.c $(MYERS_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_MYERS) -lm
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_myers.c $(MYERS_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) $(UTF8_UTILS_SRC) -o $(TEST_MYERS) -lutf8proc -lm
 	@echo ""
 	@echo "Running Myers diff tests..."
 	@echo ""
@@ -118,7 +119,7 @@ test-myers: $(BUILD_DIR)
 
 # Build and run Sequence tests (ISequence, LineSequence, CharSequence, Column Translation)
 test-sequence: $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(TEST_DIR)/test_sequence.c $(MYERS_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) -o $(TEST_SEQUENCE) -lm
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_sequence.c $(MYERS_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(UTF8_UTILS_SRC) -o $(TEST_SEQUENCE) -lutf8proc -lm
 	@echo ""
 	@echo "Running Sequence tests (Infrastructure + Column Translation)..."
 	@echo ""
@@ -126,7 +127,7 @@ test-sequence: $(BUILD_DIR)
 
 # Build and run Line Optimization tests (Step 1+2+3)
 test-line-opt: $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(TEST_DIR)/test_line_optimization.c $(LINE_LEVEL_SRC) $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_LINE_OPT) -lm
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_line_optimization.c $(LINE_LEVEL_SRC) $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) $(UTF8_UTILS_SRC) -o $(TEST_LINE_OPT) -lutf8proc -lm
 	@echo ""
 	@echo "Running Line-Level Optimization tests (Steps 1+2+3)..."
 	@echo ""
@@ -134,7 +135,7 @@ test-line-opt: $(BUILD_DIR)
 
 # Build and run Line Boundary Scoring test (Proves Myers suboptimal → Optimization fixes)
 test-line-boundary: $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(TEST_DIR)/test_line_boundary_scoring.c $(LINE_LEVEL_SRC) $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_LINE_BOUNDARY) -lm
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_line_boundary_scoring.c $(LINE_LEVEL_SRC) $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) $(UTF8_UTILS_SRC) -o $(TEST_LINE_BOUNDARY) -lutf8proc -lm
 	@echo ""
 	@echo "Running Boundary Scoring Demonstration (Myers vs Optimized)..."
 	@echo ""
@@ -142,7 +143,7 @@ test-line-boundary: $(BUILD_DIR)
 
 # Build and run Character-Level tests (Step 4 - VSCODE PARITY)
 test-char-level: $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(TEST_DIR)/test_char_level.c $(CHAR_LEVEL_SRC) $(LINE_LEVEL_SRC) $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_CHAR_LEVEL) -lm
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_char_level.c $(CHAR_LEVEL_SRC) $(LINE_LEVEL_SRC) $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) $(UTF8_UTILS_SRC) -o $(TEST_CHAR_LEVEL) -lutf8proc -lm
 	@echo ""
 	@echo "Running Character-Level Optimization tests (Step 4 - VSCODE PARITY)..."
 	@echo ""
@@ -150,12 +151,12 @@ test-char-level: $(BUILD_DIR)
 
 # Build and run Integration test (Full Pipeline: Steps 1-4)
 test-integration: $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(TEST_DIR)/test_integration.c $(CHAR_LEVEL_SRC) $(LINE_LEVEL_SRC) $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_INTEGRATION) -lm
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_integration.c $(CHAR_LEVEL_SRC) $(LINE_LEVEL_SRC) $(MYERS_SRC) $(OPTIMIZE_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) $(UTF8_UTILS_SRC) -o $(TEST_INTEGRATION) -lutf8proc -lm
 	@$(TEST_INTEGRATION)
 
 # Build and run DP Algorithm tests
 test-dp: $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(TEST_DIR)/test_dp_algorithm.c $(MYERS_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_DP) -lm
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_dp_algorithm.c $(MYERS_SRC) $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) $(UTF8_UTILS_SRC) -o $(TEST_DP) -lutf8proc -lm
 	@echo ""
 	@echo "Running DP Algorithm Selection tests..."
 	@echo ""
@@ -163,7 +164,7 @@ test-dp: $(BUILD_DIR)
 
 # Build and run Character Boundary Category tests
 test-char-boundary: $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(TEST_DIR)/test_char_boundary_categories.c $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) -o $(TEST_CHAR_BOUNDARY) -lm
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_char_boundary_categories.c $(SEQUENCE_SRC) $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) $(UTF8_UTILS_SRC) -o $(TEST_CHAR_BOUNDARY) -lutf8proc -lm
 	@echo ""
 	@echo "Running Character Boundary Category tests..."
 	@echo ""
@@ -190,7 +191,7 @@ test-range-mapping: $(BUILD_DIR)
 
 # Build and run compute_diff tests
 test-compute-diff: $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(TEST_DIR)/test_compute_diff.c $(ALL_SRCS) -o $(BUILD_DIR)/test_compute_diff -lm
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_compute_diff.c $(ALL_SRCS) -o $(BUILD_DIR)/test_compute_diff -lutf8proc -lm
 	@echo ""
 	@echo "Running compute_diff() tests..."
 	@echo ""
@@ -198,7 +199,7 @@ test-compute-diff: $(BUILD_DIR)
 
 # Build and run render plan tests
 test-render-plan: $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(TEST_DIR)/test_render_plan.c $(ALL_SRCS) -o $(BUILD_DIR)/test_render_plan -lm
+	$(CC) $(CFLAGS) $(TEST_DIR)/test_render_plan.c $(ALL_SRCS) -o $(BUILD_DIR)/test_render_plan -lutf8proc -lm
 	@echo ""
 	@echo "Running render plan generation tests..."
 	@echo ""
@@ -206,7 +207,7 @@ test-render-plan: $(BUILD_DIR)
 
 # Build standalone diff tool executable
 diff-tool: $(BUILD_DIR)
-	$(CC) $(CFLAGS) diff_tool.c $(ALL_SRCS) -o $(DIFF_TOOL) -lm
+	$(CC) $(CFLAGS) diff_tool.c $(ALL_SRCS) -o $(DIFF_TOOL) $(LDFLAGS) -lm
 	@echo ""
 	@echo "✓ Built standalone diff tool: $(DIFF_TOOL)"
 	@echo "  Usage: $(DIFF_TOOL) <original_file> <modified_file>"
