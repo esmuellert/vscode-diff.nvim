@@ -122,36 +122,6 @@ static int write_utf8_as_utf16_units(const char* src, int num_utf16_units,
     return utf16_units_written;
 }
 
-/**
- * Count UTF-8 characters (for internal character counting)
- * 
- * JavaScript Note: Not needed in JS (automatic)
- * C Note: Required because elements array stores bytes, but we need character count
- */
-static int count_utf8_chars_in_byte_range(const uint32_t* elements, int start_byte, int end_byte) {
-    int char_count = 0;
-    int byte_idx = start_byte;
-    
-    while (byte_idx < end_byte) {
-        // Get byte count for this UTF-8 character
-        unsigned char c = (unsigned char)elements[byte_idx];
-        int char_bytes = 1;
-        if ((c & 0x80) == 0) {
-            char_bytes = 1;  // ASCII
-        } else if ((c & 0xE0) == 0xC0) {
-            char_bytes = 2;  // 2-byte UTF-8
-        } else if ((c & 0xF0) == 0xE0) {
-            char_bytes = 3;  // 3-byte UTF-8
-        } else if ((c & 0xF8) == 0xF0) {
-            char_bytes = 4;  // 4-byte UTF-8
-        }
-        byte_idx += char_bytes;
-        char_count++;
-    }
-    
-    return char_count;
-}
-
 // ============================================================================
 // String Trimming Utilities
 // ============================================================================
@@ -800,12 +770,10 @@ void char_sequence_translate_offset(const CharSequence* seq, int offset,
     // Calculate column offset within the line
     // VSCode: const lineOffset = offset - this.firstElementOffsetByLineIdx[i];
     
-    // Language conversion: Count UTF-8 characters in elements array
-    // JavaScript Note: In JS, offset is directly a character index (automatic)
-    // C Note: We must count UTF-8 characters manually because elements stores bytes
-    int line_offset_chars = count_utf8_chars_in_byte_range(seq->elements, 
-                                                            seq->line_start_offsets[line_idx], 
-                                                            offset);
+    // Since elements array stores UTF-16 code units (not UTF-8 bytes),
+    // and offset is already an index into UTF-16 code units,
+    // the column offset is simply the difference
+    int line_offset_chars = offset - seq->line_start_offsets[line_idx];
     
     // VSCode: 1 + this.lineStartOffsets[i] + lineOffset + 
     //         ((lineOffset === 0 && preference === 'left') ? 0 : this.trimmedWsLengthsByLineIdx[i])
