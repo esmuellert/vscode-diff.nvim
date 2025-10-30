@@ -20,7 +20,7 @@ mkdir -p "$TEMP_DIR"
 if [ ! -f "$C_DIFF" ]; then
     echo "C diff binary not found. Building..."
     cd "$REPO_ROOT/c-diff-core"
-    make
+    make diff-tool
     if [ ! -f "$C_DIFF" ]; then
         echo "Error: Failed to build C diff binary"
         exit 1
