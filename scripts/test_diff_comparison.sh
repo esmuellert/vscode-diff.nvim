@@ -11,8 +11,8 @@ NODE_DIFF="$REPO_ROOT/vscode-diff.mjs"
 TEMP_DIR="/tmp/diff_comparison_$$"
 
 # Configuration: Number of top revised files to test
-NUM_TOP_FILES=5
-TESTS_PER_FILE=10
+NUM_TOP_FILES=2
+TESTS_PER_FILE=100
 
 mkdir -p "$TEMP_DIR"
 
@@ -20,9 +20,6 @@ mkdir -p "$TEMP_DIR"
 if [ ! -f "$C_DIFF" ]; then
     echo "C diff binary not found. Building..."
     cd "$REPO_ROOT/c-diff-core"
-    mkdir -p build
-    cd build
-    cmake ..
     make
     if [ ! -f "$C_DIFF" ]; then
         echo "Error: Failed to build C diff binary"

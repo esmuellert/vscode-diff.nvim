@@ -23,6 +23,136 @@
 #include <stdint.h>
 
 // ============================================================================
+// UTF-8/UTF-16 Language Abstraction Helpers
+// ============================================================================
+// These functions abstract the differences between JavaScript's UTF-16 string
+// indexing and C's UTF-8 byte-based strings. This allows the core algorithm
+// code in sequence.c to more closely match VSCode's TypeScript implementation.
+// ============================================================================
+
+/**
+ * Get UTF-16 length of a UTF-8 substring (matches JS string.length)
+ * 
+ * JavaScript Note: In JS, str.substring(start, end).length counts UTF-16 code units
+ * C Note: We need to manually count UTF-16 code units in UTF-8 substring
+ */
+static int get_utf16_substring_length(const char* str_start, const char* str_end) {
+    if (!str_start || str_end <= str_start) {
+        return 0;
+    }
+    
+    // Temporarily null-terminate at str_end to measure substring
+    char saved_char = *str_end;
+    ((char*)str_end)[0] = '\0';
+    int utf16_length = utf8_to_utf16_length(str_start);
+    ((char*)str_end)[0] = saved_char;
+    
+    return utf16_length;
+}
+
+/**
+ * Convert UTF-16 length to byte length for a UTF-8 substring
+ * 
+ * JavaScript Note: In JS, substring is indexed by UTF-16 code units
+ * C Note: We need to convert UTF-16 unit count to byte count
+ */
+static int convert_utf16_length_to_bytes(const char* str, int max_bytes, int target_utf16_units) {
+    int byte_count = 0;
+    int utf16_count = 0;
+    int byte_pos = 0;
+    
+    while (utf16_count < target_utf16_units && byte_pos < max_bytes) {
+        uint32_t codepoint = utf8_decode_char(str, &byte_pos);
+        if (codepoint == 0) break;
+        
+        int cp_utf16_units = (codepoint < 0x10000) ? 1 : 2;
+        if (utf16_count + cp_utf16_units <= target_utf16_units) {
+            byte_count = byte_pos;
+            utf16_count += cp_utf16_units;
+        } else {
+            break;
+        }
+    }
+    
+    return byte_count;
+}
+
+/**
+ * Write UTF-8 string as UTF-16 code units to elements array
+ * 
+ * JavaScript Note: JS strings are stored as UTF-16 code units internally
+ * C Note: We convert UTF-8 to UTF-16 code units for algorithm compatibility
+ * 
+ * Returns: number of UTF-16 code units written
+ */
+static int write_utf8_as_utf16_units(const char* src, int num_utf16_units, 
+                                      uint32_t* elements, int offset) {
+    int byte_pos = 0;
+    int utf16_units_written = 0;
+    
+    while (utf16_units_written < num_utf16_units && src[byte_pos] != '\0') {
+        uint32_t codepoint = utf8_decode_char(src, &byte_pos);
+        if (codepoint == 0) break;
+        
+        if (codepoint < 0x10000) {
+            // BMP character: 1 UTF-16 code unit (matches JS behavior)
+            elements[offset++] = codepoint;
+            utf16_units_written++;
+        } else {
+            // Non-BMP: 2 UTF-16 code units as surrogate pair (matches JS behavior)
+            codepoint -= 0x10000;
+            uint16_t high = 0xD800 + (codepoint >> 10);
+            uint16_t low = 0xDC00 + (codepoint & 0x3FF);
+            
+            if (utf16_units_written + 1 < num_utf16_units) {
+                elements[offset++] = high;
+                elements[offset++] = low;
+                utf16_units_written += 2;
+            } else if (utf16_units_written < num_utf16_units) {
+                // Only write high surrogate if we have room for 1 more
+                elements[offset++] = high;
+                utf16_units_written++;
+                break;
+            } else {
+                break;
+            }
+        }
+    }
+    
+    return utf16_units_written;
+}
+
+/**
+ * Count UTF-8 characters (for internal character counting)
+ * 
+ * JavaScript Note: Not needed in JS (automatic)
+ * C Note: Required because elements array stores bytes, but we need character count
+ */
+static int count_utf8_chars_in_byte_range(const uint32_t* elements, int start_byte, int end_byte) {
+    int char_count = 0;
+    int byte_idx = start_byte;
+    
+    while (byte_idx < end_byte) {
+        // Get byte count for this UTF-8 character
+        unsigned char c = (unsigned char)elements[byte_idx];
+        int char_bytes = 1;
+        if ((c & 0x80) == 0) {
+            char_bytes = 1;  // ASCII
+        } else if ((c & 0xE0) == 0xC0) {
+            char_bytes = 2;  // 2-byte UTF-8
+        } else if ((c & 0xF0) == 0xE0) {
+            char_bytes = 3;  // 3-byte UTF-8
+        } else if ((c & 0xF8) == 0xF0) {
+            char_bytes = 4;  // 4-byte UTF-8
+        }
+        byte_idx += char_bytes;
+        char_count++;
+    }
+    
+    return char_count;
+}
+
+// ============================================================================
 // String Trimming Utilities
 // ============================================================================
 
@@ -454,7 +584,9 @@ ISequence* char_sequence_create_from_range(const char** lines,
         return NULL;
     }
 
-    // PASS 1: Count total UTF-16 code units (matching JS charCodeAt behavior)
+    // PASS 1: Count total UTF-16 code units
+    // JavaScript Note: In JS, strings are indexed by UTF-16 code units (str[i], str.length)
+    // C Note: We must convert UTF-8 to UTF-16 code units for algorithm compatibility
     int total_len = 0;
     for (int idx = 0; idx < line_span; idx++) {
         int line_number = start_line_num + idx;
@@ -465,9 +597,9 @@ ISequence* char_sequence_create_from_range(const char** lines,
             line = "";
         }
         int line_len_bytes = (int)strlen(line);
-        int line_len_utf16_units = utf8_to_utf16_length(line);
+        int line_len_utf16_units = utf8_to_utf16_length(line);  // Language conversion: UTF-8 → UTF-16
 
-        // range->start_col is a UTF-16 code unit position (JS string index)
+        // Convert range column (UTF-16 units in JS) to byte offset (UTF-8 in C)
         int line_start_utf16_offset = 0;
         int line_start_byte_offset = 0;
         if (line_number == range->start_line && range->start_col > 1) {
@@ -475,7 +607,7 @@ ISequence* char_sequence_create_from_range(const char** lines,
             if (line_start_utf16_offset > line_len_utf16_units) {
                 line_start_utf16_offset = line_len_utf16_units;
             }
-            line_start_byte_offset = utf16_pos_to_utf8_byte(line, line_start_utf16_offset);
+            line_start_byte_offset = utf16_pos_to_utf8_byte(line, line_start_utf16_offset);  // Language conversion
         }
         seq->original_line_start_cols[idx] = line_start_utf16_offset;
 
@@ -485,41 +617,39 @@ ISequence* char_sequence_create_from_range(const char** lines,
             substring_len = 0;
         }
 
+        // Trim whitespace (matching JS trim behavior)
         int trimmed_ws_length_utf16_units = 0;
         const char* trimmed_start = substring_start;
         const char* trimmed_end = substring_start + substring_len;
 
         if (!consider_whitespace) {
+            // Skip leading whitespace
             const char* ws_start = trimmed_start;
             while (trimmed_start < trimmed_end && isspace((unsigned char)*trimmed_start)) {
                 trimmed_start++;
             }
-            // Count UTF-16 code units in the trimmed whitespace
-            char saved_char = trimmed_start[0];
-            ((char*)trimmed_start)[0] = '\0';  // Temporarily null-terminate
-            trimmed_ws_length_utf16_units = utf8_to_utf16_length(ws_start);
-            ((char*)trimmed_start)[0] = saved_char;  // Restore
+            // Count trimmed whitespace in UTF-16 units (Language conversion)
+            trimmed_ws_length_utf16_units = get_utf16_substring_length(ws_start, trimmed_start);
             
+            // Skip trailing whitespace
             while (trimmed_end > trimmed_start && isspace((unsigned char)*(trimmed_end - 1))) {
                 trimmed_end--;
             }
         }
 
+        // Get trimmed content length in UTF-16 units (Language conversion)
         int trimmed_len_bytes = (int)(trimmed_end - trimmed_start);
         if (trimmed_len_bytes < 0) {
             trimmed_len_bytes = 0;
         }
-        // Count UTF-16 code units in trimmed content
-        char saved_char = *trimmed_end;
-        ((char*)trimmed_end)[0] = '\0';
-        int trimmed_len_utf16_units = utf8_to_utf16_length(trimmed_start);
-        ((char*)trimmed_end)[0] = saved_char;
+        int trimmed_len_utf16_units = get_utf16_substring_length(trimmed_start, trimmed_end);
 
-        // line_length is in UTF-16 code units for column calculation
+        // Calculate final line length in UTF-16 units (matching JS)
         int line_length_utf16_units = trimmed_len_utf16_units;
         int line_length_bytes = trimmed_len_bytes;
         
         if (line_number == end_line_num) {
+            // Clip to range->end_col (UTF-16 units in JS)
             long long end_column_exclusive = (long long)range->end_col - 1;
             long long available_utf16_units = end_column_exclusive - line_start_utf16_offset - trimmed_ws_length_utf16_units;
             if (available_utf16_units < 0) {
@@ -527,22 +657,8 @@ ISequence* char_sequence_create_from_range(const char** lines,
                 line_length_bytes = 0;
             } else if (available_utf16_units < line_length_utf16_units) {
                 line_length_utf16_units = (int)available_utf16_units;
-                // Convert UTF-16 length to byte length for trimmed content
-                // This is complex - we need to iterate UTF-8 and count UTF-16 units
-                int byte_count = 0;
-                int utf16_count = 0;
-                int temp_byte_pos = 0;
-                while (utf16_count < line_length_utf16_units && temp_byte_pos < trimmed_len_bytes) {
-                    uint32_t cp = utf8_decode_char(trimmed_start, &temp_byte_pos);
-                    int cp_utf16_units = (cp < 0x10000) ? 1 : 2;
-                    if (utf16_count + cp_utf16_units <= line_length_utf16_units) {
-                        byte_count = temp_byte_pos;
-                        utf16_count += cp_utf16_units;
-                    } else {
-                        break;
-                    }
-                }
-                line_length_bytes = byte_count;
+                // Convert UTF-16 length to byte length (Language conversion)
+                line_length_bytes = convert_utf16_length_to_bytes(trimmed_start, trimmed_len_bytes, line_length_utf16_units);
             }
         }
 
@@ -556,9 +672,9 @@ ISequence* char_sequence_create_from_range(const char** lines,
         }
 
         seq->trimmed_ws_lengths[idx] = trimmed_ws_length_utf16_units;
-        effective_lengths[idx] = line_length_utf16_units;  // Store UTF-16 code units
+        effective_lengths[idx] = line_length_utf16_units;
 
-        total_len += line_length_utf16_units;  // Count UTF-16 code units
+        total_len += line_length_utf16_units;
         if (line_number < end_line_num) {
             total_len += 1;  // For '\n'
         }
@@ -575,7 +691,9 @@ ISequence* char_sequence_create_from_range(const char** lines,
     }
     seq->length = total_len;
 
-    // PASS 2: Build elements array with UTF-16 code units (matching JS charCodeAt)
+    // PASS 2: Build elements array with UTF-16 code units
+    // JavaScript Note: In JS, strings are UTF-16 arrays, so str[i] returns a UTF-16 code unit
+    // C Note: We convert UTF-8 strings to UTF-16 code units to match JS behavior
     int offset = 0;
     for (int idx = 0; idx < line_span; idx++) {
         int line_number = start_line_num + idx;
@@ -587,8 +705,9 @@ ISequence* char_sequence_create_from_range(const char** lines,
         if (!line) {
             line = "";
         }
-        int line_len_utf16_units = utf8_to_utf16_length(line);
+        int line_len_utf16_units = utf8_to_utf16_length(line);  // Language conversion
 
+        // Calculate starting column in UTF-16 units (matching JS)
         int start_col_utf16_units = seq->original_line_start_cols[idx];
         if (!consider_whitespace) {
             start_col_utf16_units += seq->trimmed_ws_lengths[idx];
@@ -597,46 +716,20 @@ ISequence* char_sequence_create_from_range(const char** lines,
             start_col_utf16_units = line_len_utf16_units;
         }
 
-        int num_utf16_units = effective_lengths[idx];  // This is now in UTF-16 code units
+        int num_utf16_units = effective_lengths[idx];
         if (num_utf16_units < 0) {
             num_utf16_units = 0;
         }
 
-        // Convert UTF-16 position to byte offset for actual string access
+        // Convert UTF-16 position to byte offset (Language conversion)
         int start_col_bytes = utf16_pos_to_utf8_byte(line, start_col_utf16_units);
 
-        // Decode UTF-8 to UTF-16 code units (matching JavaScript string indexing)
+        // Write UTF-8 string as UTF-16 code units (Language conversion)
         const char* src = line + start_col_bytes;
-        int byte_pos = 0;
-        int utf16_units_written = 0;
-        while (utf16_units_written < num_utf16_units && src[byte_pos] != '\0') {
-            uint32_t codepoint = utf8_decode_char(src, &byte_pos);
-            if (codepoint == 0) break;
-            
-            if (codepoint < 0x10000) {
-                // BMP character: 1 UTF-16 code unit
-                seq->elements[offset++] = codepoint;
-                utf16_units_written++;
-            } else {
-                // Non-BMP: 2 UTF-16 code units (surrogate pair)
-                codepoint -= 0x10000;
-                uint16_t high = 0xD800 + (codepoint >> 10);
-                uint16_t low = 0xDC00 + (codepoint & 0x3FF);
-                if (utf16_units_written + 1 < num_utf16_units) {
-                    seq->elements[offset++] = high;
-                    seq->elements[offset++] = low;
-                    utf16_units_written += 2;
-                } else if (utf16_units_written < num_utf16_units) {
-                    // Only write high surrogate if we have room for 1 more
-                    seq->elements[offset++] = high;
-                    utf16_units_written++;
-                    break;
-                } else {
-                    break;
-                }
-            }
-        }
+        int utf16_units_written = write_utf8_as_utf16_units(src, num_utf16_units, seq->elements, offset);
+        offset += utf16_units_written;
 
+        // Add newline (same in both JS and C)
         if (line_number < end_line_num) {
             seq->elements[offset++] = '\n';
         }
@@ -707,27 +800,12 @@ void char_sequence_translate_offset(const CharSequence* seq, int offset,
     // Calculate column offset within the line
     // VSCode: const lineOffset = offset - this.firstElementOffsetByLineIdx[i];
     
-    // CRITICAL UTF-8 FIX: offset and line_start_offsets are in BYTES (because elements stores bytes),
-    // but we need CHARACTER count for column calculation.
-    // Count UTF-8 characters in the byte range [line_start_offset, offset)
-    int line_offset_chars = 0;
-    int byte_idx = seq->line_start_offsets[line_idx];
-    while (byte_idx < offset && byte_idx < seq->length) {
-        // Get byte count for this UTF-8 character
-        unsigned char c = (unsigned char)seq->elements[byte_idx];
-        int char_bytes = 1;
-        if ((c & 0x80) == 0) {
-            char_bytes = 1;  // ASCII
-        } else if ((c & 0xE0) == 0xC0) {
-            char_bytes = 2;  // 2-byte UTF-8
-        } else if ((c & 0xF0) == 0xE0) {
-            char_bytes = 3;  // 3-byte UTF-8
-        } else if ((c & 0xF8) == 0xF0) {
-            char_bytes = 4;  // 4-byte UTF-8
-        }
-        byte_idx += char_bytes;
-        line_offset_chars++;
-    }
+    // Language conversion: Count UTF-8 characters in elements array
+    // JavaScript Note: In JS, offset is directly a character index (automatic)
+    // C Note: We must count UTF-8 characters manually because elements stores bytes
+    int line_offset_chars = count_utf8_chars_in_byte_range(seq->elements, 
+                                                            seq->line_start_offsets[line_idx], 
+                                                            offset);
     
     // VSCode: 1 + this.lineStartOffsets[i] + lineOffset + 
     //         ((lineOffset === 0 && preference === 'left') ? 0 : this.trimmedWsLengthsByLineIdx[i])

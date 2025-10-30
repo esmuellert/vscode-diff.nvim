@@ -285,9 +285,18 @@ local function calculate_fillers(mapping, original_lines, _modified_lines)
   local alignments = {}
   local last_orig_line = mapping.original.start_line
   local last_mod_line = mapping.modified.start_line
+  local first = true  -- VSCode's 'first' flag to allow initial alignment
 
   local function emit_alignment(orig_line_exclusive, mod_line_exclusive)
-    if orig_line_exclusive <= last_orig_line and mod_line_exclusive <= last_mod_line then
+    -- Skip if going backwards
+    if orig_line_exclusive < last_orig_line or mod_line_exclusive < last_mod_line then
+      return
+    end
+    
+    -- VSCode's logic: skip redundant alignments, but allow the first one
+    if first then
+      first = false
+    elseif orig_line_exclusive == last_orig_line or mod_line_exclusive == last_mod_line then
       return
     end
 
