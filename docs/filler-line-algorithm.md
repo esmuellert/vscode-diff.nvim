@@ -100,19 +100,40 @@ mapping = {
 
 ```lua
 local alignments = {}
-local last_orig_line = mapping.original.start_line  
-local last_mod_line = mapping.modified.start_line
+local last_orig_line = last_orig_line or mapping.original.start_line  
+local last_mod_line = last_mod_line or mapping.modified.start_line
 local first = true
 ```
 
 **Purpose**:
 - `alignments`: Collects all alignment points for this mapping
-- `last_orig_line`, `last_mod_line`: Track the current position as we process inner changes
+- `last_orig_line`, `last_mod_line`: Track the current position as we process inner changes (passed from previous mapping for global gap handling)
 - `first`: VSCode's "first flag" - allows the initial alignment even if position hasn't advanced
 
-**Why needed**: These variables track state as we iterate through inner changes, ensuring we don't create redundant or backwards alignments.
+**Why needed**: These variables track state as we iterate through inner changes, ensuring we don't create redundant or backwards alignments. State persists across mappings to handle gaps.
 
 **VSCode reference**: Lines 538-540 in `diffEditorViewZones.ts`
+
+#### Step 1.1.1: Handle Gap Alignment
+
+```lua
+local function handle_gap_alignment(orig_line_exclusive, mod_line_exclusive)
+  local orig_gap = orig_line_exclusive - last_orig_line
+  local mod_gap = mod_line_exclusive - last_mod_line
+  
+  if orig_gap > 0 or mod_gap > 0 then
+    table.insert(alignments, {...})
+    last_orig_line = orig_line_exclusive
+    last_mod_line = mod_line_exclusive
+  end
+end
+
+handle_gap_alignment(mapping.original.start_line, mapping.modified.start_line)
+```
+
+**Purpose**: Create alignment for any gap between the last processed line and this mapping's start (VSCode's `handleAlignmentsOutsideOfDiffs`).
+
+**Why needed**: Without this, gaps between mappings lose alignment context, causing drift in unchanged regions.
 
 ---
 
@@ -582,13 +603,14 @@ Inner: L1216:C1-C1 → L1219:C1-L1222:C5
 ```
 
 **Flow**:
-1. Initialize: `last_orig=1216, last_mod=1219, first=true`
-2. BEFORE: Skipped (starts at column 1)
-3. AFTER: `emit(1216, 1222)` → `first=false`
+1. Initialize: `last_orig=1216, last_mod=1219, first=true` (from previous mapping via global state)
+2. Gap alignment: `handle_gap_alignment(1216, 1219)` creates alignment for gap
+3. BEFORE: Skipped (starts at column 1)
+4. AFTER: `emit(1216, 1222)` → `first=false`
    - Creates `[1216,1216)→[1219,1222)`: 0 lines → 3 lines
-   - 3 fillers after line 1215 (before 1216)
-4. Subsequent inner changes create more alignments
-5. FINAL: `emit(1250, 1270)` → Final alignment
+   - 3 fillers after line 1215 (before line 1216)
+5. Subsequent inner changes create more alignments
+6. FINAL: `emit(1250, 1270)` → Final alignment
 
 **Result**: 3 fillers before line 1216, aligning the inserted block
 
@@ -657,6 +679,7 @@ The filler line algorithm ensures perfect visual alignment in side-by-side diff 
 - Position fillers correctly using exclusive end notation
 
 **Key design decisions**:
+- **Global gap handling**: Maintains `last_orig_line`/`last_mod_line` across all mappings to process gaps between changes
 - **OR redundancy check**: Prevents multiple alignments when original line hasn't advanced
 - **First flag**: Allows initial alignment at mapping start
 - **Final mapping alignment**: Ensures correctness using ground truth from diff algorithm

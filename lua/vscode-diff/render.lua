@@ -255,8 +255,13 @@ end
 -- For leading insertions (like line 1216), no alignment is created at the start
 -- (since col=1), so the alignment from the previous region ends BEFORE the insertion,
 -- placing fillers above the inserted content.
-local function calculate_fillers(mapping, original_lines, _modified_lines)
+local function calculate_fillers(mapping, original_lines, _modified_lines, last_orig_line, last_mod_line)
   local fillers = {}
+  
+  -- Initialize tracking from parameters (for global gap handling)
+  -- If not provided, default to mapping start (backward compatibility)
+  last_orig_line = last_orig_line or mapping.original.start_line
+  last_mod_line = last_mod_line or mapping.modified.start_line
 
   if not mapping.inner_changes or #mapping.inner_changes == 0 then
     -- Fallback: no inner changes, use simple line count difference
@@ -278,14 +283,35 @@ local function calculate_fillers(mapping, original_lines, _modified_lines)
         count = diff
       })
     end
-    return fillers
+    return fillers, mapping.original.end_line, mapping.modified.end_line
   end
 
   -- Track alignments (where original and modified lines should align)
   local alignments = {}
-  local last_orig_line = mapping.original.start_line
-  local last_mod_line = mapping.modified.start_line
   local first = true  -- VSCode's 'first' flag to allow initial alignment
+  
+  -- Handle gap alignment before processing inner changes (VSCode's handleAlignmentsOutsideOfDiffs)
+  -- This creates alignment for any gap between the last processed line and this mapping's start
+  local function handle_gap_alignment(orig_line_exclusive, mod_line_exclusive)
+    local orig_gap = orig_line_exclusive - last_orig_line
+    local mod_gap = mod_line_exclusive - last_mod_line
+    
+    if orig_gap > 0 or mod_gap > 0 then
+      table.insert(alignments, {
+        orig_start = last_orig_line,
+        orig_end = orig_line_exclusive,
+        mod_start = last_mod_line,
+        mod_end = mod_line_exclusive,
+        orig_len = orig_gap,
+        mod_len = mod_gap
+      })
+      last_orig_line = orig_line_exclusive
+      last_mod_line = mod_line_exclusive
+    end
+  end
+  
+  -- Emit gap alignment before processing this mapping's inner changes
+  handle_gap_alignment(mapping.original.start_line, mapping.modified.start_line)
 
   local function emit_alignment(orig_line_exclusive, mod_line_exclusive)
     -- Skip if going backwards
@@ -329,8 +355,8 @@ local function calculate_fillers(mapping, original_lines, _modified_lines)
     -- Check if the change ends before the end of the line
     local orig_line_len = original_lines[inner.original.end_line] and #original_lines[inner.original.end_line] or 0
     if inner.original.end_col <= orig_line_len then
-      -- VSCode uses inner.originalRange.endLineNumber directly (inclusive)
-      -- See diffEditorViewZones.ts line 495
+      -- CharRange.end_line is inclusive; emit_alignment uses this directly
+      -- for AFTER alignments (aligning the unchanged suffix on the same line)
       emit_alignment(inner.original.end_line, inner.modified.end_line)
     end
   end
@@ -361,7 +387,8 @@ local function calculate_fillers(mapping, original_lines, _modified_lines)
     end
   end
 
-  return fillers
+  -- Return fillers and updated tracking state for next mapping
+  return fillers, last_orig_line, last_mod_line
 end
 
 -- ============================================================================
@@ -382,6 +409,10 @@ function M.render_diff(left_bufnr, right_bufnr, original_lines, modified_lines, 
 
   local total_left_fillers = 0
   local total_right_fillers = 0
+  
+  -- Track last processed line across all mappings for gap alignment (VSCode behavior)
+  local last_orig_line = 1  -- Start from line 1
+  local last_mod_line = 1
 
   -- Process each change mapping
   for _, mapping in ipairs(lines_diff.changes) do
@@ -416,7 +447,13 @@ function M.render_diff(left_bufnr, right_bufnr, original_lines, modified_lines, 
     end
 
     -- STEP 3: Calculate and insert filler lines
-    local fillers = calculate_fillers(mapping, original_lines, modified_lines)
+    local fillers, new_last_orig, new_last_mod = calculate_fillers(
+      mapping, original_lines, modified_lines, last_orig_line, last_mod_line
+    )
+    
+    -- Update global tracking state
+    last_orig_line = new_last_orig
+    last_mod_line = new_last_mod
 
     for _, filler in ipairs(fillers) do
       if filler.buffer == 'original' then
@@ -490,9 +527,6 @@ function M.create_diff_view(original_lines, modified_lines, lines_diff)
   local unique_id = math.random(1000000, 9999999)
   pcall(vim.api.nvim_buf_set_name, left_buf, string.format("Original_%d", unique_id))
   pcall(vim.api.nvim_buf_set_name, right_buf, string.format("Modified_%d", unique_id))
-
-  vim.notify(string.format("Diff view created: %d changes, %d left fillers, %d right fillers",
-    #lines_diff.changes, result.left_fillers, result.right_fillers), vim.log.levels.INFO)
 
   return {
     left_buf = left_buf,
