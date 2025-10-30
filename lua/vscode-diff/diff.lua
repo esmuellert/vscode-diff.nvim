@@ -91,15 +91,21 @@ ffi.cdef[[
   const char* get_version(void);
 ]]
 
+---@class DiffOptions
+---@field ignore_trim_whitespace boolean
+---@field max_computation_time_ms integer
+---@field compute_moves boolean
+---@field extend_to_subwords boolean
+
 -- Convert Lua string array to C string array
 local function lua_to_c_strings(lines)
   local count = #lines
   local c_array = ffi.new("const char*[?]", count)
-  
+
   for i = 1, count do
     c_array[i - 1] = lines[i]
   end
-  
+
   return c_array, count
 end
 
@@ -132,13 +138,13 @@ end
 -- Convert C DetailedLineRangeMapping to Lua table
 local function detailed_mapping_to_lua(c_mapping)
   local inner_changes = {}
-  
+
   if c_mapping.inner_changes ~= nil then
     for i = 0, c_mapping.inner_change_count - 1 do
       table.insert(inner_changes, range_mapping_to_lua(c_mapping.inner_changes[i]))
     end
   end
-  
+
   return {
     original = line_range_to_lua(c_mapping.original),
     modified = line_range_to_lua(c_mapping.modified),
@@ -159,17 +165,17 @@ local function lines_diff_to_lua(c_diff)
   if c_diff == nil then
     return nil
   end
-  
+
   local changes = {}
   for i = 0, c_diff.changes.count - 1 do
     table.insert(changes, detailed_mapping_to_lua(c_diff.changes.mappings[i]))
   end
-  
+
   local moves = {}
   for i = 0, c_diff.moves.count - 1 do
     table.insert(moves, moved_text_to_lua(c_diff.moves.moves[i]))
   end
-  
+
   return {
     changes = changes,
     moves = moves,
@@ -181,31 +187,33 @@ end
 -- Returns Lua table representation of LinesDiff
 function M.compute_diff(original_lines, modified_lines, options)
   options = options or {}
-  
+
   -- Convert Lua lines to C arrays
   local c_orig, orig_count = lua_to_c_strings(original_lines)
   local c_mod, mod_count = lua_to_c_strings(modified_lines)
-  
+
   -- Create options struct
+  ---@type DiffOptions
+---@diagnostic disable-next-line: assign-type-mismatch
   local c_options = ffi.new("DiffOptions")
   c_options.ignore_trim_whitespace = options.ignore_trim_whitespace or false
   c_options.max_computation_time_ms = options.max_computation_time_ms or 5000
   c_options.compute_moves = options.compute_moves or false
   c_options.extend_to_subwords = options.extend_to_subwords or false
-  
+
   -- Call C function
   local c_diff = lib.compute_diff(c_orig, orig_count, c_mod, mod_count, c_options)
-  
+
   if c_diff == nil then
     error("compute_diff returned NULL")
   end
-  
+
   -- Convert to Lua table
   local lua_diff = lines_diff_to_lua(c_diff)
-  
+
   -- Free C memory
   lib.free_lines_diff(c_diff)
-  
+
   return lua_diff
 end
 

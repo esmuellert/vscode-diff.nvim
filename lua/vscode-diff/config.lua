@@ -2,21 +2,23 @@
 local M = {}
 
 M.defaults = {
-  -- Highlight groups (will be defined in render.lua)
+  -- Highlight configuration
   highlights = {
-    line_insert = "DiffAdd",
-    line_delete = "DiffDelete",
-    char_insert = "DiffText",
-    char_delete = "DiffText",
+    -- Base highlight groups to derive colors from
+    line_insert = "DiffAdd",      -- Line-level insertions (base color)
+    line_delete = "DiffDelete",   -- Line-level deletions (base color)
+
+    -- Character-level highlights use brighter versions of line highlights
+    char_brightness = 1.35,  -- Multiplier for character backgrounds (1.3 = 130% = brighter)
   },
-  
+
   -- Buffer options
   buffer_options = {
     modifiable = false,
     readonly = true,
     buftype = "nofile",
   },
-  
+
   -- Window options
   window_options = {
     scrollbind = true,
