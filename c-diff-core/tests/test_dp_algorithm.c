@@ -17,7 +17,7 @@
 #include <assert.h>
 
 // Test helper: compare two SequenceDiffArrays
-static bool diffs_equal(SequenceDiffArray* a, SequenceDiffArray* b) {
+bool diffs_equal(SequenceDiffArray* a, SequenceDiffArray* b) {
     if (a->count != b->count) return false;
     for (int i = 0; i < a->count; i++) {
         if (a->diffs[i].seq1_start != b->diffs[i].seq1_start ||
