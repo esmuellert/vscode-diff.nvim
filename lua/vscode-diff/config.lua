@@ -9,7 +9,7 @@ M.defaults = {
     line_delete = "DiffDelete",   -- Line-level deletions (base color)
 
     -- Character-level highlights use brighter versions of line highlights
-    char_brightness = 1.35,  -- Multiplier for character backgrounds (1.3 = 130% = brighter)
+    char_brightness = 1.4,  -- Multiplier for character backgrounds (1.3 = 130% = brighter)
   },
 
   -- Buffer options

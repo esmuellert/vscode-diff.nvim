@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Test script to compare C diff tool and Node vscode-diff.mjs outputs
-# Dynamically tests top N most revised files from git history
+# Dynamically tests top N most revised files from git history (origin/main)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -11,8 +11,10 @@ NODE_DIFF="$REPO_ROOT/vscode-diff.mjs"
 TEMP_DIR="/tmp/diff_comparison_$$"
 
 # Configuration: Number of top revised files to test
-NUM_TOP_FILES=2
-TESTS_PER_FILE=100
+NUM_TOP_FILES=10
+TESTS_PER_FILE=20
+# Use origin/main as the reference point for consistent results
+BASE_REF="origin/main"
 
 mkdir -p "$TEMP_DIR"
 
@@ -40,37 +42,37 @@ fi
 # Function to generate example files for top N most revised files
 generate_example_files() {
     local num_files=$1
-    echo "Generating example files for top $num_files most revised files..."
+    echo "Generating example files for top $num_files most revised files from $BASE_REF..."
     
     # Create example directory
     mkdir -p "$EXAMPLE_DIR"
     
-    # Get top N most revised files from git history
-    local files=($(git -C "$REPO_ROOT" log --all --pretty=format: --name-only | \
+    # Get top N most revised files from git history up to BASE_REF
+    local files=($(git -C "$REPO_ROOT" log "$BASE_REF" --pretty=format: --name-only | \
         grep -v '^$' | sort | uniq -c | sort -rn | head -$num_files | awk '{print $2}'))
     
-    echo "Top $num_files most revised files:"
+    echo "Top $num_files most revised files (as of $BASE_REF):"
     for i in "${!files[@]}"; do
         local file="${files[$i]}"
-        local revisions=$(git -C "$REPO_ROOT" log --all --oneline -- "$file" | wc -l)
+        local revisions=$(git -C "$REPO_ROOT" log "$BASE_REF" --oneline -- "$file" | wc -l)
         echo "  $((i+1)). $file ($revisions revisions)"
     done
     echo ""
     
-    # For each top file, save all its git history versions
+    # For each top file, save all its git history versions up to BASE_REF
     for file in "${files[@]}"; do
         echo "Processing $file..."
         
-        # Check if file exists in current working tree
-        if [ ! -f "$REPO_ROOT/$file" ]; then
-            echo "  Warning: $file not in current working tree, skipping"
+        # Check if file exists at BASE_REF
+        if ! git -C "$REPO_ROOT" cat-file -e "$BASE_REF:$file" 2>/dev/null; then
+            echo "  Warning: $file not found at $BASE_REF, skipping"
             continue
         fi
         
         local basename=$(basename "$file")
         
-        # Get all commits that modified this file
-        local commits=($(git -C "$REPO_ROOT" log --all --pretty=format:%H -- "$file"))
+        # Get all commits that modified this file up to BASE_REF
+        local commits=($(git -C "$REPO_ROOT" log "$BASE_REF" --pretty=format:%H -- "$file"))
         
         echo "  Found ${#commits[@]} commits"
         
@@ -97,9 +99,9 @@ generate_example_files() {
     echo "Total files: $(ls -1 "$EXAMPLE_DIR" | wc -l)"
 }
 
-# Get top N most revised files from git history
-echo "Finding top $NUM_TOP_FILES most revised files from git history..."
-TOP_FILES=($(git -C "$REPO_ROOT" log --all --pretty=format: --name-only | \
+# Get top N most revised files from git history up to BASE_REF
+echo "Finding top $NUM_TOP_FILES most revised files from git history (up to $BASE_REF)..."
+TOP_FILES=($(git -C "$REPO_ROOT" log "$BASE_REF" --pretty=format: --name-only | \
     grep -v '^$' | sort | uniq -c | sort -rn | head -$NUM_TOP_FILES | awk '{print $2}'))
 
 # Check if we need to regenerate example files
@@ -119,23 +121,39 @@ if [ "$NEED_REGENERATE" = true ]; then
     echo ""
 fi
 
-echo "Top revised files:"
+echo "Top revised files (as of $BASE_REF):"
 for i in "${!TOP_FILES[@]}"; do
-    REVISIONS=$(git -C "$REPO_ROOT" log --all --oneline -- "${TOP_FILES[$i]}" | wc -l)
+    REVISIONS=$(git -C "$REPO_ROOT" log "$BASE_REF" --oneline -- "${TOP_FILES[$i]}" | wc -l)
     echo "  $((i+1)). ${TOP_FILES[$i]} ($REVISIONS revisions)"
 done
 echo ""
 
-# Collect version files for each top file
+# Collect version files for each top file (skip files with 0 versions)
 declare -a FILE_GROUPS
+declare -a VALID_TOP_FILES
+declare -A FILE_METRICS  # Store file metrics (lines, size)
 for TOP_FILE in "${TOP_FILES[@]}"; do
     BASENAME=$(basename "$TOP_FILE")
     FILES=($(ls -1 "$EXAMPLE_DIR"/${BASENAME}_* 2>/dev/null | sort))
-    FILE_GROUPS+=("${#FILES[@]}")
-    eval "FILES_${BASENAME//[^a-zA-Z0-9]/_}=(${FILES[@]})"
-    echo "Found ${#FILES[@]} versions of $BASENAME"
+    if [ ${#FILES[@]} -gt 0 ]; then
+        FILE_GROUPS+=("${#FILES[@]}")
+        eval "FILES_${BASENAME//[^a-zA-Z0-9]/_}=(${FILES[@]})"
+        VALID_TOP_FILES+=("$TOP_FILE")
+        
+        # Get metrics from the latest version (first file in sorted list)
+        LATEST_FILE="${FILES[0]}"
+        LINES=$(wc -l < "$LATEST_FILE" 2>/dev/null || echo "0")
+        SIZE_BYTES=$(stat -f%z "$LATEST_FILE" 2>/dev/null || stat -c%s "$LATEST_FILE" 2>/dev/null || echo "0")
+        SIZE_KB=$(awk "BEGIN {printf \"%.1f\", $SIZE_BYTES/1024}")
+        FILE_METRICS["$BASENAME"]="${LINES}L ${SIZE_KB}KB"
+        
+        echo "Found ${#FILES[@]} versions of $BASENAME"
+    fi
 done
 echo ""
+
+# Update TOP_FILES to only include files with versions
+TOP_FILES=("${VALID_TOP_FILES[@]}")
 
 TOTAL_TESTS=0
 MISMATCHES=0
@@ -264,7 +282,9 @@ for FILE_IDX in "${!TOP_FILES[@]}"; do
         C_AVG=$(( ${C_TIMES[$BASENAME]} / ${TEST_COUNTS[$BASENAME]} ))
         NODE_AVG=$(( ${NODE_TIMES[$BASENAME]} / ${TEST_COUNTS[$BASENAME]} ))
         
-        echo "$BASENAME (${TEST_COUNTS[$BASENAME]} tests):"
+        # Include file metrics in the output
+        METRICS="${FILE_METRICS[$BASENAME]}"
+        echo "$BASENAME [$METRICS] (${TEST_COUNTS[$BASENAME]} tests):"
         echo "  C diff:    ${C_AVG} ms average"
         echo "  Node diff: ${NODE_AVG} ms average"
         
