@@ -6,7 +6,7 @@ REM Auto-detects compiler: MSVC, Clang, MinGW GCC
 setlocal enabledelayedexpansion
 cd /d "%~dp0\c-diff-core"
 
-echo Building diff_core (standalone mode)...
+echo Building vscode_diff (standalone mode)...
 echo Platform: Windows
 
 REM Source files (including bundled utf8proc)
@@ -54,17 +54,17 @@ exit /b 1
 
 :build_msvc
 echo Using MSVC compiler...
-cl.exe /LD /O2 /W3 /std:c11 /Iinclude /Ivendor /Fe:libdiff_core.dll %SOURCES% /link /DLL
+cl.exe /LD /O2 /W3 /std:c11 /Iinclude /Ivendor /Fe:libvscode_diff.dll %SOURCES% /link /DLL
 goto :build_done
 
 :build_clang
 echo Using Clang compiler...
-clang.exe -shared -Wall -Wextra -std=c11 -O2 -Iinclude -Ivendor -o libdiff_core.dll %SOURCES%
+clang.exe -shared -Wall -Wextra -std=c11 -O2 -Iinclude -Ivendor -o libvscode_diff.dll %SOURCES%
 goto :build_done
 
 :build_gcc
 echo Using MinGW GCC compiler...
-gcc.exe -shared -Wall -Wextra -std=c11 -O2 -Iinclude -Ivendor -o libdiff_core.dll %SOURCES%
+gcc.exe -shared -Wall -Wextra -std=c11 -O2 -Iinclude -Ivendor -o libvscode_diff.dll %SOURCES%
 goto :build_done
 
 :build_done
@@ -75,9 +75,9 @@ if !errorlevel! neq 0 (
 )
 
 echo Installing to plugin root...
-copy /Y libdiff_core.dll ..\libdiff_core.dll >nul
+copy /Y libvscode_diff.dll ..\libvscode_diff.dll >nul
 
 echo.
-echo ✓ Build successful: libdiff_core.dll
+echo ✓ Build successful: libvscode_diff.dll
 cd ..
 endlocal

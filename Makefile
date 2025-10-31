@@ -7,7 +7,7 @@
 all: build
 	@echo ""
 	@echo "✓ Plugin built successfully"
-	@echo "  Standalone scripts generated: c-diff-core/build.sh, c-diff-core/build.cmd"
+	@echo "  Standalone scripts generated: libvscode-diff/build.sh, libvscode-diff/build.cmd"
 	@echo "  Run 'make test' to run all tests"
 
 # Build using CMake (also generates standalone build scripts)
@@ -20,12 +20,12 @@ build:
 generate-scripts:
 	@echo "Generating standalone build scripts..."
 	@cmake -B build -S .
-	@echo "✓ Generated: c-diff-core/build.sh"
-	@echo "✓ Generated: c-diff-core/build.cmd"
+	@echo "✓ Generated: libvscode-diff/build.sh"
+	@echo "✓ Generated: libvscode-diff/build.cmd"
 	@echo ""
 	@echo "Users can now build without CMake:"
-	@echo "  ./c-diff-core/build.sh        (Unix/Linux/macOS)"
-	@echo "  c-diff-core\\build.cmd         (Windows)"
+	@echo "  ./libvscode-diff/build.sh        (Unix/Linux/macOS)"
+	@echo "  libvscode-diff\\build.cmd         (Windows)"
 
 # Install library (same as build for this plugin)
 install: build
@@ -57,9 +57,9 @@ test-lua:
 clean:
 	@echo "Cleaning build artifacts..."
 	@rm -rf build
-	@rm -f libdiff_core.so libdiff_core.dylib libdiff_core.dll
-	@rm -f c-diff-core/libdiff_core.*
-	@rm -rf c-diff-core/build
+	@rm -f libvscode_diff.so libvscode_diff.dylib libvscode_diff.dll
+	@rm -f libvscode-diff/libvscode_diff.*
+	@rm -rf libvscode-diff/build
 	@echo "✓ Clean complete"
 
 # Version management

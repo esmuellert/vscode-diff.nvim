@@ -5,7 +5,7 @@
 set -e
 cd "$(dirname "$0")/c-diff-core"
 
-echo "Building diff_core (standalone mode)..."
+echo "Building vscode_diff (standalone mode)..."
 echo "Compiler: /usr/bin/cc"
 echo "Platform: Linux"
 
@@ -43,10 +43,10 @@ vendor/utf8proc.c"
 # Build
 mkdir -p build
 echo "Compiling..."
-$CC $CFLAGS $LDFLAGS -o libdiff_core.$LIB_EXT $SOURCES
+$CC $CFLAGS $LDFLAGS -o libvscode_diff.$LIB_EXT $SOURCES
 
 echo "Installing to plugin root..."
-cp libdiff_core.$LIB_EXT ../libdiff_core.$LIB_EXT
+cp libvscode_diff.$LIB_EXT ../libvscode_diff.$LIB_EXT
 
-echo "✓ Build successful: libdiff_core.$LIB_EXT"
+echo "✓ Build successful: libvscode_diff.$LIB_EXT"
 cd ..
