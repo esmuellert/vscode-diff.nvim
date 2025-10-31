@@ -51,33 +51,6 @@ static int get_utf16_substring_length(const char* str_start, const char* str_end
 }
 
 /**
- * Convert UTF-16 length to byte length for a UTF-8 substring
- * 
- * JavaScript Note: In JS, substring is indexed by UTF-16 code units
- * C Note: We need to convert UTF-16 unit count to byte count
- */
-static int convert_utf16_length_to_bytes(const char* str, int max_bytes, int target_utf16_units) {
-    int byte_count = 0;
-    int utf16_count = 0;
-    int byte_pos = 0;
-    
-    while (utf16_count < target_utf16_units && byte_pos < max_bytes) {
-        uint32_t codepoint = utf8_decode_char(str, &byte_pos);
-        if (codepoint == 0) break;
-        
-        int cp_utf16_units = (codepoint < 0x10000) ? 1 : 2;
-        if (utf16_count + cp_utf16_units <= target_utf16_units) {
-            byte_count = byte_pos;
-            utf16_count += cp_utf16_units;
-        } else {
-            break;
-        }
-    }
-    
-    return byte_count;
-}
-
-/**
  * Write UTF-8 string as UTF-16 code units to elements array
  * 
  * JavaScript Note: JS strings are stored as UTF-16 code units internally
@@ -616,7 +589,7 @@ ISequence* char_sequence_create_from_range(const char** lines,
 
         // Calculate final line length in UTF-16 units (matching JS)
         int line_length_utf16_units = trimmed_len_utf16_units;
-        int line_length_bytes = trimmed_len_bytes;
+        // Note: line_length_bytes was tracked here but is not currently used
         
         if (line_number == end_line_num) {
             // Clip to range->end_col (UTF-16 units in JS)
@@ -624,21 +597,16 @@ ISequence* char_sequence_create_from_range(const char** lines,
             long long available_utf16_units = end_column_exclusive - line_start_utf16_offset - trimmed_ws_length_utf16_units;
             if (available_utf16_units < 0) {
                 line_length_utf16_units = 0;
-                line_length_bytes = 0;
             } else if (available_utf16_units < line_length_utf16_units) {
                 line_length_utf16_units = (int)available_utf16_units;
-                // Convert UTF-16 length to byte length (Language conversion)
-                line_length_bytes = convert_utf16_length_to_bytes(trimmed_start, trimmed_len_bytes, line_length_utf16_units);
             }
         }
 
         if (line_length_utf16_units < 0) {
             line_length_utf16_units = 0;
-            line_length_bytes = 0;
         }
         if (line_length_utf16_units > trimmed_len_utf16_units) {
             line_length_utf16_units = trimmed_len_utf16_units;
-            line_length_bytes = trimmed_len_bytes;
         }
 
         seq->trimmed_ws_lengths[idx] = trimmed_ws_length_utf16_units;

@@ -1,2 +1,0 @@
-hello world
-foo bar

@@ -5,7 +5,7 @@ local M = {}
 -- Uses vim.system if available (Neovim 0.10+), falls back to vim.loop.spawn
 local function run_git_async(args, opts, callback)
   opts = opts or {}
-  
+
   -- Use vim.system if available (Neovim 0.10+)
   if vim.system then
     vim.system(
@@ -26,20 +26,21 @@ local function run_git_async(args, opts, callback)
     -- Fallback to vim.loop.spawn for older Neovim versions
     local stdout_data = {}
     local stderr_data = {}
-    
+
     local handle
     local stdout = vim.loop.new_pipe(false)
     local stderr = vim.loop.new_pipe(false)
-    
+
+    ---@diagnostic disable-next-line: missing-fields
     handle = vim.loop.spawn("git", {
       args = args,
       cwd = opts.cwd,
       stdio = { nil, stdout, stderr },
-    }, function(code, signal)
-      stdout:close()
-      stderr:close()
-      handle:close()
-      
+    }, function(code)
+      if stdout then stdout:close() end
+      if stderr then stderr:close() end
+      if handle then handle:close() end
+
       vim.schedule(function()
         if code == 0 then
           callback(nil, table.concat(stdout_data))
@@ -48,39 +49,43 @@ local function run_git_async(args, opts, callback)
         end
       end)
     end)
-    
+
     if not handle then
       callback("Failed to spawn git process", nil)
       return
     end
-    
-    stdout:read_start(function(err, data)
-      if err then
-        callback(err, nil)
-      elseif data then
-        table.insert(stdout_data, data)
-      end
-    end)
-    
-    stderr:read_start(function(err, data)
-      if err then
-        callback(err, nil)
-      elseif data then
-        table.insert(stderr_data, data)
-      end
-    end)
+
+    if stdout then
+      stdout:read_start(function(err, data)
+        if err then
+          callback(err, nil)
+        elseif data then
+          table.insert(stdout_data, data)
+        end
+      end)
+    end
+
+    if stderr then
+      stderr:read_start(function(err, data)
+        if err then
+          callback(err, nil)
+        elseif data then
+          table.insert(stderr_data, data)
+        end
+      end)
+    end
   end
 end
 
 -- Get git root directory for the given file
 function M.get_git_root(file_path)
   local dir = vim.fn.fnamemodify(file_path, ":h")
-  
+
   -- Run synchronously for simplicity in this case
-  local result = vim.system and 
+  local result = vim.system and
     vim.system({ "git", "rev-parse", "--show-toplevel" }, { cwd = dir, text = true }):wait()
     or nil
-  
+
   if vim.system then
     if result and result.code == 0 then
       return vim.trim(result.stdout)
@@ -92,7 +97,7 @@ function M.get_git_root(file_path)
       return output[1]
     end
   end
-  
+
   return nil
 end
 
@@ -114,15 +119,15 @@ end
 -- callback: function(err, lines) where lines is a table of strings
 function M.get_file_at_revision(revision, file_path, callback)
   local git_root = M.get_git_root(file_path)
-  
+
   if not git_root then
     callback("Not in a git repository", nil)
     return
   end
-  
+
   local rel_path = M.get_relative_path(file_path, git_root)
   local git_object = revision .. ":" .. rel_path
-  
+
   run_git_async(
     { "show", git_object },
     { cwd = git_root },
@@ -136,15 +141,15 @@ function M.get_file_at_revision(revision, file_path, callback)
         end
         return
       end
-      
+
       -- Split output into lines
       local lines = vim.split(output, "\n")
-      
+
       -- Remove last empty line if present
       if lines[#lines] == "" then
         table.remove(lines, #lines)
       end
-      
+
       callback(nil, lines)
     end
   )
@@ -153,16 +158,16 @@ end
 -- Validate a git revision exists
 function M.validate_revision(revision, file_path, callback)
   local git_root = M.get_git_root(file_path)
-  
+
   if not git_root then
     callback("Not in a git repository")
     return
   end
-  
+
   run_git_async(
     { "rev-parse", "--verify", revision },
     { cwd = git_root },
-    function(err, output)
+    function(err)
       if err then
         callback(string.format("Invalid revision '%s': %s", revision, err))
       else

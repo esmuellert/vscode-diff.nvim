@@ -1,10 +1,11 @@
 -- Simplified Rendering Module for Neovim Grid-Based Diff
 -- This uses a simplified approach optimized for Neovim's fixed-height grid:
--- 1. Line-level highlights (light colors) for entire changed line ranges
--- 2. Character-level highlights (dark colors) for specific changed text
+-- 1. Line-level highlights (dimmed colors) for entire changed line ranges
+-- 2. Character-level highlights (full brightness) for specific changed text
 -- 3. Filler lines based on simple empty-range detection
 
 local M = {}
+local config = require('vscode-diff.config')
 
 -- Namespaces
 local ns_highlight = vim.api.nvim_create_namespace("vscode-diff-highlight")
@@ -12,10 +13,6 @@ local ns_filler = vim.api.nvim_create_namespace("vscode-diff-filler")
 
 -- Setup VSCode-style highlight groups
 function M.setup_highlights()
-  -- Get native diff colors to use as base
-  local diff_add = vim.api.nvim_get_hl(0, {name = "DiffAdd"})
-  local diff_delete = vim.api.nvim_get_hl(0, {name = "DiffDelete"})
-
   -- Helper function to adjust color brightness
   local function adjust_brightness(color, factor)
     if not color then return nil end
@@ -31,30 +28,30 @@ function M.setup_highlights()
     return r * 65536 + g * 256 + b
   end
 
-  -- REVERSED STRATEGY:
-  -- Line-level (whole line background): DARKER, subtle
-  -- Char-level (specific text): BRIGHTER, stands out
+  -- Get base highlight colors from config
+  local line_insert_hl = vim.api.nvim_get_hl(0, { name = config.options.highlights.line_insert })
+  local line_delete_hl = vim.api.nvim_get_hl(0, { name = config.options.highlights.line_delete })
+  local char_brightness = config.options.highlights.char_brightness
 
-  -- Line-level highlights: DARKER versions (70% of native)
+  -- Line-level highlights: Use base colors directly (DiffAdd, DiffDelete)
   vim.api.nvim_set_hl(0, "VscodeDiffLineInsert", {
-    bg = adjust_brightness(diff_add.bg, 0.6) or 0x1d3042,  -- Darker green
+    bg = line_insert_hl.bg or 0x1d3042,  -- Fallback to default green
     default = true,
   })
 
   vim.api.nvim_set_hl(0, "VscodeDiffLineDelete", {
-    bg = adjust_brightness(diff_delete.bg, 0.6) or 0x351d2b,  -- Darker red
+    bg = line_delete_hl.bg or 0x351d2b,  -- Fallback to default red
     default = true,
   })
 
-  -- Character-level highlights: BRIGHTER versions (use native or 1.2x)
-  -- These should stand out ON TOP of the darker line background
+  -- Character-level highlights: Brighter versions of line highlights
   vim.api.nvim_set_hl(0, "VscodeDiffCharInsert", {
-    bg = diff_add.bg or 0x2a4556,  -- Full brightness green (native DiffAdd)
+    bg = adjust_brightness(line_insert_hl.bg, char_brightness) or 0x2a4556,  -- Brighter green
     default = true,
   })
 
   vim.api.nvim_set_hl(0, "VscodeDiffCharDelete", {
-    bg = diff_delete.bg or 0x4b2a3d,  -- Full brightness red (native DiffDelete)
+    bg = adjust_brightness(line_delete_hl.bg, char_brightness) or 0x4b2a3d,  -- Brighter red
     default = true,
   })
 
@@ -257,7 +254,7 @@ end
 -- placing fillers above the inserted content.
 local function calculate_fillers(mapping, original_lines, _modified_lines, last_orig_line, last_mod_line)
   local fillers = {}
-  
+
   -- Initialize tracking from parameters (for global gap handling)
   -- If not provided, default to mapping start (backward compatibility)
   last_orig_line = last_orig_line or mapping.original.start_line
@@ -289,13 +286,13 @@ local function calculate_fillers(mapping, original_lines, _modified_lines, last_
   -- Track alignments (where original and modified lines should align)
   local alignments = {}
   local first = true  -- VSCode's 'first' flag to allow initial alignment
-  
+
   -- Handle gap alignment before processing inner changes (VSCode's handleAlignmentsOutsideOfDiffs)
   -- This creates alignment for any gap between the last processed line and this mapping's start
   local function handle_gap_alignment(orig_line_exclusive, mod_line_exclusive)
     local orig_gap = orig_line_exclusive - last_orig_line
     local mod_gap = mod_line_exclusive - last_mod_line
-    
+
     if orig_gap > 0 or mod_gap > 0 then
       table.insert(alignments, {
         orig_start = last_orig_line,
@@ -309,7 +306,7 @@ local function calculate_fillers(mapping, original_lines, _modified_lines, last_
       last_mod_line = mod_line_exclusive
     end
   end
-  
+
   -- Emit gap alignment before processing this mapping's inner changes
   handle_gap_alignment(mapping.original.start_line, mapping.modified.start_line)
 
@@ -318,7 +315,7 @@ local function calculate_fillers(mapping, original_lines, _modified_lines, last_
     if orig_line_exclusive < last_orig_line or mod_line_exclusive < last_mod_line then
       return
     end
-    
+
     -- VSCode's logic: skip redundant alignments, but allow the first one
     if first then
       first = false
@@ -409,7 +406,7 @@ function M.render_diff(left_bufnr, right_bufnr, original_lines, modified_lines, 
 
   local total_left_fillers = 0
   local total_right_fillers = 0
-  
+
   -- Track last processed line across all mappings for gap alignment (VSCode behavior)
   local last_orig_line = 1  -- Start from line 1
   local last_mod_line = 1
@@ -450,7 +447,7 @@ function M.render_diff(left_bufnr, right_bufnr, original_lines, modified_lines, 
     local fillers, new_last_orig, new_last_mod = calculate_fillers(
       mapping, original_lines, modified_lines, last_orig_line, last_mod_line
     )
-    
+
     -- Update global tracking state
     last_orig_line = new_last_orig
     last_mod_line = new_last_mod
