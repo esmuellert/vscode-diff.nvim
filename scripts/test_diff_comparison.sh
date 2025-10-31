@@ -2,6 +2,9 @@
 
 # Test script to compare C diff tool and Node vscode-diff.mjs outputs
 # Dynamically tests top N most revised files from git history (origin/main)
+#
+# Usage: ./test_diff_comparison.sh [-v|--verbose]
+#   -v, --verbose    Show detailed mismatch information
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -12,9 +15,34 @@ TEMP_DIR="/tmp/diff_comparison_$$"
 
 # Configuration: Number of top revised files to test
 NUM_TOP_FILES=10
-TESTS_PER_FILE=20
+TESTS_PER_FILE=30
 # Use origin/main as the reference point for consistent results
 BASE_REF="origin/main"
+# Verbose mode for mismatch details (default: false)
+VERBOSE=false
+
+# Parse command line arguments
+for arg in "$@"; do
+    case $arg in
+        -v|--verbose)
+            VERBOSE=true
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: $0 [-v|--verbose] [-h|--help]"
+            echo ""
+            echo "Options:"
+            echo "  -v, --verbose    Show detailed mismatch information"
+            echo "  -h, --help       Show this help message"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $arg"
+            echo "Use -h or --help for usage information"
+            exit 1
+            ;;
+    esac
+done
 
 mkdir -p "$TEMP_DIR"
 
@@ -48,13 +76,16 @@ generate_example_files() {
     mkdir -p "$EXAMPLE_DIR"
     
     # Get top N most revised files from git history up to BASE_REF
+    # Note: --follow only works with single files, so we get the list first,
+    # then count revisions with --follow for each file individually
     local files=($(git -C "$REPO_ROOT" log "$BASE_REF" --pretty=format: --name-only | \
         grep -v '^$' | sort | uniq -c | sort -rn | head -$num_files | awk '{print $2}'))
     
-    echo "Top $num_files most revised files (as of $BASE_REF):"
+    echo "Top $num_files most revised files (as of $BASE_REF, with rename tracking):"
     for i in "${!files[@]}"; do
         local file="${files[$i]}"
-        local revisions=$(git -C "$REPO_ROOT" log "$BASE_REF" --oneline -- "$file" | wc -l)
+        # Use --follow to track renames when counting revisions (works per-file)
+        local revisions=$(git -C "$REPO_ROOT" log "$BASE_REF" --follow --oneline -- "$file" | wc -l)
         echo "  $((i+1)). $file ($revisions revisions)"
     done
     echo ""
@@ -72,7 +103,8 @@ generate_example_files() {
         local basename=$(basename "$file")
         
         # Get all commits that modified this file up to BASE_REF (chronological order)
-        local commits=($(git -C "$REPO_ROOT" log "$BASE_REF" --reverse --pretty=format:%H -- "$file"))
+        # Use --follow to track file renames
+        local commits=($(git -C "$REPO_ROOT" log "$BASE_REF" --reverse --follow --pretty=format:%H -- "$file"))
         
         echo "  Found ${#commits[@]} commits (saving in chronological order)"
         
@@ -104,6 +136,8 @@ generate_example_files() {
 
 # Get top N most revised files from git history up to BASE_REF
 echo "Finding top $NUM_TOP_FILES most revised files from git history (up to $BASE_REF)..."
+# Note: Can't use --follow here as it requires a single pathspec
+# We'll use --follow when counting individual file revisions
 TOP_FILES=($(git -C "$REPO_ROOT" log "$BASE_REF" --pretty=format: --name-only | \
     grep -v '^$' | sort | uniq -c | sort -rn | head -$NUM_TOP_FILES | awk '{print $2}'))
 
@@ -124,9 +158,10 @@ if [ "$NEED_REGENERATE" = true ]; then
     echo ""
 fi
 
-echo "Top revised files (as of $BASE_REF):"
+echo "Top revised files (as of $BASE_REF, with rename tracking):"
 for i in "${!TOP_FILES[@]}"; do
-    REVISIONS=$(git -C "$REPO_ROOT" log "$BASE_REF" --oneline -- "${TOP_FILES[$i]}" | wc -l)
+    # Use --follow to track renames for each individual file
+    REVISIONS=$(git -C "$REPO_ROOT" log "$BASE_REF" --follow --oneline -- "${TOP_FILES[$i]}" | wc -l)
     echo "  $((i+1)). ${TOP_FILES[$i]} ($REVISIONS revisions)"
 done
 echo ""
@@ -251,29 +286,33 @@ echo "Mismatches found: $MISMATCHES"
 echo ""
 
 if [ $MISMATCHES -gt 0 ]; then
-    echo "MISMATCH DETAILS:"
-    echo "========================================"
-    echo -e "$MISMATCH_DETAILS"
-    echo ""
-    echo "Showing first mismatch in detail:"
-    echo "========================================"
-    
-    # Show first mismatch
-    FIRST_C=$(ls -1 "$TEMP_DIR"/c_output_*.txt 2>/dev/null | head -1)
-    FIRST_NODE="${FIRST_C/c_output/node_output}"
-    
-    if [ -f "$FIRST_C" ] && [ -f "$FIRST_NODE" ]; then
-        echo "C diff output:"
-        echo "---"
-        head -50 "$FIRST_C"
+    if [ "$VERBOSE" = true ]; then
+        echo "MISMATCH DETAILS:"
+        echo "========================================"
+        echo -e "$MISMATCH_DETAILS"
         echo ""
-        echo "Node diff output:"
-        echo "---"
-        head -50 "$FIRST_NODE"
-        echo ""
-        echo "Diff between outputs:"
-        echo "---"
-        diff -u "$FIRST_C" "$FIRST_NODE" | head -100
+        echo "Showing first mismatch in detail:"
+        echo "========================================"
+        
+        # Show first mismatch
+        FIRST_C=$(ls -1 "$TEMP_DIR"/c_output_*.txt 2>/dev/null | head -1)
+        FIRST_NODE="${FIRST_C/c_output/node_output}"
+        
+        if [ -f "$FIRST_C" ] && [ -f "$FIRST_NODE" ]; then
+            echo "C diff output:"
+            echo "---"
+            head -50 "$FIRST_C"
+            echo ""
+            echo "Node diff output:"
+            echo "---"
+            head -50 "$FIRST_NODE"
+            echo ""
+            echo "Diff between outputs:"
+            echo "---"
+            diff -u "$FIRST_C" "$FIRST_NODE" | head -100
+        fi
+    else
+        echo "⚠ Mismatches detected. Run with -v or --verbose to see details."
     fi
 else
     echo "✓ All tests passed! No mismatches found."
