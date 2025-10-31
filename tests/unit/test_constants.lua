@@ -1,10 +1,10 @@
 -- Unit test: Highlight type constants
 -- Run with: nvim --headless -c "luafile tests/unit/test_constants.lua" -c "quit"
 
-print("=== Unit Test: Highlight Constants ===")
-
 vim.opt.rtp:prepend(".")
 local diff = require("vscode-diff")
+
+print("=== Unit Test: Highlight Constants ===")
 
 -- Test highlight type constants
 assert(diff.HL_LINE_INSERT == 0, "HL_LINE_INSERT value mismatch")

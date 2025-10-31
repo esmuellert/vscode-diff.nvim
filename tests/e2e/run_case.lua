@@ -2,6 +2,8 @@
 -- This script runs a single E2E test case
 -- Usage: nvim --headless -c "luafile tests/e2e/run_case.lua" -- left.txt right.txt [-v]
 
+local diff = require("vscode-diff")
+
 -- Parse arguments
 local args = vim.v.argv
 local left_file = nil
@@ -27,7 +29,6 @@ end
 
 -- Setup
 vim.opt.rtp:prepend(".")
-local diff = require("vscode-diff")
 
 if verbose then
   diff.set_verbose(true)
