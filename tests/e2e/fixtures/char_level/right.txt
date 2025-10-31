@@ -1,3 +1,0 @@
-hello there
-new line
-foo bar

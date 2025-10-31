@@ -1,4 +1,0 @@
-Line 1 stays
-Line 2 deleted
-Line 3 modified old
-Line 4 stays
