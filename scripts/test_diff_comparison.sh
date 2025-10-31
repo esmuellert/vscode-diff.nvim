@@ -71,15 +71,18 @@ generate_example_files() {
         
         local basename=$(basename "$file")
         
-        # Get all commits that modified this file up to BASE_REF
-        local commits=($(git -C "$REPO_ROOT" log "$BASE_REF" --pretty=format:%H -- "$file"))
+        # Get all commits that modified this file up to BASE_REF (chronological order)
+        local commits=($(git -C "$REPO_ROOT" log "$BASE_REF" --reverse --pretty=format:%H -- "$file"))
         
-        echo "  Found ${#commits[@]} commits"
+        echo "  Found ${#commits[@]} commits (saving in chronological order)"
         
-        # Save each version with commit hash
+        # Save each version with sequence number and commit hash for ordering
         local count=0
-        for commit in "${commits[@]}"; do
-            local output_file="$EXAMPLE_DIR/${basename}_${commit}"
+        for idx in "${!commits[@]}"; do
+            local commit="${commits[$idx]}"
+            # Use zero-padded index for proper sorting (e.g., 001, 002, ...)
+            local seq=$(printf "%03d" $idx)
+            local output_file="$EXAMPLE_DIR/${basename}_${seq}_${commit}"
             
             # Extract file content at this commit
             git -C "$REPO_ROOT" show "$commit:$file" > "$output_file" 2>/dev/null
@@ -91,7 +94,7 @@ generate_example_files() {
             fi
         done
         
-        echo "  Saved $count versions"
+        echo "  Saved $count versions in chronological order"
     done
     
     echo ""
@@ -134,20 +137,21 @@ declare -a VALID_TOP_FILES
 declare -A FILE_METRICS  # Store file metrics (lines, size)
 for TOP_FILE in "${TOP_FILES[@]}"; do
     BASENAME=$(basename "$TOP_FILE")
+    # Files are now named: basename_SEQ_HASH, sort by SEQ for chronological order
     FILES=($(ls -1 "$EXAMPLE_DIR"/${BASENAME}_* 2>/dev/null | sort))
     if [ ${#FILES[@]} -gt 0 ]; then
         FILE_GROUPS+=("${#FILES[@]}")
         eval "FILES_${BASENAME//[^a-zA-Z0-9]/_}=(${FILES[@]})"
         VALID_TOP_FILES+=("$TOP_FILE")
         
-        # Get metrics from the latest version (first file in sorted list)
-        LATEST_FILE="${FILES[0]}"
+        # Get metrics from the latest version (last file in chronological order)
+        LATEST_FILE="${FILES[-1]}"
         LINES=$(wc -l < "$LATEST_FILE" 2>/dev/null || echo "0")
         SIZE_BYTES=$(stat -f%z "$LATEST_FILE" 2>/dev/null || stat -c%s "$LATEST_FILE" 2>/dev/null || echo "0")
         SIZE_KB=$(awk "BEGIN {printf \"%.1f\", $SIZE_BYTES/1024}")
         FILE_METRICS["$BASENAME"]="${LINES}L ${SIZE_KB}KB"
         
-        echo "Found ${#FILES[@]} versions of $BASENAME"
+        echo "Found ${#FILES[@]} versions of $BASENAME (chronologically ordered)"
     fi
 done
 echo ""
@@ -214,7 +218,7 @@ test_pair() {
     fi
 }
 
-# Test each file group
+# Test each file group with real-world commit distances
 for FILE_IDX in "${!TOP_FILES[@]}"; do
     TOP_FILE="${TOP_FILES[$FILE_IDX]}"
     BASENAME=$(basename "$TOP_FILE")
@@ -223,11 +227,16 @@ for FILE_IDX in "${!TOP_FILES[@]}"; do
     NUM_FILES=${#FILE_ARRAY[@]}
     
     echo "Testing $BASENAME versions (target: $TESTS_PER_FILE tests)..."
+    echo "  Strategy: consecutive commits first, then increasing distances"
     TESTS_BEFORE=$TOTAL_TESTS
     
-    for ((i=0; i<$NUM_FILES && (TOTAL_TESTS - TESTS_BEFORE)<$TESTS_PER_FILE; i++)); do
-        for ((j=i+1; j<$NUM_FILES && (TOTAL_TESTS - TESTS_BEFORE)<$TESTS_PER_FILE; j++)); do
-            test_pair "${FILE_ARRAY[$i]}" "${FILE_ARRAY[$j]}" "${BASENAME//[^a-zA-Z0-9]/_}_${i}_${j}" "$BASENAME"
+    # Test with increasing commit distances: 1, 2, 3, 4, 5, ...
+    # This simulates real-world usage where users typically diff nearby commits
+    for ((distance=1; distance<$NUM_FILES && (TOTAL_TESTS - TESTS_BEFORE)<$TESTS_PER_FILE; distance++)); do
+        # For each distance, test all consecutive pairs with that distance
+        for ((i=0; i+distance<$NUM_FILES && (TOTAL_TESTS - TESTS_BEFORE)<$TESTS_PER_FILE; i++)); do
+            j=$((i + distance))
+            test_pair "${FILE_ARRAY[$i]}" "${FILE_ARRAY[$j]}" "${BASENAME//[^a-zA-Z0-9]/_}_d${distance}_${i}_${j}" "$BASENAME"
         done
     done
     echo ""
