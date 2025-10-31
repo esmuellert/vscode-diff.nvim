@@ -1,7 +1,7 @@
 # Makefile for vscode-diff.nvim
 # Convenience wrapper around CMake
 
-.PHONY: all build generate-scripts test test-c test-lua clean help
+.PHONY: all build generate-scripts test test-c test-lua clean help bump-patch bump-minor bump-major version
 
 # Default target: build with CMake (generates standalone scripts too)
 all: build
@@ -62,6 +62,19 @@ clean:
 	@rm -rf c-diff-core/build
 	@echo "✓ Clean complete"
 
+# Version management
+version:
+	@cat VERSION
+
+bump-patch:
+	@node scripts/bump_version.mjs patch
+
+bump-minor:
+	@node scripts/bump_version.mjs minor
+
+bump-major:
+	@node scripts/bump_version.mjs major
+
 # Show help
 help:
 	@echo "vscode-diff.nvim - Build System"
@@ -74,6 +87,12 @@ help:
 	@echo "  make test            Run all tests (C + Lua)"
 	@echo "  make test-c          Run C unit tests only (CTest)"
 	@echo "  make test-lua        Run Lua integration tests only"
+	@echo ""
+	@echo "Version Management:"
+	@echo "  make version         Show current version"
+	@echo "  make bump-patch      Bump patch version (0.3.0 → 0.3.1)"
+	@echo "  make bump-minor      Bump minor version (0.3.0 → 0.4.0)"
+	@echo "  make bump-major      Bump major version (0.3.0 → 1.0.0)"
 	@echo ""
 	@echo "Other:"
 	@echo "  make clean           Remove all build artifacts"

@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.15)
-project(diff_core VERSION 0.3.0 LANGUAGES C)
+
+# Read version from VERSION file (single source of truth)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../VERSION" PROJECT_VERSION)
+string(STRIP "${PROJECT_VERSION}" PROJECT_VERSION)
+
+project(diff_core VERSION ${PROJECT_VERSION} LANGUAGES C)
 
 # C Standard
 set(CMAKE_C_STANDARD 11)

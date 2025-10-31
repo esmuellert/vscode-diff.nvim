@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.15)
-project(vscode-diff-nvim VERSION 0.3.0)
+
+# Read version from VERSION file (single source of truth)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" PROJECT_VERSION)
+string(STRIP "${PROJECT_VERSION}" PROJECT_VERSION)
+
+project(vscode-diff-nvim VERSION ${PROJECT_VERSION})
 
 # This is the root CMakeLists.txt for the Neovim plugin
 # It delegates C building to c-diff-core/
