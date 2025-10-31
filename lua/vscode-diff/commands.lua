@@ -5,6 +5,12 @@ local git = require("vscode-diff.git")
 local diff = require("vscode-diff.diff")
 local render = require("vscode-diff.render")
 
+--- Handles diffing the current buffer against a given git revision.
+-- @param revision string: The git revision (e.g., "HEAD", commit hash) to compare the current file against.
+-- This function checks if the current buffer is a file and part of a git repository,
+-- then asynchronously retrieves the file at the specified revision and computes the diff
+-- between that version and the current buffer. The diff view is rendered after scheduling
+-- the UI update to ensure thread safety.
 local function handle_git_diff(revision)
   local current_file = vim.api.nvim_buf_get_name(0)
 
