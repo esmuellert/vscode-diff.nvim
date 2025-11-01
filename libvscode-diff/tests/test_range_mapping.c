@@ -16,9 +16,9 @@
  * - Verify VSCode parity
  */
 
-#include "../include/range_mapping.h"
-#include "../include/types.h"
-#include "../include/print_utils.h"
+#include "range_mapping.h"
+#include "types.h"
+#include "print_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

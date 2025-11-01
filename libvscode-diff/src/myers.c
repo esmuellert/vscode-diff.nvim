@@ -23,9 +23,9 @@
  * - defaultLinesDiffComputer.ts
  */
 
-#include "../include/myers.h"
-#include "../include/sequence.h"
-#include "../include/string_hash_map.h"
+#include "myers.h"
+#include "sequence.h"
+#include "string_hash_map.h"
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>

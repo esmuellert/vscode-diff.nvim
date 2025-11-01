@@ -3,7 +3,7 @@
  * Provides consistent formatting across all tests.
  */
 
-#include "../include/print_utils.h"
+#include "print_utils.h"
 #include <stdio.h>
 
 void print_sequence_diff(const SequenceDiff* diff, int index) {

@@ -11,7 +11,7 @@
 //
 // ============================================================================
 
-#include "../include/render_plan.h"
+#include "render_plan.h"
 #include <stdlib.h>
 #include <string.h>
 

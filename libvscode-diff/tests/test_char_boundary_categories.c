@@ -6,8 +6,8 @@
 
 #include <stdio.h>
 #include <stdbool.h>
-#include "../include/sequence.h"
-#include "../include/sequence.h"
+#include "sequence.h"
+#include "sequence.h"
 
 // Test helper: print boundary score at each position
 static void test_boundary_scores_at_positions(const char* text, const char* description) {

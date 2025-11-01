@@ -4,9 +4,9 @@
 #include <string.h>
 #include <assert.h>
 
-#include "../include/diff_api.h"
-#include "../include/render_plan.h"
-#include "../include/print_utils.h"
+#include "diff_api.h"
+#include "render_plan.h"
+#include "print_utils.h"
 
 // Test 1: Simple single line change
 void test_simple_change() {

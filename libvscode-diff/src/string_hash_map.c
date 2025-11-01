@@ -14,8 +14,8 @@
  * VSCode Parity: 100% - Exactly matches perfectHashes Map behavior
  */
 
-#include "../include/string_hash_map.h"
-#include "../include/platform.h"
+#include "string_hash_map.h"
+#include "platform.h"
 #include <stdlib.h>
 #include <string.h>
 

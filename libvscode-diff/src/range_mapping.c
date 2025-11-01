@@ -8,7 +8,7 @@
  * - lineRange.ts: join(), intersectsOrTouches()
  */
 
-#include "../include/range_mapping.h"
+#include "range_mapping.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>

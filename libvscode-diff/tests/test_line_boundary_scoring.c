@@ -24,10 +24,10 @@
 #include <string.h>
 #include <stdbool.h>
 
-#include "../include/types.h"
-#include "../include/myers.h"
-#include "../include/optimize.h"
-#include "../include/print_utils.h"
+#include "types.h"
+#include "myers.h"
+#include "optimize.h"
+#include "print_utils.h"
 
 int main() {
     printf("\n╔══════════════════════════════════════════════════════════════╗\n");
