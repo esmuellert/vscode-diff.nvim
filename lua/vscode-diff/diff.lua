@@ -5,7 +5,7 @@ local M = {}
 local ffi = require("ffi")
 
 -- Load the C library
-local lib_name = "libdiff_core"
+local lib_name = "libvscode_diff"
 local lib_ext
 if ffi.os == "Windows" then
   lib_ext = ".dll"

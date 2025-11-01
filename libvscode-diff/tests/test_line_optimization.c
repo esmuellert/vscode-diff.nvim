@@ -15,12 +15,12 @@
  * Character-level (Step 4) will be tested separately.
  */
 
-#include "../include/types.h"
-#include "../include/myers.h"
-#include "../include/optimize.h"
-#include "../include/sequence.h"
-#include "../include/string_hash_map.h"
-#include "../include/print_utils.h"
+#include "types.h"
+#include "myers.h"
+#include "optimize.h"
+#include "sequence.h"
+#include "string_hash_map.h"
+#include "print_utils.h"
 #include "test_utils.h"
 #include <stdio.h>
 #include <stdlib.h>

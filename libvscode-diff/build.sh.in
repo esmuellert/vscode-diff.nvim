@@ -6,12 +6,12 @@ set -e
 cd "$(dirname "$0")/libvscode-diff"
 
 echo "Building vscode_diff (standalone mode)..."
-echo "Compiler: /usr/bin/cc"
-echo "Platform: Linux"
+echo "Compiler: @CMAKE_C_COMPILER@"
+echo "Platform: @CMAKE_SYSTEM_NAME@"
 
 # Compiler and flags from CMake configuration
-CC="/usr/bin/cc"
-CFLAGS=" -Wall -Wextra -O2 -DNDEBUG -Iinclude -Ivendor -fPIC"
+CC="@CMAKE_C_COMPILER@"
+CFLAGS="@CMAKE_C_FLAGS@ @CMAKE_C_FLAGS_RELEASE@ -Iinclude -Ivendor -fPIC"
 LDFLAGS="-shared -lm"
 
 # Detect platform for library extension

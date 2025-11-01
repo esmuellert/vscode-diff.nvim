@@ -13,11 +13,11 @@
  * src/vs/editor/common/diff/defaultLinesDiffComputer/defaultLinesDiffComputer.ts
  */
 
-#include "../include/line_level.h"
-#include "../include/myers.h"
-#include "../include/optimize.h"
-#include "../include/sequence.h"
-#include "../include/string_hash_map.h"
+#include "line_level.h"
+#include "myers.h"
+#include "optimize.h"
+#include "sequence.h"
+#include "string_hash_map.h"
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>

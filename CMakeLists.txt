@@ -7,10 +7,10 @@ string(STRIP "${PROJECT_VERSION}" PROJECT_VERSION)
 project(vscode-diff-nvim VERSION ${PROJECT_VERSION})
 
 # This is the root CMakeLists.txt for the Neovim plugin
-# It delegates C building to c-diff-core/
+# It delegates C building to libvscode-diff/
 
 # Add C core subdirectory
-add_subdirectory(c-diff-core)
+add_subdirectory(libvscode-diff)
 
 message(STATUS "===========================================")
 message(STATUS "  vscode-diff.nvim Plugin")

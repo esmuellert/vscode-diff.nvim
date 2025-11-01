@@ -10,8 +10,8 @@
  * VSCode Parity: Tests match VSCode's DefaultLinesDiffComputer behavior
  */
 
-#include "../include/default_lines_diff_computer.h"
-#include "../include/print_utils.h"
+#include "default_lines_diff_computer.h"
+#include "print_utils.h"
 #include <stdio.h>
 #include <string.h>
 

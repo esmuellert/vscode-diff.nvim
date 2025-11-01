@@ -18,8 +18,8 @@
  * 4. Call refine_diff_char_level() and compare with expected
  */
 
-#include "../include/char_level.h"
-#include "../include/types.h"
+#include "char_level.h"
+#include "types.h"
 #include "test_utils.h"
 #include <stdio.h>
 #include <string.h>

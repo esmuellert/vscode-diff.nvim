@@ -64,13 +64,13 @@ ALL_SRCS = $(DIFF_API_SRC) $(RENDER_PLAN_SRC) $(DEFAULT_LINES_DIFF_COMPUTER_SRC)
            $(STRING_HASH_MAP_SRC) $(UTILS_SRC) $(PRINT_UTILS_SRC) $(UTF8_UTILS_SRC)
 
 # Shared library output
-SHARED_LIB = libdiff_core.so
+SHARED_LIB = libvscode_diff.so
 ifeq ($(OS),Windows_NT)
-    SHARED_LIB = libdiff_core.dll
+    SHARED_LIB = libvscode_diff.dll
 else
     UNAME_S := $(shell uname -s)
     ifeq ($(UNAME_S),Darwin)
-        SHARED_LIB = libdiff_core.dylib
+        SHARED_LIB = libvscode_diff.dylib
     endif
 endif
 
@@ -178,8 +178,8 @@ clean:
 	rm -rf $(BUILD_DIR)
 	rm -f $(SHARED_LIB)
 	rm -f $(DIFF_TOOL)
-	rm -f libdiff_core.so libdiff_core.dylib libdiff_core.dll
-	rm -f ../libdiff_core.so ../libdiff_core.dylib ../libdiff_core.dll
+	rm -f libvscode_diff.so libvscode_diff.dylib libvscode_diff.dll
+	rm -f ../libvscode_diff.so ../libvscode_diff.dylib ../libvscode_diff.dll
 
 # Build and run Range Mapping tests
 test-range-mapping: $(BUILD_DIR)
