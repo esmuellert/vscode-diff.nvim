@@ -7,9 +7,9 @@
 //
 // ============================================================================
 
-#include "../include/diff_api.h"
-#include "../include/default_lines_diff_computer.h"
-#include "../include/render_plan.h"
+#include "diff_api.h"
+#include "default_lines_diff_computer.h"
+#include "render_plan.h"
 #include <stdlib.h>
 
 /**

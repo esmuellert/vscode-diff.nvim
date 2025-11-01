@@ -8,9 +8,9 @@
  * - Timeout support
  */
 
-#include "../include/sequence.h"
-#include "../include/string_hash_map.h"
-#include "../include/myers.h"
+#include "sequence.h"
+#include "string_hash_map.h"
+#include "myers.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>

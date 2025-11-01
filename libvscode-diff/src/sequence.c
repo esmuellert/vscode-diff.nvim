@@ -12,10 +12,10 @@
  * VSCode Parity: 100% for perfect hash and boundary scoring
  */
 
-#include "../include/sequence.h"
-#include "../include/string_hash_map.h"
-#include "../include/platform.h"
-#include "../include/utf8_utils.h"
+#include "sequence.h"
+#include "string_hash_map.h"
+#include "platform.h"
+#include "utf8_utils.h"
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>

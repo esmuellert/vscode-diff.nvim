@@ -10,11 +10,11 @@
  *   removeVeryShortMatchingTextBetweenLongDiffs
  */
 
-#include "../include/char_level.h"
-#include "../include/myers.h"
-#include "../include/optimize.h"
-#include "../include/sequence.h"
-#include "../include/types.h"
+#include "char_level.h"
+#include "myers.h"
+#include "optimize.h"
+#include "sequence.h"
+#include "types.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>

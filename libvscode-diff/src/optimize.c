@@ -12,11 +12,11 @@
  * src/vs/editor/common/diff/defaultLinesDiffComputer/heuristicSequenceOptimizations.ts
  */
 
-#include "../include/optimize.h"
-#include "../include/sequence.h"
-#include "../include/string_hash_map.h"
-#include "../include/types.h"
-#include "../include/utils.h"
+#include "optimize.h"
+#include "sequence.h"
+#include "string_hash_map.h"
+#include "types.h"
+#include "utils.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>

@@ -1,6 +1,6 @@
-#include "../include/types.h"
-#include "../include/myers.h"
-#include "../include/print_utils.h"
+#include "types.h"
+#include "myers.h"
+#include "print_utils.h"
 #include "test_utils.h"
 #include <stdio.h>
 #include <stdlib.h>

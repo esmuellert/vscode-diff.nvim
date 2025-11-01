@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <time.h>
-#include "../include/types.h"
+#include "types.h"
 
 #ifdef _WIN32
 #include <windows.h>
