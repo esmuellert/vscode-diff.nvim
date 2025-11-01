@@ -23,7 +23,7 @@ FAILED=0
 
 # Test 1: FFI Integration
 echo -e "${CYAN}Running: FFI Integration Tests${NC}"
-if nvim --headless -c "luafile $SCRIPT_DIR/test_ffi_integration.lua" 2>&1; then
+if nvim --headless -c "luafile $SCRIPT_DIR/test_ffi_integration.lua" -c "qa!" 2>&1; then
   echo ""
 else
   echo -e "${RED}✗ FFI integration tests failed${NC}"
@@ -33,10 +33,20 @@ fi
 
 # Test 2: Git Integration
 echo -e "${CYAN}Running: Git Integration Tests${NC}"
-if nvim --headless -c "luafile $SCRIPT_DIR/test_git_integration.lua" 2>&1; then
+if nvim --headless -c "luafile $SCRIPT_DIR/test_git_integration.lua" -c "qa!" 2>&1; then
   echo ""
 else
   echo -e "${RED}✗ Git integration tests failed${NC}"
+  FAILED=$((FAILED + 1))
+  echo ""
+fi
+
+# Test 3: Auto-scroll
+echo -e "${CYAN}Running: Auto-scroll Tests${NC}"
+if nvim --headless -c "luafile $SCRIPT_DIR/test_autoscroll.lua" -c "qa!" 2>&1; then
+  echo ""
+else
+  echo -e "${RED}✗ Auto-scroll tests failed${NC}"
   FAILED=$((FAILED + 1))
   echo ""
 fi

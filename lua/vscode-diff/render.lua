@@ -525,6 +525,20 @@ function M.create_diff_view(original_lines, modified_lines, lines_diff)
   pcall(vim.api.nvim_buf_set_name, left_buf, string.format("Original_%d", unique_id))
   pcall(vim.api.nvim_buf_set_name, right_buf, string.format("Modified_%d", unique_id))
 
+  -- Auto-scroll to center the first hunk
+  if #lines_diff.changes > 0 then
+    local first_change = lines_diff.changes[1]
+    local target_line_left = first_change.original.start_line
+    local target_line_right = first_change.modified.start_line
+    
+    vim.api.nvim_win_set_cursor(left_win, {target_line_left, 0})
+    vim.api.nvim_win_set_cursor(right_win, {target_line_right, 0})
+    
+    -- Center and activate scroll sync by simulating a click on the right window
+    vim.api.nvim_set_current_win(right_win)
+    vim.cmd("normal! zz")
+  end
+
   return {
     left_buf = left_buf,
     right_buf = right_buf,
