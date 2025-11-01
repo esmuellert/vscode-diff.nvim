@@ -23,6 +23,20 @@ This folder contains development documentation for the vscode-diff.nvim project.
 - Debugging tips and common issues
 - Performance notes
 
+### 3. [HEADER_INCLUDE_INVESTIGATION_SUMMARY.md](./HEADER_INCLUDE_INVESTIGATION_SUMMARY.md)
+**Purpose**: Investigation of C header include patterns and best practices  
+**Status**: Research complete, awaiting approval  
+**Key Findings**:
+- Current `../include/` pattern is not industry standard
+- 21 files need updating to follow best practices
+- CMake already configured correctly
+- Recommended: Simple removal of `../include/` prefix
+
+**Related Documents**:
+- [header-include-best-practices-research.md](./header-include-best-practices-research.md) - Comprehensive industry research
+- [header-include-refactoring-proposal.md](./header-include-refactoring-proposal.md) - Detailed implementation proposal
+- [header-include-patterns-comparison.md](./header-include-patterns-comparison.md) - Visual comparisons and examples
+
 ## Quick Start
 
 ```bash
