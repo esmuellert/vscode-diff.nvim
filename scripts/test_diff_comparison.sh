@@ -9,7 +9,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 EXAMPLE_DIR="$REPO_ROOT/example"
-C_DIFF="$REPO_ROOT/c-diff-core/build/diff"
+C_DIFF="$REPO_ROOT/libvscode-diff/build/diff"
 NODE_DIFF="$REPO_ROOT/vscode-diff.mjs"
 TEMP_DIR="/tmp/diff_comparison_$$"
 
@@ -49,7 +49,7 @@ mkdir -p "$TEMP_DIR"
 # Auto-build binaries if they don't exist
 if [ ! -f "$C_DIFF" ]; then
     echo "C diff binary not found. Building..."
-    cd "$REPO_ROOT/c-diff-core"
+    cd "$REPO_ROOT/libvscode-diff"
     make diff-tool
     if [ ! -f "$C_DIFF" ]; then
         echo "Error: Failed to build C diff binary"
