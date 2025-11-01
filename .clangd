@@ -1,0 +1,5 @@
+CompileFlags:
+  Add:
+    - -Ilibvscode-diff/include
+    - -Ilibvscode-diff/vendor
+    - -Ilibvscode-diff/tests
