@@ -714,7 +714,7 @@ end
 -- callback: function(err)
 function M.restore_file(git_root, rel_path, callback)
   -- git restore is preferred (Git 2.23+), fallback to checkout
-  run_git_async({ "restore", "--", rel_path }, { cwd = git_root }, function(err, _)
+  run_git_async({ "restore", "--source=origin/HEAD", "--", rel_path }, { cwd = git_root }, function(err, _)
     if err then
       -- Fallback to git checkout for older git versions
       run_git_async({ "checkout", "--", rel_path }, { cwd = git_root }, function(err2, _)
