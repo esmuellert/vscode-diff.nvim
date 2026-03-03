@@ -171,6 +171,13 @@ function M.setup(explorer)
     end, vim.tbl_extend("force", map_options, { buffer = split.bufnr, desc = "Toggle Staged Changes visibility" }))
   end
 
+  -- Toggle layout between 'side-by-side' and 'inline' (gl)
+  if explorer_keymaps.toggle_layout then
+    vim.keymap.set("n", explorer_keymaps.toggle_layout, function()
+      actions_module.toggle_layout(explorer)
+    end, vim.tbl_extend("force", map_options, { buffer = split.bufnr, desc = "Toggle side-by-side/inline layout" }))
+  end
+
   -- Note: next_file/prev_file keymaps are set via view/keymaps.lua:setup_all_keymaps()
   -- which uses set_tab_keymap to set them on all buffers including explorer
 end

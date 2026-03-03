@@ -297,6 +297,122 @@ function M.toggle_stage_entry(explorer, tree)
   end
 end
 
+-- Toggle diff layout between 'side-by-side' and 'inline'
+function M.toggle_layout(explorer)
+  local lifecycle = require("codediff.ui.lifecycle")
+  local layout_manager = require("codediff.ui.layout")
+
+  local tabpage = explorer and explorer.tabpage or vim.api.nvim_get_current_tabpage()
+  local session = lifecycle.get_session(tabpage)
+
+  if not session then
+    vim.notify("No active diff session", vim.log.levels.WARN)
+    return
+  end
+
+  -- Don't toggle in conflict mode
+  if session.result_win and vim.api.nvim_win_is_valid(session.result_win) then
+    vim.notify("Cannot toggle layout in conflict mode", vim.log.levels.WARN)
+    return
+  end
+
+  local current_layout = session.layout or "side-by-side"
+  local new_layout = current_layout == "inline" and "side-by-side" or "inline"
+
+  -- Update global config so subsequent file selections use the new layout
+  config.options.diff.layout = new_layout
+
+  -- Build session_config from current session state for re-rendering
+  local session_config = {
+    mode = session.mode,
+    git_root = session.git_root,
+    original_path = session.original_path,
+    modified_path = session.modified_path,
+    original_revision = session.original_revision,
+    modified_revision = session.modified_revision,
+  }
+
+  local is_placeholder = (session.original_path == "" and session.modified_path == "")
+
+  if new_layout == "side-by-side" then
+    -- inline → side-by-side: create new window for the original side
+    local modified_win = session.modified_win
+    if not modified_win or not vim.api.nvim_win_is_valid(modified_win) then
+      return
+    end
+
+    -- Clear inline decorations from the modified buffer
+    local inline_mod = require("codediff.ui.inline")
+    if session.modified_bufnr and vim.api.nvim_buf_is_valid(session.modified_bufnr) then
+      inline_mod.clear(session.modified_bufnr)
+    end
+    lifecycle.clear_highlights(session.modified_bufnr)
+
+    -- Create original window (split on the appropriate side)
+    local split_cmd = config.options.diff.original_position == "right" and "rightbelow vsplit" or "leftabove vsplit"
+    vim.api.nvim_set_current_win(modified_win)
+    vim.cmd(split_cmd)
+    local original_win = vim.api.nvim_get_current_win()
+    vim.w[original_win].codediff_restore = 1
+
+    -- Update session window state
+    session.original_win = original_win
+    session.layout = nil -- nil means side-by-side (default)
+
+    if is_placeholder then
+      -- Load scratch buffer into the new original window
+      local orig_scratch = vim.api.nvim_create_buf(false, true)
+      vim.bo[orig_scratch].buftype = "nofile"
+      vim.api.nvim_win_set_buf(original_win, orig_scratch)
+      session.original_bufnr = orig_scratch
+      layout_manager.arrange(tabpage)
+    else
+      vim.schedule(function()
+        require("codediff.ui.view.side_by_side").update(tabpage, session_config, false)
+        layout_manager.arrange(tabpage)
+      end)
+    end
+  else
+    -- side-by-side → inline: close original_win, keep modified_win
+    local original_win = session.original_win
+    local modified_win = session.modified_win
+
+    if not modified_win or not vim.api.nvim_win_is_valid(modified_win) then
+      return
+    end
+
+    -- Clear diff highlights from both buffers
+    lifecycle.clear_highlights(session.original_bufnr)
+    lifecycle.clear_highlights(session.modified_bufnr)
+
+    -- Disable scrollbind on modified window before closing original
+    if vim.api.nvim_win_is_valid(modified_win) then
+      vim.wo[modified_win].scrollbind = false
+    end
+
+    -- Close original window if it is distinct from modified
+    if original_win and vim.api.nvim_win_is_valid(original_win) and original_win ~= modified_win then
+      vim.api.nvim_set_current_win(modified_win)
+      pcall(vim.api.nvim_win_close, original_win, false)
+    end
+
+    -- Collapse session to single window
+    session.original_win = modified_win
+    session.layout = "inline"
+
+    if is_placeholder then
+      layout_manager.arrange(tabpage)
+    else
+      vim.schedule(function()
+        require("codediff.ui.view.inline_view").update(tabpage, session_config, false)
+        layout_manager.arrange(tabpage)
+      end)
+    end
+  end
+
+  vim.notify("Layout: " .. new_layout, vim.log.levels.INFO)
+end
+
 -- Stage all files
 function M.stage_all(explorer)
   if not explorer or not explorer.git_root then

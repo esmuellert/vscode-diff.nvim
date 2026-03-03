@@ -901,6 +901,15 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
   if keymaps.align_move and not is_inline and config.options.diff.compute_moves then
     lifecycle.set_tab_keymap(tabpage, "n", keymaps.align_move, align_move, { desc = "Align moved code block" })
   end
+
+  -- Toggle layout (side-by-side ↔ inline) - tab-wide, available from any diff buffer
+  local explorer_keymaps = config.options.keymaps.explorer or {}
+  if explorer_keymaps.toggle_layout then
+    lifecycle.set_tab_keymap(tabpage, "n", explorer_keymaps.toggle_layout, function()
+      local explorer_actions = require("codediff.ui.explorer.actions")
+      explorer_actions.toggle_layout(nil)
+    end, { desc = "Toggle side-by-side/inline layout" })
+  end
 end
 
 return M

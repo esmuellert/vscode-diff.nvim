@@ -111,6 +111,7 @@ M.defaults = {
       restore = "X", -- Discard changes to file (restore to index/HEAD)
       toggle_changes = "gu", -- Toggle Changes (unstaged) group visibility
       toggle_staged = "gs", -- Toggle Staged Changes group visibility
+      toggle_layout = "gl", -- Toggle diff layout between 'side-by-side' and 'inline'
     },
     history = {
       select = "<CR>", -- Select commit/file or toggle expand
