@@ -323,6 +323,7 @@ function M.render_diff(left_bufnr, right_bufnr, original_lines, modified_lines, 
   local last_orig_line = 1
   local last_mod_line = 1
 
+  if not lines_diff.changes then return end
   for _, mapping in ipairs(lines_diff.changes) do
     local orig_is_empty = (mapping.original.end_line <= mapping.original.start_line)
     local mod_is_empty = (mapping.modified.end_line <= mapping.modified.start_line)
