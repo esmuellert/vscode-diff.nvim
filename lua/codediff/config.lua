@@ -79,6 +79,19 @@ M.defaults = {
     view_mode = "list", -- "list" or "tree" for files under commits
   },
 
+  -- Pending comments UI configuration
+  comments = {
+    sticky = false, -- true = always visible, false = show only when cursor is on or near the comment
+    ui = {
+      width = 72, -- Floating editor width (columns)
+      height = 6, -- Floating editor height (lines)
+      border = "rounded", -- Border style for comment editor popup
+      editor_mode = "insert", -- "insert" = start in insert mode, "normal" = start in normal mode
+      submit_keys = { "<CR>" }, -- Submit comment (normal mode)
+      cancel_keys = { "q" }, -- Close editor without saving (normal mode)
+    },
+  },
+
   -- Keymaps
   keymaps = {
     view = {
@@ -101,6 +114,12 @@ M.defaults = {
       align_move = "gm", -- Temporarily align other pane to show paired moved code
       toggle_layout = "t", -- Toggle diff layout for the current codediff session
       show_help = "g?", -- Show floating window with available keymaps
+      comment_add = "<leader>ca", -- Open pending comment editor at cursor
+      comment_edit = "<leader>ce", -- Edit pending comment at cursor (or latest on the line)
+      comment_remove = "<leader>cd", -- Remove pending comment at cursor
+      comment_submit = "<leader>cs", -- Submit all pending comments and clear UI
+      comment_list = "<leader>cl", -- List all pending comments
+      comment_clear = "<leader>cc", -- Clear pending comments without submitting
     },
     explorer = {
       select = "<CR>",

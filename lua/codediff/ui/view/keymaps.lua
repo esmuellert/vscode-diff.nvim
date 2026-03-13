@@ -591,6 +591,43 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
     end, { desc = "Toggle diff layout" })
   end
 
+  if keymaps.comment_add then
+    lifecycle.set_tab_keymap(tabpage, "n", keymaps.comment_add, function()
+      require("codediff.ui.comments").open_add_editor()
+    end, { desc = "Add pending comment" })
+    lifecycle.set_tab_keymap(tabpage, "x", keymaps.comment_add, function()
+      -- Exit visual mode so '</'> marks are set, then open editor with range
+      local esc = vim.api.nvim_replace_termcodes("<Esc>", true, false, true)
+      vim.api.nvim_feedkeys(esc, "nx", false)
+      require("codediff.ui.comments").open_add_editor({ visual = true })
+    end, { desc = "Add pending comment (visual)" })
+  end
+  if keymaps.comment_edit then
+    lifecycle.set_tab_keymap(tabpage, "n", keymaps.comment_edit, function()
+      require("codediff.ui.comments").open_edit_editor()
+    end, { desc = "Edit pending comment" })
+  end
+  if keymaps.comment_remove then
+    lifecycle.set_tab_keymap(tabpage, "n", keymaps.comment_remove, function()
+      require("codediff.ui.comments").remove_comment()
+    end, { desc = "Remove pending comment" })
+  end
+  if keymaps.comment_submit then
+    lifecycle.set_tab_keymap(tabpage, "n", keymaps.comment_submit, function()
+      require("codediff.ui.comments").submit_comments()
+    end, { desc = "Submit pending comments" })
+  end
+  if keymaps.comment_list then
+    lifecycle.set_tab_keymap(tabpage, "n", keymaps.comment_list, function()
+      require("codediff.ui.comments").list_comments()
+    end, { desc = "List pending comments" })
+  end
+  if keymaps.comment_clear then
+    lifecycle.set_tab_keymap(tabpage, "n", keymaps.comment_clear, function()
+      require("codediff.ui.comments").clear_comments()
+    end, { desc = "Clear pending comments" })
+  end
+
   -- Toggle stage/unstage (- key) - only in explorer mode
   -- Support legacy config: keymaps.explorer.toggle_stage (deprecated)
   if is_explorer_mode then

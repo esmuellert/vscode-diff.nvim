@@ -9,9 +9,11 @@ vim.g.loaded_codediff = 1
 -- Lightweight startup: highlights (~0.3ms) + virtual file scheme (~0.1ms)
 local highlights = require("codediff.ui.highlights")
 local virtual_file = require('codediff.core.virtual_file')
+local comments = require("codediff.ui.comments")
 
 virtual_file.setup()
 highlights.setup()
+comments.setup()
 
 -- Re-apply highlights on ColorScheme change
 vim.api.nvim_create_autocmd("ColorScheme", {
@@ -83,6 +85,14 @@ local function complete_codediff(arg_lead, cmd_line, _)
     return vim.fn.getcompletion(arg_lead, "file")
   end
 
+  if first_arg == "comments" or first_arg == "comment" then
+    if #args <= 3 then
+      local result = complete_flags({ "add", "edit", "remove", "list", "submit", "clear" }, arg_lead)
+      return result or {}
+    end
+    return {}
+  end
+
   -- Flag completion for subcommands
   if arg_lead:match("^%-") then
     if first_arg == "history" then
@@ -99,33 +109,25 @@ local function complete_codediff(arg_lead, cmd_line, _)
   if #args == 2 and arg_lead ~= "" then
     local cwd = vim.fn.getcwd()
     local git_root = git.get_git_root_sync(cwd)
-    local rev_candidates = get_cached_rev_candidates(git_root)
+    local rev_candidates = get_cached_rev_candidates(git_root) or {}
     local filtered = {}
 
-    -- Check if user is typing a triple-dot pattern (e.g., "main...")
     local base_rev = arg_lead:match("^(.+)%.%.%.$")
     if base_rev then
-      -- User typed "main...", suggest completing with refs or leave as-is
-      if rev_candidates then
-        for _, candidate in ipairs(rev_candidates) do
-          table.insert(filtered, base_rev .. "..." .. candidate)
-        end
+      for _, candidate in ipairs(rev_candidates) do
+        table.insert(filtered, base_rev .. "..." .. candidate)
       end
-      -- Also include the bare triple-dot (compares to working tree)
       table.insert(filtered, 1, arg_lead)
       return filtered
     end
 
-    -- Normal completion: match refs and also suggest triple-dot variants
-    if rev_candidates then
-      for _, candidate in ipairs(rev_candidates) do
-        if candidate:find(arg_lead, 1, true) == 1 then
-          table.insert(filtered, candidate)
-          -- Also suggest the merge-base variant
-          table.insert(filtered, candidate .. "...")
-        end
+    for _, candidate in ipairs(rev_candidates) do
+      if candidate:find(arg_lead, 1, true) == 1 then
+        table.insert(filtered, candidate)
+        table.insert(filtered, candidate .. "...")
       end
     end
+
     if #filtered > 0 then
       return filtered
     end
@@ -142,5 +144,5 @@ end, {
   bang = true,
   range = true,
   complete = complete_codediff,
-  desc = "VSCode-style diff view: :CodeDiff [<revision>] | merge <file> | file <revision> | install"
+  desc = "VSCode-style diff view: :CodeDiff [<revision>] | merge <file> | file <revision> | history | comments | install"
 })

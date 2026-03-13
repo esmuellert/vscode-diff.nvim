@@ -135,6 +135,18 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
       view_mode = "list",   -- "list" or "tree" for files under commits
     },
 
+    -- Pending comments editor
+    comments = {
+      ui = {
+        width = 72,                          -- Floating editor width (columns)
+        height = 6,                          -- Floating editor height (lines)
+        opacity = 0,                         -- Window blend (0 = opaque, 100 = fully transparent)
+        editor_mode = "insert",             -- "insert" = start in insert mode, "normal" = start in normal mode
+        submit_keys = { "<CR>" },           -- Submit comment (normal mode)
+        cancel_keys = { "q" },              -- Close editor without saving (normal mode)
+      },
+    },
+
     -- Keymaps in diff view
     keymaps = {
       view = {
@@ -157,6 +169,12 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
         show_help = "g?",   -- Show floating window with available keymaps
         align_move = "gm", -- Temporarily align moved code blocks across panes
         toggle_layout = "t", -- Toggle between side-by-side and inline layout
+        comment_add = "<leader>ca",    -- Open pending comment editor at cursor
+        comment_edit = "<leader>ce",   -- Edit pending comment at cursor
+        comment_remove = "<leader>cd", -- Remove pending comment at cursor
+        comment_list = "<leader>cl",   -- List all pending comments
+        comment_submit = "<leader>cs", -- Submit pending comments and clear UI
+        comment_clear = "<leader>cc",  -- Clear pending comments without submitting
       },
       explorer = {
         select = "<CR>",    -- Open diff for selected file
@@ -327,6 +345,46 @@ Show only changes introduced since branching from a base branch—exactly like a
 ```
 
 This uses `git merge-base` semantics (equivalent to `git diff main...HEAD`), showing only the changes introduced on your branch, not changes that happened on the base branch since you branched.
+
+### Pending Comments
+
+You can attach lightweight pending comments in active CodeDiff diff panes:
+
+```vim
+" Add a comment at cursor (opens multiline editor)
+:CodeDiff comments add
+
+" Add a comment directly
+:CodeDiff comments add Rename this helper before merge
+
+" Add a ranged comment (visual selection)
+:'<,'>CodeDiff comments add
+:'<,'>CodeDiff comments add Refactor this block
+
+" Edit comment at cursor
+:CodeDiff comments edit
+
+" Edit comment by id
+:CodeDiff comments edit 3
+
+" Remove comment at cursor (for quick typo fixes)
+:CodeDiff comments remove
+
+" Remove comment by id (shown as [cN] in the diff view)
+:CodeDiff comments remove 3
+
+" Show all pending comments in quickfix (jump with <CR>)
+:CodeDiff comments list
+
+" Submit all comments (sends to hook if set, otherwise copies to clipboard)
+" After submit, comments are cleared from the UI
+:CodeDiff comments submit
+
+" Clear pending comments without submitting
+:CodeDiff comments clear
+```
+
+See `:help codediff-comments` for editor behavior, submit hooks, and transport details.
 
 ### Git Diff Mode
 

@@ -216,6 +216,16 @@ Setup entry point:
         conflicts = true,
       },
     },
+    comments = {
+      ui = {
+        width = 72,
+        height = 6,
+        opacity = 0, -- window blend (0 = opaque, 100 = fully transparent)
+        editor_mode = "insert", -- or "normal" to start in normal mode
+        submit_keys = { "<CR>" }, -- submit (normal mode)
+        cancel_keys = { "q" }, -- close editor (normal mode)
+      },
+    },
     keymaps = {
       view = {
         quit = "q",
@@ -234,6 +244,11 @@ Setup entry point:
         show_help = "g?",
         align_move = "gm",
         toggle_layout = "t",
+        comment_add = "<leader>ca",
+        comment_edit = "<leader>ce",
+        comment_remove = "<leader>cd",
+        comment_submit = "<leader>cs",
+        comment_clear = "<leader>cC",
       },
       explorer = {
         select = "<CR>",

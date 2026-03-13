@@ -2,7 +2,7 @@
 local M = {}
 
 -- Subcommands available for :CodeDiff
-M.SUBCOMMANDS = { "merge", "file", "dir", "history", "install" }
+M.SUBCOMMANDS = { "merge", "file", "dir", "history", "comments", "install" }
 
 local git = require("codediff.core.git")
 local lifecycle = require("codediff.ui.lifecycle")
@@ -517,6 +517,107 @@ local function handle_git_diff_merge_base(base_rev, target_rev, global_opts)
   end)
 end
 
+local function parse_comment_id(raw)
+  local id = tonumber(raw)
+  if not id then
+    return nil
+  end
+
+  if id < 1 or id ~= math.floor(id) then
+    return nil
+  end
+
+  return id
+end
+
+local function handle_comments(args, opts)
+  local comments = require("codediff.ui.comments")
+  local action = args[1]
+
+  -- exit early
+  if not action or action == "" then
+    return
+  end
+
+  if action == "add" then
+    local range_line1, range_line2
+    if opts and opts.range == 2 then
+      range_line1 = opts.line1
+      range_line2 = opts.line2
+    end
+
+    local text = table.concat(vim.list_slice(args, 2), " ")
+    if vim.trim(text) ~= "" then
+      comments.add_comment(text, range_line1, range_line2)
+    else
+      comments.open_add_editor({ range_line1 = range_line1, range_line2 = range_line2 })
+    end
+    return
+  end
+
+  if action == "edit" then
+    local rest = vim.list_slice(args, 2)
+    if #rest == 0 then
+      comments.open_edit_editor()
+      return
+    end
+
+    local id = parse_comment_id(rest[1])
+    if id then
+      if #rest == 1 then
+        comments.open_edit_editor(id)
+      else
+        comments.edit_comment(id, table.concat(rest, " ", 2))
+      end
+      return
+    end
+
+    comments.edit_comment(nil, table.concat(rest, " "))
+    return
+  end
+
+  if action == "remove" then
+    local rest = vim.list_slice(args, 2)
+    if #rest > 1 then
+      vim.notify("Usage: :CodeDiff comments remove [comment_id]", vim.log.levels.ERROR)
+      return
+    end
+
+    if #rest == 1 then
+      local id = parse_comment_id(rest[1])
+      if not id then
+        vim.notify("Usage: :CodeDiff comments remove [comment_id]", vim.log.levels.ERROR)
+        return
+      end
+      comments.remove_comment(id)
+      return
+    end
+
+    comments.remove_comment()
+    return
+  end
+
+  if action == "list" then
+    if #args > 1 then
+      vim.notify("Usage: :CodeDiff comments list", vim.log.levels.ERROR)
+      return
+    end
+
+    comments.list_comments()
+    return
+  end
+
+  if action == "submit" then
+    comments.submit_comments()
+    return
+  end
+
+  if action == "clear" then
+    comments.clear_comments()
+    return
+  end
+end
+
 function M.vscode_merge(opts)
   local args = opts.fargs
   if #args == 0 then
@@ -604,9 +705,27 @@ function M.vscode_merge(opts)
 end
 
 function M.vscode_diff(opts)
-  -- Check if current tab is a diff view and toggle (close) it if so
+  -- Pre-parse global flags -> strip them so subcommand
+  -- dispatch sees clean args
+  local global_opts = {}
+  local args = {}
+  for _, arg in ipairs(opts.fargs) do
+    if arg == "--inline" then
+      global_opts.layout = "inline"
+    elseif arg == "--side-by-side" then
+      global_opts.layout = "side-by-side"
+    else
+      table.insert(args, arg)
+    end
+  end
+
+  -- Check if current tab is a diff view and toggle (close) it if so.
+  -- Keep comments subcommands available while in an active diff session.
   local current_tab = vim.api.nvim_get_current_tabpage()
-  if lifecycle.get_session(current_tab) then
+  local active_session = lifecycle.get_session(current_tab)
+  local subcommand = args[1]
+  local is_comments_command = subcommand == "comments" or subcommand == "comment"
+  if active_session and not is_comments_command then
     -- Check for unsaved conflict files before closing
     if not lifecycle.confirm_close_with_unsaved(current_tab) then
       return -- User cancelled
@@ -618,19 +737,6 @@ function M.vscode_diff(opts)
       vim.cmd("tabclose")
     end
     return
-  end
-
-  -- Pre-parse global flags; strip them so subcommand dispatch sees clean args
-  local global_opts = {}
-  local args = {}
-  for _, arg in ipairs(opts.fargs) do
-    if arg == "--inline" then
-      global_opts.layout = "inline"
-    elseif arg == "--side-by-side" then
-      global_opts.layout = "side-by-side"
-    else
-      table.insert(args, arg)
-    end
   end
 
   if #args == 0 then
@@ -648,8 +754,6 @@ function M.vscode_diff(opts)
       return
     end
   end
-
-  local subcommand = args[1]
 
   if subcommand == "merge" then
     -- :CodeDiff merge <filename> - Merge Tool Mode
@@ -769,6 +873,8 @@ function M.vscode_diff(opts)
     end
 
     handle_history(range, file_path, flags, line_range, global_opts)
+  elseif subcommand == "comments" or subcommand == "comment" then
+    handle_comments(vim.list_slice(args, 2), opts)
   elseif subcommand == "install" or subcommand == "install!" then
     -- :CodeDiff install or :CodeDiff install!
     -- Handle both :CodeDiff! install and :CodeDiff install!
