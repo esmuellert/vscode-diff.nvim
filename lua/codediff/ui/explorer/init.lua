@@ -15,6 +15,7 @@ M.show_welcome_page = render.show_welcome_page
 -- Delegate to refresh module
 M.setup_auto_refresh = refresh.setup_auto_refresh
 M.refresh = refresh.refresh
+M.refresh_now = refresh.refresh_now
 
 -- Delegate to actions module
 M.navigate_next = actions.navigate_next

@@ -193,8 +193,9 @@ end
 -- @param git_root: git repository root
 -- @param file_path: relative path to file
 -- @param group: "staged", "unstaged", or "conflicts"
+-- @param on_success: optional callback invoked when git operation succeeds
 -- @return boolean: true if operation was initiated
-function M.toggle_stage_file(git_root, file_path, group)
+function M.toggle_stage_file(git_root, file_path, group, on_success)
   if not git_root then
     vim.notify("Stage/unstage only available in git mode", vim.log.levels.WARN)
     return false
@@ -216,6 +217,11 @@ function M.toggle_stage_file(git_root, file_path, group)
         vim.schedule(function()
           vim.notify(err, vim.log.levels.ERROR)
         end)
+        return
+      end
+
+      if on_success then
+        on_success()
       end
     end)
   elseif group == "unstaged" then
@@ -225,6 +231,11 @@ function M.toggle_stage_file(git_root, file_path, group)
         vim.schedule(function()
           vim.notify(err, vim.log.levels.ERROR)
         end)
+        return
+      end
+
+      if on_success then
+        on_success()
       end
     end)
   elseif group == "conflicts" then
@@ -234,6 +245,11 @@ function M.toggle_stage_file(git_root, file_path, group)
         vim.schedule(function()
           vim.notify(err, vim.log.levels.ERROR)
         end)
+        return
+      end
+
+      if on_success then
+        on_success()
       end
     end)
   end
@@ -245,7 +261,8 @@ end
 -- @param git_root: git repository root
 -- @param dir_path: relative directory path
 -- @param group: "staged" or "unstaged"
-local function toggle_stage_directory(git_root, dir_path, group)
+-- @param on_success: optional callback invoked when git operation succeeds
+local function toggle_stage_directory(git_root, dir_path, group, on_success)
   if group == "staged" then
     -- Unstage directory
     git.unstage_file(git_root, dir_path, function(err)
@@ -253,6 +270,11 @@ local function toggle_stage_directory(git_root, dir_path, group)
         vim.schedule(function()
           vim.notify(err, vim.log.levels.ERROR)
         end)
+        return
+      end
+
+      if on_success then
+        on_success()
       end
     end)
   elseif group == "unstaged" then
@@ -262,13 +284,19 @@ local function toggle_stage_directory(git_root, dir_path, group)
         vim.schedule(function()
           vim.notify(err, vim.log.levels.ERROR)
         end)
+        return
+      end
+
+      if on_success then
+        on_success()
       end
     end)
   end
 end
 
 -- Stage/unstage toggle for the selected entry in explorer (file or directory)
-function M.toggle_stage_entry(explorer, tree)
+-- @param on_success: optional callback invoked when git operation succeeds
+function M.toggle_stage_entry(explorer, tree, on_success)
   if not explorer or not explorer.git_root then
     vim.notify("Stage/unstage only available in git mode", vim.log.levels.WARN)
     return
@@ -286,19 +314,21 @@ function M.toggle_stage_entry(explorer, tree)
     -- Directory uses dir_path, not path
     local dir_path = node.data.dir_path
     if dir_path then
-      toggle_stage_directory(explorer.git_root, dir_path, group)
+      toggle_stage_directory(explorer.git_root, dir_path, group, on_success)
     end
   else
     -- File uses path
     local path = node.data.path
     if path then
-      M.toggle_stage_file(explorer.git_root, path, group)
+      M.toggle_stage_file(explorer.git_root, path, group, on_success)
     end
   end
 end
 
 -- Stage all files
-function M.stage_all(explorer)
+-- @param explorer: explorer object
+-- @param on_success: optional callback invoked when git operation succeeds
+function M.stage_all(explorer, on_success)
   if not explorer or not explorer.git_root then
     vim.notify("Stage all only available in git mode", vim.log.levels.WARN)
     return
@@ -309,12 +339,19 @@ function M.stage_all(explorer)
       vim.schedule(function()
         vim.notify(err, vim.log.levels.ERROR)
       end)
+      return
+    end
+
+    if on_success then
+      on_success()
     end
   end)
 end
 
 -- Unstage all files
-function M.unstage_all(explorer)
+-- @param explorer: explorer object
+-- @param on_success: optional callback invoked when git operation succeeds
+function M.unstage_all(explorer, on_success)
   if not explorer or not explorer.git_root then
     vim.notify("Unstage all only available in git mode", vim.log.levels.WARN)
     return
@@ -325,6 +362,11 @@ function M.unstage_all(explorer)
       vim.schedule(function()
         vim.notify(err, vim.log.levels.ERROR)
       end)
+      return
+    end
+
+    if on_success then
+      on_success()
     end
   end)
 end

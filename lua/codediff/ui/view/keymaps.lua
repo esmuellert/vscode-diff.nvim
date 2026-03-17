@@ -230,7 +230,9 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
     if explorer.bufnr and current_buf == explorer.bufnr then
       -- Delegate to explorer action (handles files and directories)
       local explorer_module = require("codediff.ui.explorer")
-      explorer_module.toggle_stage_entry(explorer, explorer.tree)
+      explorer_module.toggle_stage_entry(explorer, explorer.tree, function()
+        explorer_module.refresh_now(explorer)
+      end)
       return
     end
 
@@ -252,7 +254,9 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
       end
 
       local explorer_module = require("codediff.ui.explorer")
-      explorer_module.toggle_stage_file(explorer.git_root, file_path, group)
+      explorer_module.toggle_stage_file(explorer.git_root, file_path, group, function()
+        explorer_module.refresh_now(explorer)
+      end)
       return
     end
 

@@ -4,6 +4,22 @@ local M = {}
 local config = require("codediff.config")
 local tree_module = require("codediff.ui.explorer.tree")
 local welcome = require("codediff.ui.welcome")
+
+function M.refresh_now(explorer)
+  if not explorer or not explorer.tabpage then
+    return
+  end
+
+  vim.schedule(function()
+    if not vim.api.nvim_tabpage_is_valid(explorer.tabpage) or explorer.is_hidden then
+      return
+    end
+
+    M.refresh(explorer)
+    require("codediff.ui.auto_refresh").sync_mutable_buffers(explorer.tabpage)
+  end)
+end
+
 -- Setup auto-refresh triggers for explorer
 -- Returns a cleanup function that should be called when the explorer is destroyed
 function M.setup_auto_refresh(explorer, tabpage)
