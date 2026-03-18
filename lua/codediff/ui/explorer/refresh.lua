@@ -10,14 +10,12 @@ function M.refresh_now(explorer)
     return
   end
 
-  vim.schedule(function()
-    if not vim.api.nvim_tabpage_is_valid(explorer.tabpage) or explorer.is_hidden then
-      return
-    end
+  if not vim.api.nvim_tabpage_is_valid(explorer.tabpage) or explorer.is_hidden then
+    return
+  end
 
-    M.refresh(explorer)
-    require("codediff.ui.auto_refresh").sync_mutable_buffers(explorer.tabpage)
-  end)
+  M.refresh(explorer)
+  require("codediff.ui.auto_refresh").sync_mutable_buffers(explorer.tabpage)
 end
 
 -- Setup auto-refresh triggers for explorer

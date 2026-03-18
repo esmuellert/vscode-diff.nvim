@@ -141,7 +141,9 @@ function M.setup(explorer)
   if explorer_keymaps.stage_all then
     vim.keymap.set("n", explorer_keymaps.stage_all, function()
       actions_module.stage_all(explorer, function()
-        refresh_module.refresh_now(explorer)
+        vim.schedule(function()
+          refresh_module.refresh_now(explorer)
+        end)
       end)
     end, vim.tbl_extend("force", map_options, { buffer = split.bufnr, desc = "Stage all files" }))
   end
@@ -150,7 +152,9 @@ function M.setup(explorer)
   if explorer_keymaps.unstage_all then
     vim.keymap.set("n", explorer_keymaps.unstage_all, function()
       actions_module.unstage_all(explorer, function()
-        refresh_module.refresh_now(explorer)
+        vim.schedule(function()
+          refresh_module.refresh_now(explorer)
+        end)
       end)
     end, vim.tbl_extend("force", map_options, { buffer = split.bufnr, desc = "Unstage all files" }))
   end
