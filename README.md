@@ -177,6 +177,9 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
         fold_toggle_recursive = "zA", -- Toggle fold recursively
         fold_open_all = "zR",       -- Open all folds in tree
         fold_close_all = "zM",      -- Close all folds in tree
+        -- Scroll diff buffers from explorer
+        scroll_up_half_page = "<C-b>",   -- Scroll diff buffers up half page
+        scroll_down_half_page = "<C-f>", -- Scroll diff buffers down half page
       },
       history = {
         select = "<CR>",    -- Select commit/file or toggle expand

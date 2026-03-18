@@ -88,6 +88,8 @@ local function build_sections(keymaps, is_explorer, is_history, is_conflict)
         { ekm.fold_toggle_recursive, "Toggle fold recursively" },
         { ekm.fold_open_all, "Open all folds" },
         { ekm.fold_close_all, "Close all folds" },
+        { ekm.scroll_up_half_page, "Scroll diff buffers up half page" },
+        { ekm.scroll_down_half_page, "Scroll diff buffers down half page" },
       })
     )
   end

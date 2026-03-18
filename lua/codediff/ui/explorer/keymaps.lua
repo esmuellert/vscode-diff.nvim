@@ -179,6 +179,21 @@ function M.setup(explorer)
     bufnr = split.bufnr,
   })
 
+  -- Scroll diff buffers from explorer (<C-b>/<C-f>)
+  local navigation = require("codediff.ui.view.navigation")
+
+  if explorer_keymaps.scroll_up_half_page then
+    vim.keymap.set("n", explorer_keymaps.scroll_up_half_page, function()
+      navigation.scroll_diff_windows("up")
+    end, vim.tbl_extend("force", map_options, { buffer = split.bufnr, desc = "Scroll diff buffers up half page" }))
+  end
+
+  if explorer_keymaps.scroll_down_half_page then
+    vim.keymap.set("n", explorer_keymaps.scroll_down_half_page, function()
+      navigation.scroll_diff_windows("down")
+    end, vim.tbl_extend("force", map_options, { buffer = split.bufnr, desc = "Scroll diff buffers down half page" }))
+  end
+
   -- Note: next_file/prev_file keymaps are set via view/keymaps.lua:setup_all_keymaps()
   -- which uses set_tab_keymap to set them on all buffers including explorer
 end

@@ -253,6 +253,8 @@ Setup entry point:
         fold_toggle_recursive = "zA",
         fold_open_all = "zR",
         fold_close_all = "zM",
+        scroll_up_half_page = "<C-b>",
+        scroll_down_half_page = "<C-f>",
       },
       history = {
         select = "<CR>",

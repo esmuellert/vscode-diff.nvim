@@ -199,4 +199,41 @@ function M.prev_file()
   return true
 end
 
+-- Scroll diff windows by half page
+-- @param direction "up" or "down"
+function M.scroll_diff_windows(direction)
+  local tabpage = vim.api.nvim_get_current_tabpage()
+  local session = lifecycle.get_session(tabpage)
+  if not session then
+    return false
+  end
+
+  local mod_win = session.modified_win
+
+  if not mod_win or not vim.api.nvim_win_is_valid(mod_win) then
+    return false
+  end
+
+  -- Map direction to Vim half-page scroll commands
+  local scroll_keys = {
+    up = "<C-u>",
+    down = "<C-d>",
+  }
+
+  local scroll_key = scroll_keys[direction]
+  if not scroll_key then
+    return false
+  end
+
+  -- Execute scroll command by temporarily switching to modified window
+  -- Scrollbind will automatically sync the original window
+  local current_win = vim.api.nvim_get_current_win()
+  vim.api.nvim_set_current_win(mod_win)
+  local keys = vim.api.nvim_replace_termcodes(scroll_key, true, false, true)
+  vim.api.nvim_feedkeys(keys, "x", false)
+  vim.api.nvim_set_current_win(current_win)
+
+  return true
+end
+
 return M
