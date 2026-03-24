@@ -232,7 +232,6 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
       local explorer_module = require("codediff.ui.explorer")
       explorer_module.toggle_stage_entry(explorer, explorer.tree, function()
         vim.schedule(function()
-          navigation.next_file()
           explorer_module.refresh_now(explorer)
         end)
       end)
@@ -259,8 +258,8 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
       local explorer_module = require("codediff.ui.explorer")
       explorer_module.toggle_stage_file(explorer.git_root, file_path, group, function()
         vim.schedule(function()
-          navigation.next_file()
           explorer_module.refresh_now(explorer)
+          navigation.next_file()
         end)
       end)
       return
