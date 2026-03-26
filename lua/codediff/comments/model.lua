@@ -33,7 +33,18 @@ local M = {}
 ---@field original_path? string Original file path
 ---@field modified_path? string Modified file path
 
----@alias codediff.SubmitHook fun(payload: string, comments: codediff.comments.Comment[], context: codediff.SubmitContext): boolean
+--- Callback a sink invokes when it finishes (sync or async).
+---@alias codediff.SinkDone fun(ok: boolean, err?: string)
+
+--- The function a sink uses to process submitted comments.
+---@alias codediff.SinkHandler fun(comments: codediff.comments.Comment[], context: codediff.SubmitContext, done: codediff.SinkDone)
+
+--- A named submission sink.
+---@class codediff.Sink
+---@field name string Unique sink identifier (e.g. "agent", "github", "clipboard")
+---@field handler codediff.SinkHandler
+---@field enabled? fun(context: codediff.SubmitContext): boolean Dynamic gate; omit to always enable
+---@field clear_on_success? boolean Whether successful delivery should contribute to clearing comments (default: true)
 
 ---@class codediff.CommentUIOptions
 ---@field width integer Floating editor width (columns)

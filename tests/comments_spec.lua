@@ -58,22 +58,25 @@ describe("CodeDiff Comments", function()
     assert.equals(0, #comments.get_comments(tabpage), "Expected in-memory comments to be cleared after submit")
   end)
 
-  it("submit uses configured hook and still clears UI state", function()
-    local hook_calls = 0
-    local last_payload
-    comments.set_submit_hook(function(payload, submitted_comments, context)
-      hook_calls = hook_calls + 1
-      last_payload = payload
-      assert.equals(1, #submitted_comments)
-      assert.equals("explorer", context.mode)
-      return true
-    end)
+  it("submit uses configured sink and still clears UI state", function()
+    local sink_calls = 0
+    local last_comments
+    comments.add_sink({
+      name = "test",
+      handler = function(submitted_comments, context, done)
+        sink_calls = sink_calls + 1
+        last_comments = submitted_comments
+        assert.equals(1, #submitted_comments)
+        assert.equals("explorer", context.mode)
+        done(true)
+      end,
+    })
 
     assert.is_true(comments.add_comment("hook path"))
     assert.is_true(comments.submit_comments())
 
-    assert.equals(1, hook_calls)
-    assert.is_true(last_payload:find("hook path", 1, true) ~= nil)
+    assert.equals(1, sink_calls)
+    assert.equals("hook path", last_comments[1].text)
     assert.equals(0, #comments.get_comments(tabpage))
   end)
 
@@ -181,27 +184,31 @@ describe("CodeDiff Comments", function()
     pcall(vim.cmd, "cclose")
   end)
 
-  it("submit payload includes structured comment identifiers", function()
-    local payload = nil
-    comments.set_submit_hook(function(formatted)
-      payload = formatted
-      return true
-    end)
+  it("format produces structured payload from comments", function()
+    comments.add_sink({
+      name = "capture",
+      handler = function(submitted_comments, context, done)
+        local payload = comments.format(submitted_comments, context)
+        assert.is_true(payload:find("CodeDiff review (1 comment)", 1, true) ~= nil)
+        assert.is_true(payload:find("a.lua:1 (old)", 1, true) ~= nil)
+        assert.is_true(payload:find("payload shape", 1, true) ~= nil)
+        done(true)
+      end,
+    })
 
     assert.is_true(comments.add_comment("payload shape"))
     assert.is_true(comments.submit_comments())
-
-    assert.is_true(payload:find("CodeDiff review (1 comment)", 1, true) ~= nil)
-    assert.is_true(payload:find("a.lua:1 (old)", 1, true) ~= nil)
-    assert.is_true(payload:find("payload shape", 1, true) ~= nil)
   end)
 
   it("submit syncs line numbers from extmarks", function()
     local submitted_comments = nil
-    comments.set_submit_hook(function(_, pending)
-      submitted_comments = pending
-      return true
-    end)
+    comments.add_sink({
+      name = "capture",
+      handler = function(cmnts, _, done)
+        submitted_comments = cmnts
+        done(true)
+      end,
+    })
 
     assert.is_true(comments.add_comment("line shift"))
     vim.api.nvim_buf_set_lines(bufnr, 0, 0, false, { "new first line" })
@@ -213,10 +220,13 @@ describe("CodeDiff Comments", function()
 
   it("submit keeps comments hidden for other files in the same session", function()
     local submitted_comments = nil
-    comments.set_submit_hook(function(_, pending)
-      submitted_comments = pending
-      return true
-    end)
+    comments.add_sink({
+      name = "capture",
+      handler = function(cmnts, _, done)
+        submitted_comments = cmnts
+        done(true)
+      end,
+    })
 
     assert.is_true(comments.add_comment("from file A"))
 
@@ -229,10 +239,13 @@ describe("CodeDiff Comments", function()
     assert.equals("from file A", submitted_comments[1].text)
   end)
 
-  it("does not clear comments when hook returns false", function()
-    comments.set_submit_hook(function()
-      return false
-    end)
+  it("does not clear comments when sink returns false", function()
+    comments.add_sink({
+      name = "failing",
+      handler = function(_, _, done)
+        done(false, "intentional failure")
+      end,
+    })
 
     assert.is_true(comments.add_comment("keep me"))
     assert.is_false(comments.submit_comments())
@@ -273,12 +286,15 @@ describe("CodeDiff Comments", function()
     pcall(vim.cmd, "cclose")
   end)
 
-  it("submit payload shows range format for ranged comments", function()
+  it("format shows range format for ranged comments", function()
     local payload = nil
-    comments.set_submit_hook(function(formatted)
-      payload = formatted
-      return true
-    end)
+    comments.add_sink({
+      name = "capture",
+      handler = function(cmnts, ctx, done)
+        payload = comments.format(cmnts, ctx)
+        done(true)
+      end,
+    })
 
     vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "a", "b", "c", "d" })
     assert.is_true(comments.add_comment("range payload", 1, 3))
@@ -290,10 +306,13 @@ describe("CodeDiff Comments", function()
 
   it("submit syncs ranged comment end_line from extmarks", function()
     local submitted_comments = nil
-    comments.set_submit_hook(function(_, pending)
-      submitted_comments = pending
-      return true
-    end)
+    comments.add_sink({
+      name = "capture",
+      handler = function(cmnts, _, done)
+        submitted_comments = cmnts
+        done(true)
+      end,
+    })
 
     vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "a", "b", "c", "d" })
     assert.is_true(comments.add_comment("shift range", 2, 4))
@@ -305,5 +324,77 @@ describe("CodeDiff Comments", function()
     assert.equals(1, #submitted_comments)
     assert.equals(3, submitted_comments[1].line)
     assert.equals(5, submitted_comments[1].end_line)
+  end)
+
+  it("multiple sinks all receive comments", function()
+    local sink_a_calls = 0
+    local sink_b_calls = 0
+
+    comments.add_sink({
+      name = "sink_a",
+      handler = function(_, _, done)
+        sink_a_calls = sink_a_calls + 1
+        done(true)
+      end,
+    })
+    comments.add_sink({
+      name = "sink_b",
+      handler = function(_, _, done)
+        sink_b_calls = sink_b_calls + 1
+        done(true)
+      end,
+    })
+
+    assert.is_true(comments.add_comment("multi-sink"))
+    assert.is_true(comments.submit_comments())
+
+    assert.equals(1, sink_a_calls)
+    assert.equals(1, sink_b_calls)
+    assert.equals(0, #comments.get_comments(tabpage))
+  end)
+
+  it("disabled sink is skipped", function()
+    local called = false
+    comments.add_sink({
+      name = "disabled",
+      enabled = function()
+        return false
+      end,
+      handler = function(_, _, done)
+        called = true
+        done(true)
+      end,
+    })
+
+    assert.is_true(comments.add_comment("skip me"))
+    -- No enabled sinks → falls back to clipboard
+    comments.submit_comments()
+    assert.is_false(called)
+  end)
+
+  it("clear_on_success=false keeps comments after successful sink", function()
+    comments.add_sink({
+      name = "no_clear",
+      clear_on_success = false,
+      handler = function(_, _, done)
+        done(true)
+      end,
+    })
+
+    assert.is_true(comments.add_comment("keep me"))
+    assert.is_false(comments.submit_comments())
+    assert.equals(1, #comments.get_comments(tabpage))
+  end)
+
+  it("remove_sink unregisters by name", function()
+    comments.add_sink({
+      name = "removable",
+      handler = function(_, _, done)
+        done(true)
+      end,
+    })
+
+    assert.is_true(comments.remove_sink("removable"))
+    assert.is_false(comments.remove_sink("removable"))
   end)
 end)

@@ -517,17 +517,29 @@ function M.submit_comments()
   end
 
   local context = make_submit_context(ctx.tabpage, ctx.session)
-  local ok_submit, transport_or_err = drain.submit(comments, context)
-  if not ok_submit then
-    vim.notify("Failed to submit pending comments: " .. tostring(transport_or_err), vim.log.levels.ERROR)
-    return false
-  end
+  local submitted = false
 
-  remove_snapshot(ctx.tabpage)
-  M.clear_session_comments(ctx.tabpage)
-  editor.close_active()
+  drain.submit(comments, context, function(should_clear, results)
+    for _, r in ipairs(results) do
+      if not r.ok then
+        vim.notify(
+          string.format("Sink '%s' failed: %s", r.name, r.err or "unknown error"),
+          vim.log.levels.ERROR
+        )
+      end
+    end
 
-  return true
+    if should_clear then
+      remove_snapshot(ctx.tabpage)
+      M.clear_session_comments(ctx.tabpage)
+      editor.close_active()
+      submitted = true
+    elseif #results == 0 then
+      vim.notify("No enabled sinks to submit comments to", vim.log.levels.WARN)
+    end
+  end)
+
+  return submitted
 end
 
 function M.setup()
@@ -627,12 +639,25 @@ function M._reset_for_tests()
   snapshot_cache._reset_for_tests()
 end
 
----@param hook codediff.SubmitHook?
-function M.set_submit_hook(hook)
-  if hook ~= nil and type(hook) ~= "function" then
-    error("set_submit_hook expects a function or nil")
-  end
-  drain.set_submit_hook(hook)
+--- Register a named submission sink.
+---@param sink codediff.Sink
+function M.add_sink(sink)
+  drain.add_sink(sink)
+end
+
+--- Remove a sink by name.
+---@param name string
+---@return boolean removed
+function M.remove_sink(name)
+  return drain.remove_sink(name)
+end
+
+--- Format comments into a submission payload string (utility for sinks).
+---@param comments codediff.comments.Comment[]
+---@param context codediff.SubmitContext
+---@return string
+function M.format(comments, context)
+  return drain.format(comments, context)
 end
 
 return M

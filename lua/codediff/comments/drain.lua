@@ -8,8 +8,8 @@ local format_line_ref = model.format_line_ref
 local sorted_comments = model.sorted_comments
 local relative_path = model.relative_path
 
----@type codediff.SubmitHook?
-local submit_hook = nil
+---@type codediff.Sink[]
+local sinks = {}
 
 ---@param comments codediff.comments.Comment[]
 ---@param context codediff.SubmitContext
@@ -30,57 +30,34 @@ local function format_submission(comments, context)
   return table.concat(lines, "\n")
 end
 
----@param hook codediff.SubmitHook
----@param payload string
----@param comments codediff.comments.Comment[]
+--- Collect enabled sinks for a given context.
 ---@param context codediff.SubmitContext
----@return boolean ok
----@return string? error
-local function run_submit_hook(hook, payload, comments, context)
-  local ok_call, result_or_err, hook_err = pcall(hook, payload, comments, context)
-  if not ok_call then
-    return false, tostring(result_or_err)
+---@return codediff.Sink[]
+local function enabled_sinks(context)
+  local result = {}
+  for _, sink in ipairs(sinks) do
+    if sink.enabled == nil or sink.enabled(context) then
+      result[#result + 1] = sink
+    end
   end
-  if result_or_err == false then
-    return false, hook_err or "submit hook returned false"
-  end
-  return true, nil
+  return result
 end
 
----@param payload string
----@return boolean ok
----@return string? transport_or_error
-local function submit_to_clipboard(payload)
-  local ok_plus = pcall(vim.fn.setreg, "+", payload)
-  local ok_unnamed = pcall(vim.fn.setreg, '"', payload)
-  if not ok_plus and not ok_unnamed then
-    return false, "failed to write payload to clipboard registers"
-  end
-  return true, "clipboard"
-end
-
----@param payload string
----@param comments codediff.comments.Comment[]
----@param context codediff.SubmitContext
----@return boolean ok
----@return string? transport_or_error
-local function submit_to_transport(payload, comments, context)
-  if submit_hook then
-    local ok_hook, hook_err = run_submit_hook(submit_hook, payload, comments, context)
-    if not ok_hook then
-      return false, hook_err
+--- Default clipboard sink used when no sinks are registered.
+---@type codediff.Sink
+local clipboard_sink = {
+  name = "clipboard",
+  handler = function(comments, context, done)
+    local payload = format_submission(comments, context)
+    local ok_plus = pcall(vim.fn.setreg, "+", payload)
+    local ok_unnamed = pcall(vim.fn.setreg, '"', payload)
+    if not ok_plus and not ok_unnamed then
+      done(false, "failed to write payload to clipboard registers")
+    else
+      done(true)
     end
-    return true, "hook"
-  end
-  if type(vim.g.codediff_comment_submit_hook) == "function" then
-    local ok_hook, hook_err = run_submit_hook(vim.g.codediff_comment_submit_hook, payload, comments, context)
-    if not ok_hook then
-      return false, hook_err
-    end
-    return true, "hook"
-  end
-  return submit_to_clipboard(payload)
-end
+  end,
+}
 
 local M = {}
 
@@ -92,26 +69,103 @@ function M.format(comments, context)
   return format_submission(comments, context)
 end
 
---- Submit comments through the sink chain: hook -> vim.g hook -> clipboard.
---- Does NOT clear the store. Returns ok, transport_name_or_error.
----@param comments codediff.comments.Comment[]
----@param context codediff.SubmitContext
----@return boolean ok
----@return string? transport_or_error
-function M.submit(comments, context)
-  local payload = format_submission(comments, context)
-  return submit_to_transport(payload, comments, context)
+--- Register a named sink. Replaces any existing sink with the same name.
+---@param sink codediff.Sink
+function M.add_sink(sink)
+  assert(type(sink.name) == "string" and sink.name ~= "", "sink requires a non-empty name")
+  assert(type(sink.handler) == "function", "sink requires a handler function")
+  M.remove_sink(sink.name)
+  sinks[#sinks + 1] = sink
 end
 
---- Set or clear the module-level submit hook.
----@param hook codediff.SubmitHook?
-function M.set_submit_hook(hook)
-  submit_hook = hook
+--- Remove a sink by name.
+---@param name string
+---@return boolean removed
+function M.remove_sink(name)
+  for i, s in ipairs(sinks) do
+    if s.name == name then
+      table.remove(sinks, i)
+      return true
+    end
+  end
+  return false
+end
+
+--- Return the list of registered sink names (for introspection/testing).
+---@return string[]
+function M.sink_names()
+  return vim.iter(sinks):map(function(s)
+    return s.name
+  end):totable()
+end
+
+--- Submit comments through all enabled sinks.
+--- Falls back to clipboard when no sinks are registered.
+---
+--- Returns:
+---   should_clear: true if comments should be cleared (at least one
+---                 clear_on_success sink succeeded, and none failed)
+---   results:      per-sink result list for notification
+---@param comments codediff.comments.Comment[]
+---@param context codediff.SubmitContext
+---@param on_complete fun(should_clear: boolean, results: {name: string, ok: boolean, err?: string}[])
+function M.submit(comments, context, on_complete)
+  local targets = enabled_sinks(context)
+
+  -- Fallback: no sinks registered → use clipboard
+  if #sinks == 0 and #targets == 0 then
+    targets = { clipboard_sink }
+  end
+
+  if #targets == 0 then
+    on_complete(false, {})
+    return
+  end
+
+  local results = {}
+  local pending = #targets
+
+  for _, sink in ipairs(targets) do
+    local sink_name = sink.name
+    local clear = sink.clear_on_success ~= false -- default true
+    local ok_call, call_err = pcall(sink.handler, comments, context, function(ok, err)
+      results[#results + 1] = { name = sink_name, ok = ok, err = err, clear = clear }
+      pending = pending - 1
+      if pending == 0 then
+        local should_clear = false
+        local any_failed = false
+        for _, r in ipairs(results) do
+          if r.ok and r.clear then
+            should_clear = true
+          end
+          if not r.ok then
+            any_failed = true
+          end
+        end
+        -- Don't clear if any sink that wants clear actually failed
+        if any_failed then
+          for _, r in ipairs(results) do
+            if not r.ok and r.clear then
+              should_clear = false
+            end
+          end
+        end
+        on_complete(should_clear, results)
+      end
+    end)
+    if not ok_call then
+      results[#results + 1] = { name = sink_name, ok = false, err = tostring(call_err), clear = clear }
+      pending = pending - 1
+      if pending == 0 then
+        on_complete(false, results)
+      end
+    end
+  end
 end
 
 --- Reset module state. For tests.
 function M._reset_for_tests()
-  submit_hook = nil
+  sinks = {}
 end
 
 return M
