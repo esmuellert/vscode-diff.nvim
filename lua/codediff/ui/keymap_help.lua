@@ -61,6 +61,10 @@ local function build_sections(keymaps, is_explorer, is_history, is_conflict)
     table.insert(view_items, { km.unstage_hunk, "Unstage hunk under cursor" })
     table.insert(view_items, { km.discard_hunk, "Discard hunk under cursor" })
   end
+  table.insert(view_items, { km.toggle_layout, "Toggle inline/side-by-side layout" })
+  if km.align_move then
+    table.insert(view_items, { km.align_move, "Align moved code block" })
+  end
   table.insert(view_items, { km.hunk_textobject, "Hunk textobject (visual/operator)" })
   table.insert(view_items, { km.show_help, "Toggle this help" })
   table.insert(sections, section("VIEW", view_items))
