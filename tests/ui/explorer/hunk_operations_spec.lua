@@ -380,7 +380,7 @@ describe("Hunk operations (side-by-side)", function()
   -- --------------------------------------------------------------------------
   -- Test 4: discard_hunk reverts working tree and updates diff
   -- --------------------------------------------------------------------------
-  it("discard_hunk reverts working tree file", function()
+  it("discard_hunk reverts working tree file and refreshes diff", function()
     repo = create_two_hunk_repo()
     local tabpage, session, explorer = open_codediff_and_wait(repo)
     local lifecycle = require("codediff.ui.lifecycle")
@@ -408,8 +408,9 @@ describe("Hunk operations (side-by-side)", function()
     -- Restore original vim.fn.confirm
     vim.fn.confirm = original_confirm
 
-    -- Wait for the async git operation to complete
-    vim.wait(2000, function() return false end, 100)
+    -- Wait for the async git operation and diff refresh to complete
+    local has_1 = wait_for_hunks(tabpage, 1, 5000)
+    assert.is_true(has_1, "Diff should refresh to show 1 hunk after discarding hunk 1")
 
     -- Verify file content on disk: line 1 should be reverted to original
     local disk_lines = vim.fn.readfile(repo.path("file1.txt"))

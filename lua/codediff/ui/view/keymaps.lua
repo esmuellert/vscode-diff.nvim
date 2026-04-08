@@ -544,6 +544,13 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
         vim.notify("Failed to discard hunk: " .. err, vim.log.levels.ERROR)
         return
       end
+      -- Reload modified buffer from disk (working tree file changed)
+      if vim.api.nvim_buf_is_valid(discard_mod_buf) then
+        vim.api.nvim_buf_call(discard_mod_buf, function()
+          vim.cmd("checktime")
+        end)
+        auto_refresh.trigger(discard_mod_buf)
+      end
       vim.notify(string.format("Discarded hunk %d", hunk_idx), vim.log.levels.INFO)
     end)
   end
