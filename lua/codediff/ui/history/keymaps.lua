@@ -1,6 +1,7 @@
 -- Keymaps for history panel
 local config = require("codediff.config")
 local tree_utils = require("codediff.ui.lib.tree_utils")
+local set_keymap = require("codediff.ui.lifecycle.accessors").set_keymap
 
 local M = {}
 
@@ -18,7 +19,7 @@ function M.setup(history, opts)
 
   -- Toggle expand/collapse or select file
   if history_keymaps.select then
-    vim.keymap.set("n", history_keymaps.select, function()
+    set_keymap("n", history_keymaps.select, function()
       local node = tree:get_node()
       if not node then
         return
@@ -54,7 +55,7 @@ function M.setup(history, opts)
   end
 
   -- Double-click support
-  vim.keymap.set("n", "<2-LeftMouse>", function()
+  set_keymap("n", "<2-LeftMouse>", function()
     local node = tree:get_node()
     if not node then
       return
@@ -91,7 +92,7 @@ function M.setup(history, opts)
 
   -- Toggle view mode between list and tree
   if history_keymaps.toggle_view_mode then
-    vim.keymap.set("n", history_keymaps.toggle_view_mode, function()
+    set_keymap("n", history_keymaps.toggle_view_mode, function()
       local history_config = config.options.history or {}
       local current_mode = history_config.view_mode or "list"
       local new_mode = (current_mode == "list") and "tree" or "list"
@@ -116,7 +117,7 @@ function M.setup(history, opts)
 
   -- Refresh (R key) - re-fetch commits
   if history_keymaps.refresh then
-    vim.keymap.set("n", history_keymaps.refresh, function()
+    set_keymap("n", history_keymaps.refresh, function()
       local refresh_module = require("codediff.ui.history.refresh")
       refresh_module.refresh(history)
     end, vim.tbl_extend("force", map_options, { buffer = split.bufnr, desc = "Refresh history" }))

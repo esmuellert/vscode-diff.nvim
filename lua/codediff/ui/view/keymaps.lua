@@ -6,6 +6,7 @@ local auto_refresh = require("codediff.ui.auto_refresh")
 local config = require("codediff.config")
 local navigation = require("codediff.ui.view.navigation")
 local render = require("codediff.ui.view.render")
+local set_keymap = require("codediff.ui.lifecycle.accessors").set_keymap
 
 -- Centralized keymap setup for all diff view keymaps
 -- This function sets up ALL keymaps in one place for better maintainability
@@ -644,13 +645,13 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
   end
   for _, bufnr in ipairs(diff_bufs) do
     if keymaps.stage_hunk then
-      vim.keymap.set("n", keymaps.stage_hunk, stage_hunk, vim.tbl_extend("force", hunk_opts, { buffer = bufnr, desc = "Stage hunk under cursor" }))
+      set_keymap("n", keymaps.stage_hunk, stage_hunk, vim.tbl_extend("force", hunk_opts, { buffer = bufnr, desc = "Stage hunk under cursor" }))
     end
     if keymaps.unstage_hunk then
-      vim.keymap.set("n", keymaps.unstage_hunk, unstage_hunk, vim.tbl_extend("force", hunk_opts, { buffer = bufnr, desc = "Unstage hunk under cursor" }))
+      set_keymap("n", keymaps.unstage_hunk, unstage_hunk, vim.tbl_extend("force", hunk_opts, { buffer = bufnr, desc = "Unstage hunk under cursor" }))
     end
     if keymaps.discard_hunk then
-      vim.keymap.set("n", keymaps.discard_hunk, discard_hunk, vim.tbl_extend("force", hunk_opts, { buffer = bufnr, desc = "Discard hunk under cursor" }))
+      set_keymap("n", keymaps.discard_hunk, discard_hunk, vim.tbl_extend("force", hunk_opts, { buffer = bufnr, desc = "Discard hunk under cursor" }))
     end
 
     -- Hunk textobject (ih) - select hunk lines in visual/operator-pending mode
@@ -674,7 +675,7 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
         vim.cmd("normal! " .. start_line .. "GV" .. (end_line - 1) .. "G")
       end
 
-      vim.keymap.set({ "o", "x" }, keymaps.hunk_textobject, select_hunk, vim.tbl_extend("force", hunk_opts, { buffer = bufnr, desc = "Hunk textobject" }))
+      set_keymap({ "o", "x" }, keymaps.hunk_textobject, select_hunk, vim.tbl_extend("force", hunk_opts, { buffer = bufnr, desc = "Hunk textobject" }))
     end
   end
 
