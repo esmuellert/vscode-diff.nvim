@@ -103,7 +103,7 @@ M.defaults = {
       show_help = "g?", -- Show floating window with available keymaps
     },
     explorer = {
-      select = "<CR>",
+      select = { "<CR>", "o" },
       hover = "K",
       refresh = "R",
       toggle_view_mode = "i", -- Toggle between 'list' and 'tree' views
