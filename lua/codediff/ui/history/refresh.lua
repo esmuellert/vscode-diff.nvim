@@ -125,9 +125,14 @@ function M.refresh(history)
 
   -- Reconstruct git log options
   local git_opts = {
-    no_merges = true,
     path = history.opts.file_path,
   }
+  if history.opts.reverse then
+    git_opts.reverse = true
+  end
+  if history.opts.line_range then
+    git_opts.line_range = history.opts.line_range
+  end
   if not history.opts.range or history.opts.range == "" then
     git_opts.limit = 100
   end

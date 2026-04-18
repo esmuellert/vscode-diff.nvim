@@ -782,7 +782,7 @@ function M.get_commit_list(range, git_root, opts, callback)
 
   local args = {
     "log",
-    "--pretty=format:%H%x00%h%x00%an%x00%at%x00%ar%x00%s%x00%D%x00",
+    "--pretty=format:%H%x00%h%x00%an%x00%at%x00%ar%x00%s%x00%D%x00%P",
   }
 
   if is_line_range then
@@ -790,10 +790,17 @@ function M.get_commit_list(range, git_root, opts, callback)
     local l_arg = string.format("-L%d,%d:%s", opts.line_range[1], opts.line_range[2], opts.path)
     table.insert(args, l_arg)
   elseif is_single_file then
+    -- For single file mode, keep full history and request first-parent merge diffs
+    -- so merge commits that touched the file remain visible without duplicating
+    -- one entry per parent.
+    table.insert(args, "--full-history")
+    table.insert(args, "--diff-merges=first-parent")
     -- For single file mode, use --numstat to get stats AND file path (for renames)
     table.insert(args, "--numstat")
     table.insert(args, "--follow")
   else
+    -- For commit history mode, show merge commit stats against first parent.
+    table.insert(args, "--diff-merges=first-parent")
     -- For multi-file mode, use --shortstat for aggregate stats
     table.insert(args, "--shortstat")
   end
@@ -839,7 +846,8 @@ function M.get_commit_list(range, git_root, opts, callback)
         end
 
         local parts = vim.split(line, "\0")
-        if #parts >= 7 then
+        if #parts >= 8 then
+          local parent_hashes = parts[8] ~= "" and vim.split(parts[8], " ", { trimempty = true }) or {}
           current_commit = {
             hash = parts[1],
             short_hash = parts[2],
@@ -848,6 +856,9 @@ function M.get_commit_list(range, git_root, opts, callback)
             date_relative = parts[5],
             subject = parts[6],
             ref_names = parts[7] ~= "" and parts[7] or nil,
+            parent_hashes = parent_hashes,
+            parent_count = #parent_hashes,
+            parent_revision = parent_hashes[1],
             files_changed = 0,
             insertions = 0,
             deletions = 0,
@@ -914,8 +925,36 @@ end
 -- git_root: absolute path to git repository root
 -- callback: function(err, files) where files is array of:
 --   { path, status, old_path }
-function M.get_commit_files(commit_hash, git_root, callback)
-  run_git_async({ "diff-tree", "--no-commit-id", "--name-status", "-r", "-M", commit_hash }, { cwd = git_root }, function(err, output)
+function M.get_commit_files(commit_hash, git_root, opts, callback)
+  if type(opts) == "function" then
+    callback = opts
+    opts = {}
+  end
+
+  opts = opts or {}
+
+  local args
+  if opts.parent_revision and opts.parent_revision ~= "" then
+    args = {
+      "diff",
+      "--name-status",
+      "-M",
+      opts.parent_revision,
+      commit_hash,
+    }
+  else
+    args = {
+      "diff-tree",
+      "--root",
+      "--no-commit-id",
+      "--name-status",
+      "-r",
+      "-M",
+      commit_hash,
+    }
+  end
+
+  run_git_async(args, { cwd = git_root }, function(err, output)
     if err then
       callback(err, nil)
       return

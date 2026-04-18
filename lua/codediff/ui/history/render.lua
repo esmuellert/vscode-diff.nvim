@@ -71,6 +71,9 @@ function M.build_tree_nodes(commits, git_root, opts)
         date_relative = commit.date_relative,
         subject = commit.subject,
         ref_names = commit.ref_names,
+        parent_hashes = commit.parent_hashes,
+        parent_count = commit.parent_count,
+        parent_revision = commit.parent_revision,
         files_changed = commit.files_changed,
         insertions = commit.insertions,
         deletions = commit.deletions,
@@ -205,7 +208,7 @@ function M.create(commits, git_root, tabpage, width, opts)
       return
     end
 
-    git.get_commit_files(data.hash, git_root, function(err, files)
+    git.get_commit_files(data.hash, git_root, { parent_revision = data.parent_revision }, function(err, files)
       if err then
         vim.schedule(function()
           vim.notify("Failed to load commit files: " .. err, vim.log.levels.ERROR)
@@ -227,9 +230,9 @@ function M.create(commits, git_root, tabpage, width, opts)
 
         local file_nodes
         if view_mode == "tree" then
-          file_nodes = nodes_module.create_tree_file_nodes(files, data.hash, git_root)
+          file_nodes = nodes_module.create_tree_file_nodes(files, data, git_root)
         else
-          file_nodes = nodes_module.create_list_file_nodes(files, data.hash, git_root)
+          file_nodes = nodes_module.create_list_file_nodes(files, data, git_root)
         end
 
         -- Update node with children
@@ -275,6 +278,7 @@ function M.create(commits, git_root, tabpage, width, opts)
     local file_path = file_data.path
     local old_path = file_data.old_path
     local commit_hash = file_data.commit_hash
+    local parent_revision = file_data.parent_revision
 
     if not file_path or file_path == "" then
       vim.notify("[CodeDiff] No file path for selection", vim.log.levels.WARN)
@@ -287,7 +291,7 @@ function M.create(commits, git_root, tabpage, width, opts)
     end
 
     -- Check if already displaying same file
-    local target_hash = base_revision or (commit_hash .. "^")
+    local target_hash = base_revision or parent_revision or (commit_hash .. "^")
     local session = lifecycle.get_session(tabpage)
     if not opts.force and session and session.original_revision == target_hash and session.modified_revision == commit_hash then
       if session.modified_path == file_path or session.original_path == file_path then
@@ -369,6 +373,7 @@ function M.create(commits, git_root, tabpage, width, opts)
         local file_data = {
           path = file_path,
           commit_hash = first_commit_node.data.hash,
+          parent_revision = first_commit_node.data.parent_revision,
           git_root = git_root,
         }
         history.on_file_select(file_data)
