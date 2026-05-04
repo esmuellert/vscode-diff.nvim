@@ -55,7 +55,8 @@ local function compute_and_render_inline(
     vim.wo[modified_win].wrap = false
     if auto_scroll_to_first_hunk and lines_diff.changes and #lines_diff.changes > 0 then
       local target_line = lines_diff.changes[1].modified.start_line
-      pcall(vim.api.nvim_win_set_cursor, modified_win, { target_line, 0 })
+      local buf_line_count = vim.api.nvim_buf_line_count(vim.api.nvim_win_get_buf(modified_win))
+      pcall(vim.api.nvim_win_set_cursor, modified_win, { math.min(target_line, buf_line_count), 0 })
       vim.api.nvim_set_current_win(modified_win)
       vim.cmd("normal! zz")
     end
