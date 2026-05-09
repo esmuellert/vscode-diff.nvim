@@ -53,7 +53,7 @@ function M.prepare_buffer(is_virtual, git_root, revision, path)
     end
   else
     -- Real file: use exact match for buffer lookup
-    local existing_buf = bufnr_exact(path)
+    local existing_buf = bufnr_exact(vim.fs.joinpath(git_root, path))
     if existing_buf ~= -1 then
       -- Buffer already exists, reuse it
       return {
