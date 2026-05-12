@@ -138,6 +138,23 @@ function M.setup_auto_refresh(explorer, tabpage)
   return cleanup
 end
 
+-- Unique key for collapsed-state tracking.
+-- Directories with the same basename appear in multiple groups (e.g. partial
+-- staging puts src/foo in both unstaged and staged subtrees), so the key
+-- includes both the group and the full repo-relative dir_path.
+local function state_key(node)
+  if not node.data then
+    return nil
+  end
+  if node.data.type == "directory" then
+    local group = node.data.group or ""
+    return "dir:" .. group .. ":" .. (node.data.dir_path or node.data.name or "")
+  elseif node.data.type == "group" then
+    return "group:" .. (node.data.name or "")
+  end
+  return nil
+end
+
 -- Collect collapsed state from tree (groups and directories that user manually collapsed)
 local function collect_collapsed_state(tree)
   local collapsed = {}
@@ -148,8 +165,7 @@ local function collect_collapsed_state(tree)
     end
     local node_type = node.data.type
     if node_type == "group" or node_type == "directory" then
-      -- Use path for directories, name for groups as unique key
-      local key = node.data.path or node.data.name
+      local key = state_key(node)
       if key and not node:is_expanded() then
         collapsed[key] = true
       end
@@ -181,7 +197,7 @@ local function restore_collapsed_state(tree, collapsed, root_nodes)
     end
     local node_type = node.data.type
     if node_type == "group" or node_type == "directory" then
-      local key = node.data.path or node.data.name
+      local key = state_key(node)
       if key and collapsed[key] then
         node:collapse()
       end
@@ -401,5 +417,12 @@ function M.get_all_files(tree)
 
   return files
 end
+
+-- Test-only exports (not part of public API)
+M._test = {
+  state_key = state_key,
+  collect_collapsed_state = collect_collapsed_state,
+  restore_collapsed_state = restore_collapsed_state,
+}
 
 return M
