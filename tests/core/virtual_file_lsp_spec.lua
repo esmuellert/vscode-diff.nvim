@@ -99,4 +99,66 @@ describe("Virtual buffer LSP prevention", function()
     pcall(vim.api.nvim_buf_delete, buf, { force = true })
     repo.cleanup()
   end)
+
+  it("does not fire FileType for added/deleted files (regression: #323)", function()
+    -- Regression for issue #323: when opening a diff for a file that does not
+    -- exist at the requested revision (added or deleted), virtual_file used to
+    -- set `vim.bo[buf].filetype = ""` directly. That assignment fires a
+    -- FileType autocmd with an empty filetype, which crashes user/plugin code
+    -- that keys memoize caches on the filetype string. The fix suppresses the
+    -- event via `noautocmd setlocal filetype=` (matching the populated branch).
+    virtual_file.setup()
+    local repo = h.create_temp_git_repo()
+    local f = io.open(repo.dir .. "/kept.lua", "w")
+    f:write("kept\n")
+    f:close()
+    repo.git("add .")
+    repo.git('commit -m "initial"')
+
+    -- Listen for FileType events on codediff:// buffers. Any event with an
+    -- empty filetype is the regression we are guarding against.
+    local empty_ft_events = {}
+    local autocmd_id = vim.api.nvim_create_autocmd("FileType", {
+      callback = function(args)
+        local name = vim.api.nvim_buf_get_name(args.buf)
+        if name:match("^codediff://") then
+          table.insert(empty_ft_events, {
+            buf = args.buf,
+            ft = vim.bo[args.buf].filetype,
+            name = name,
+          })
+        end
+      end,
+    })
+
+    -- Open a codediff:// URL for a file that does NOT exist at HEAD.
+    -- This is the path through virtual_file.load_virtual_buffer_content's
+    -- error branch where filetype gets cleared.
+    local url = "codediff:///" .. repo.dir .. "///HEAD/does_not_exist.lua"
+    vim.cmd("edit " .. vim.fn.fnameescape(url))
+    local buf = vim.api.nvim_get_current_buf()
+
+    -- Wait for async load_virtual_buffer_content to complete; we know it
+    -- completed when the "missing file" placeholder is in place.
+    vim.wait(2000, function()
+      if not vim.api.nvim_buf_is_valid(buf) then return false end
+      return vim.bo[buf].modifiable == false
+    end)
+
+    -- No FileType event should have fired on the codediff:// buffer with an
+    -- empty filetype (that's the crash trigger).
+    local empty_ones = vim.tbl_filter(function(e) return e.ft == "" end, empty_ft_events)
+    assert.are.equal(0, #empty_ones,
+      "FileType autocmd fired with empty filetype on virtual buffer (issue #323): " ..
+      vim.inspect(empty_ones))
+
+    -- The filetype is still empty (still preventing LSP attachment), the event
+    -- just wasn't broadcast.
+    assert.are.equal("", vim.bo[buf].filetype,
+      "filetype should still be empty on the missing-file virtual buffer")
+
+    vim.api.nvim_del_autocmd(autocmd_id)
+    pcall(vim.api.nvim_buf_delete, buf, { force = true })
+    repo.cleanup()
+  end)
 end)

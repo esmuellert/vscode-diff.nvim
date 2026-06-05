@@ -235,8 +235,6 @@ function M.create(session_config, filetype, on_ready)
                   conflict.setup_keymaps(tabpage)
                 end
               )
-              -- Setup auto-refresh for consistency (both buffers are virtual in conflict mode)
-              setup_auto_refresh(original_info.bufnr, modified_info.bufnr, true, true)
 
               -- Setup result window and keymaps
               local success = setup_conflict_result_window(tabpage, session_config, original_win, modified_win, base_lines, conflict_diffs, false)
@@ -510,8 +508,6 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
             lifecycle.update_revisions(tabpage, session_config.original_revision, session_config.modified_revision)
             lifecycle.update_diff_result(tabpage, conflict_diffs.base_to_modified_diff)
             lifecycle.update_changedtick(tabpage, vim.api.nvim_buf_get_changedtick(original_info.bufnr), vim.api.nvim_buf_get_changedtick(modified_info.bufnr))
-            setup_auto_refresh(original_info.bufnr, modified_info.bufnr, true, true)
-
             local is_explorer_mode = session.mode == "explorer"
             local success = setup_conflict_result_window(tabpage, session_config, original_win, modified_win, base_lines, conflict_diffs, true)
             if success then

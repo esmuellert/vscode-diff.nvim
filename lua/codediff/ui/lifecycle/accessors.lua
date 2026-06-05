@@ -128,7 +128,22 @@ function M.get_explorer(tabpage)
   return sess and sess.explorer
 end
 
---- Get BASE lines for result buffer diff
+--- Get the merge base (stage :1) content for the conflict file.
+--- This is the common ancestor — the real "original" — used by smart-combine
+--- and discard operations that need merge-base coordinates. Distinct from
+--- result_base_lines, which is the auto-merged *seed* content of the Result
+--- buffer (and not the merge base).
+function M.get_merge_base_lines(tabpage)
+  local active_diffs = get_active_diffs()
+  local sess = active_diffs[tabpage]
+  return sess and sess.merge_base_lines
+end
+
+--- Get the seed content of the Result buffer (auto-merged result).
+--- This is what the Result buffer was initialized to, and what every
+--- accept/discard action compares against to decide whether a conflict
+--- region is still in its initial unresolved state. NOT the merge base —
+--- see get_merge_base_lines for that.
 function M.get_result_base_lines(tabpage)
   local active_diffs = get_active_diffs()
   local sess = active_diffs[tabpage]
@@ -342,14 +357,29 @@ function M.set_result(tabpage, result_bufnr, result_win)
   return true
 end
 
---- Store BASE lines for result buffer diff (for conflict mode)
-function M.set_result_base_lines(tabpage, base_lines)
+--- Store the seed content for the Result buffer (auto-merged result).
+--- See get_result_base_lines for semantics.
+function M.set_result_base_lines(tabpage, result_base_lines)
   local active_diffs = get_active_diffs()
   local sess = active_diffs[tabpage]
   if not sess then
     return false
   end
-  sess.result_base_lines = base_lines
+  sess.result_base_lines = result_base_lines
+  return true
+end
+
+--- Store the merge base (stage :1) content for the conflict file.
+--- See get_merge_base_lines for semantics; this is kept separate from
+--- result_base_lines so smart-combine can still walk merge-base coordinates
+--- after the Result buffer has been auto-merged.
+function M.set_merge_base_lines(tabpage, merge_base_lines)
+  local active_diffs = get_active_diffs()
+  local sess = active_diffs[tabpage]
+  if not sess then
+    return false
+  end
+  sess.merge_base_lines = merge_base_lines
   return true
 end
 

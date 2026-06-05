@@ -88,6 +88,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
       wrap = false,
       signcolumn = "no",
       foldcolumn = "0",
+      spell = false,
       winfixwidth = true,
       winfixheight = true,
     },
@@ -96,6 +97,14 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
   -- Mount split first to get bufnr
   split:mount()
   pcall(vim.api.nvim_buf_set_name, split.bufnr, "CodeDiff Explorer [" .. tabpage .. "]")
+
+  -- Honor the initial-visibility config: hide the split immediately if requested.
+  -- toggle_explorer (actions.lua) uses split:hide/show to flip this at runtime;
+  -- using split:hide() here matches that lifecycle so the user's toggle keymap
+  -- continues to work correctly.
+  if explorer_config.hidden then
+    split:hide()
+  end
 
   -- Track selected path and group for highlighting
   local selected_path = nil
@@ -177,7 +186,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
     current_file_path = nil, -- Track currently selected file
     current_file_group = nil, -- Track currently selected file's group (staged/unstaged)
     current_selection = nil, -- Full file selection used to replay current state
-    is_hidden = false, -- Track visibility state
+    is_hidden = explorer_config.hidden, -- Track visibility state
     visible_groups = vim.deepcopy(explorer_config.visible_groups or { staged = true, unstaged = true, conflicts = true }),
   }
 
@@ -294,7 +303,13 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
         local sess = lifecycle.get_session(tabpage)
         local is_inline = sess and sess.layout == "inline"
 
-        if base_revision and target_revision and target_revision ~= "WORKING" then
+        -- Whenever the explorer is anchored to a base_revision (single-rev
+        -- like `:CodeDiff HEAD~5` OR revision-revision like `:CodeDiff A B`),
+        -- the deleted file's content lives at base_revision; reading from
+        -- HEAD/:0 yields nothing because the file is already gone there.
+        -- The HEAD/:0 branch is only correct for plain explorer mode
+        -- (no base_revision). Fixes #390.
+        if base_revision then
           if is_inline then
             require("codediff.ui.view.inline_view").show_single_file(tabpage, file_path, {
               revision = base_revision,
@@ -511,6 +526,38 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
   -- Setup keymaps (delegated to keymaps module)
   keymaps_module.setup(explorer)
 
+  -- Auto-open diff for the node under cursor after j/k (or arrow keys).
+  -- Hooks j/k/<Down>/<Up> instead of CursorMoved so mouse clicks, :N jumps,
+  -- and scrolls don't trigger an open. Buffer-local keymaps die with the
+  -- buffer, so no manual cleanup needed.
+  if explorer_config.auto_open_on_cursor then
+    local function open_under_cursor()
+      if not vim.api.nvim_buf_is_valid(split.bufnr) then
+        return
+      end
+      local node = tree:get_node()
+      if not node or not node.data then
+        return
+      end
+      local node_type = node.data.type
+      if node_type == "group" or node_type == "directory" then
+        return
+      end
+      if explorer.current_file_path == node.data.path
+          and explorer.current_file_group == node.data.group then
+        return
+      end
+      explorer.on_file_select(node.data)
+    end
+    for _, key in ipairs({ "j", "k", "<Down>", "<Up>" }) do
+      vim.keymap.set("n", key, function()
+        local motion = key == "<Down>" and "j" or key == "<Up>" and "k" or key
+        vim.cmd("normal! " .. motion)
+        open_under_cursor()
+      end, { buffer = split.bufnr, silent = true, desc = "codediff: move and auto-open file" })
+    end
+  end
+
   -- Find a file in the status lists, returns (file, group) or (nil, nil)
   local function find_file_in_status(path)
     if status_result.conflicts then
@@ -552,7 +599,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
   if initial_file then
     vim.schedule(function()
       -- Scroll explorer to the selected file using tree:get_node(line) lookup
-      if vim.api.nvim_win_is_valid(explorer.winid) and vim.api.nvim_buf_is_valid(explorer.bufnr) then
+      if explorer.winid and vim.api.nvim_win_is_valid(explorer.winid) and vim.api.nvim_buf_is_valid(explorer.bufnr) then
         local line_count = vim.api.nvim_buf_line_count(explorer.bufnr)
         for line = 1, line_count do
           local node = explorer.tree:get_node(line)

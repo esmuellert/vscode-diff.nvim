@@ -100,6 +100,9 @@ local function do_diff_update(bufnr, skip_watcher_check)
     -- Update stored diff result in lifecycle (critical for hunk navigation and do/dp)
     lifecycle.update_diff_result(tabpage, lines_diff)
 
+    -- Refresh compact mode folds if active
+    require("codediff.ui.view.compact").refresh(tabpage)
+
     -- Check if this is an inline mode session
     local session = lifecycle.get_session(tabpage)
     if session and session.layout == "inline" then

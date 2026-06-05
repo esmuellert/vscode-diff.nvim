@@ -103,12 +103,24 @@ function M.toggle(tabpage)
   local normalize = target_layout == "inline" and normalize_inline_layout or normalize_side_by_side_layout
   local previous_layout = session.layout
 
+  -- Disable compact mode before changing layout (window IDs will change)
+  local compact = require("codediff.ui.view.compact")
+  local was_compact = session.compact_mode
+  if was_compact then
+    compact.disable(tabpage)
+  end
+
   if not normalize(tabpage) then
     return false
   end
 
   if rerender_current_file(tabpage) then
     layout.arrange(tabpage)
+  end
+
+  -- Re-enable compact mode in new layout
+  if was_compact then
+    compact.enable(tabpage)
   end
 
   return true

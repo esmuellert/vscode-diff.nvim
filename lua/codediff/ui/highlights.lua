@@ -24,6 +24,22 @@ local function adjust_brightness(color, factor)
   return r * 65536 + g * 256 + b
 end
 
+-- Read the effective background color of a highlight group as Neovim's renderer
+-- would resolve it. Some colorschemes (e.g. built-in `sorbet`) define DiffAdd /
+-- DiffDelete using `fg` plus `reverse = true`; Neovim's renderer swaps fg<->bg
+-- at draw time, so the visually-correct "background" comes from `fg`. Just
+-- reading `hl.bg` produces black/default for those schemes (issue #366).
+-- Returns gui_bg, cterm_bg (either may be nil if neither side is defined).
+local function effective_bg(hl)
+  if not hl then
+    return nil, nil
+  end
+  local gui = (hl.reverse and hl.fg) or hl.bg
+  local cterm_reverse = (hl.cterm and hl.cterm.reverse) or hl.reverse
+  local cterm = (cterm_reverse and hl.ctermfg) or hl.ctermbg
+  return gui, cterm
+end
+
 -- Resolve color from config value (supports highlight group name or direct color)
 -- Returns a table suitable for nvim_set_hl (e.g., { bg = 0x2ea043 })
 local function resolve_color(value, fallback_gui, fallback_cterm)
@@ -55,9 +71,10 @@ local function resolve_color(value, fallback_gui, fallback_cterm)
     else
       -- Assume it's a highlight group name
       local hl = vim.api.nvim_get_hl(0, { name = value, link = false })
+      local gui, cterm = effective_bg(hl)
       return {
-        bg = hl.bg or fallback_gui,
-        ctermbg = hl.ctermbg or fallback_cterm,
+        bg = gui or fallback_gui,
+        ctermbg = cterm or fallback_cterm,
       }
     end
   elseif type(value) == "number" then
@@ -123,7 +140,7 @@ function M.setup()
 
   -- Moved code highlights (derived from DiffChange — the standard "changed" color)
   local diff_change_hl = vim.api.nvim_get_hl(0, { name = "DiffChange", link = false })
-  local move_fallback = diff_change_hl.bg or 0x4f5258
+  local move_fallback = effective_bg(diff_change_hl) or 0x4f5258
   local line_move_color = resolve_color(opts.line_move, move_fallback, base256_color(0, 0, 2))
   vim.api.nvim_set_hl(0, "CodeDiffLineMove", line_move_color)
 
@@ -242,6 +259,19 @@ function M.setup()
     link = "FloatTitle",
     default = true,
   })
+
+  -- Re-derive when the user switches colorscheme at runtime. Without this, the
+  -- CodeDiffLineInsert/Delete colors are frozen to whatever scheme was active
+  -- at first setup() and look wrong under any later :colorscheme change.
+  if not M._colorscheme_autocmd_installed then
+    vim.api.nvim_create_autocmd("ColorScheme", {
+      group = vim.api.nvim_create_augroup("codediff_highlights", { clear = true }),
+      callback = function()
+        M.setup()
+      end,
+    })
+    M._colorscheme_autocmd_installed = true
+  end
 end
 
 return M
