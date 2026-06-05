@@ -79,11 +79,13 @@ function M.next_hunk()
   local current_line = cursor[1]
   local buf_line_count = vim.api.nvim_buf_line_count(0)
 
-  -- Find next hunk after current line
+  -- Find next hunk after current line. Compare against the clamped target (where
+  -- the cursor can actually land), not the raw line: a trailing deletion sits
+  -- past the buffer end, so once we're on the clamped last line there is nowhere
+  -- to move and we must report failure (return false) rather than spin in place.
   for i, mapping in ipairs(diff_result.changes) do
-    local raw_target = is_original and mapping.original.start_line or mapping.modified.start_line
-    local target_line = math.min(raw_target, buf_line_count)
-    if raw_target > current_line then
+    local target_line = math.min(is_original and mapping.original.start_line or mapping.modified.start_line, buf_line_count)
+    if target_line > current_line then
       vim.api.nvim_win_set_cursor(0, { target_line, 0 })
       vim.cmd("normal! zz")
       vim.api.nvim_echo({ { string.format("Hunk %d of %d", i, #diff_result.changes), "None" } }, false, {})
@@ -156,12 +158,12 @@ function M.prev_hunk()
   local current_line = cursor[1]
   local buf_line_count = vim.api.nvim_buf_line_count(0)
 
-  -- Find previous hunk before current line (search backwards)
+  -- Find previous hunk before current line (search backwards). Compare against
+  -- the clamped target so the "did we actually move" contract matches next_hunk.
   for i = #diff_result.changes, 1, -1 do
     local mapping = diff_result.changes[i]
-    local raw_target = is_original and mapping.original.start_line or mapping.modified.start_line
-    local target_line = math.min(raw_target, buf_line_count)
-    if raw_target < current_line then
+    local target_line = math.min(is_original and mapping.original.start_line or mapping.modified.start_line, buf_line_count)
+    if target_line < current_line then
       vim.api.nvim_win_set_cursor(0, { target_line, 0 })
       vim.cmd("normal! zz")
       vim.api.nvim_echo({ { string.format("Hunk %d of %d", i, #diff_result.changes), "None" } }, false, {})
