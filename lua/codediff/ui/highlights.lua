@@ -191,6 +191,9 @@ function M.setup()
     default = true,
   })
 
+  -- Explorer reviewed file highlight
+  vim.api.nvim_set_hl(0, "CodeDiffExplorerViewed", { link = "DiagnosticOk", default = true })
+
   -- Explorer git status highlights (customizable, like diffview.nvim)
   vim.api.nvim_set_hl(0, "CodeDiffStatusAdded", { link = "DiagnosticOk", default = true })
   vim.api.nvim_set_hl(0, "CodeDiffStatusModified", { link = "DiagnosticWarn", default = true })

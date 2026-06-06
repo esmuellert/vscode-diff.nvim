@@ -106,9 +106,10 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
     split:hide()
   end
 
-  -- Track selected path and group for highlighting
+  -- Track selected path/group and viewed files for highlighting
   local selected_path = nil
   local selected_group = nil
+  local viewed_files = {}
 
   -- Create tree with buffer number
   local tree_data = tree_module.create_tree_data(status_result, git_root, base_revision, is_dir_mode, explorer_config.visible_groups)
@@ -121,7 +122,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
       if split.winid and vim.api.nvim_win_is_valid(split.winid) then
         current_width = vim.api.nvim_win_get_width(split.winid)
       end
-      return nodes_module.prepare_node(node, current_width, selected_path, selected_group)
+      return nodes_module.prepare_node(node, current_width, selected_path, selected_group, viewed_files)
     end,
   })
 
@@ -186,6 +187,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
     current_file_path = nil, -- Track currently selected file
     current_file_group = nil, -- Track currently selected file's group (staged/unstaged)
     current_selection = nil, -- Full file selection used to replay current state
+    viewed_files = viewed_files, -- Session-local set of group:path entries marked as viewed
     is_hidden = explorer_config.hidden, -- Track visibility state
     visible_groups = vim.deepcopy(explorer_config.visible_groups or { staged = true, unstaged = true, conflicts = true }),
   }

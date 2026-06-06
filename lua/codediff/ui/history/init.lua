@@ -21,6 +21,9 @@ M.navigate_prev = render.navigate_prev
 M.navigate_next_commit = render.navigate_next_commit
 M.navigate_prev_commit = render.navigate_prev_commit
 
+-- Toggle reviewed state
+M.toggle_viewed = render.toggle_viewed
+
 -- Toggle visibility
 M.toggle_visibility = render.toggle_visibility
 

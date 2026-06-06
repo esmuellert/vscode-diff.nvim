@@ -5,7 +5,6 @@ local lifecycle = require("codediff.ui.lifecycle")
 local auto_refresh = require("codediff.ui.auto_refresh")
 local config = require("codediff.config")
 local navigation = require("codediff.ui.view.navigation")
-local render = require("codediff.ui.view.render")
 
 -- Centralized keymap setup for all diff view keymaps
 -- This function sets up ALL keymaps in one place for better maintainability
@@ -257,6 +256,26 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
     end
 
     -- Case 3: Other buffers (history, etc.) - do nothing silently
+  end
+
+  -- Helper: Toggle reviewed state for current file (tab-wide)
+  local function toggle_reviewed()
+    if not is_explorer_mode and not is_history_mode then
+      vim.notify("Mark reviewed only available in explorer/history mode", vim.log.levels.WARN)
+      return
+    end
+
+    local panel_obj = lifecycle.get_explorer(tabpage)
+    if not panel_obj then
+      vim.notify("No explorer/history panel found for this tab", vim.log.levels.WARN)
+      return
+    end
+
+    if is_history_mode then
+      require("codediff.ui.history").toggle_viewed(panel_obj)
+    else
+      require("codediff.ui.explorer").toggle_viewed(panel_obj)
+    end
   end
 
   -- Helper: Open the current real buffer in the previous tab (or create one before)
@@ -610,6 +629,10 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
     end
   end
 
+  if (is_explorer_mode or is_history_mode) and keymaps.toggle_reviewed then
+    lifecycle.set_tab_keymap(tabpage, "n", keymaps.toggle_reviewed, toggle_reviewed, { desc = "Mark/unmark file as reviewed" })
+  end
+
   -- Help keymap (g?) - show floating window with available keymaps
   if keymaps.show_help then
     lifecycle.set_tab_keymap(tabpage, "n", keymaps.show_help, function()
@@ -760,16 +783,20 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
       return row
     end)
 
-    -- Set other pane: position other_first at the same visual row
-    -- winline() is 1-based from top of window
+    -- Set other pane: position other_first at the same visual row.
+    -- `zt` may still place the line below row 1 when virtual lines (move
+    -- annotations/fillers) are attached above it, so measure the actual row and
+    -- scroll in the required direction synchronously.
     vim.api.nvim_win_call(other_win, function()
-      -- First scroll to the target line at top of window
       vim.api.nvim_win_set_cursor(other_win, { other_first, 0 })
       vim.cmd("normal! zt")
-      -- Now scroll down to match the visual offset (Ctrl-Y scrolls view up, line moves down)
-      if my_visual_row > 1 then
-        local keys = vim.api.nvim_replace_termcodes((my_visual_row - 1) .. "<C-y>", true, false, true)
-        vim.api.nvim_feedkeys(keys, "nx", false)
+
+      local other_visual_row = vim.fn.winline()
+      local delta = other_visual_row - my_visual_row
+      if delta > 0 then
+        vim.cmd("normal! " .. delta .. "\005") -- Ctrl-E: move text up, line row decreases
+      elseif delta < 0 then
+        vim.cmd("normal! " .. math.abs(delta) .. "\025") -- Ctrl-Y: move text down, line row increases
       end
     end)
 
@@ -786,26 +813,16 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
       if not vim.api.nvim_win_is_valid(current_win) or not vim.api.nvim_win_is_valid(other_win) then
         return
       end
-      -- Restore views first (before scrollbind)
+      vim.wo[current_win].scrollbind = false
+      vim.wo[other_win].scrollbind = false
       vim.api.nvim_win_call(other_win, function()
         vim.fn.winrestview(other_view)
       end)
       vim.api.nvim_win_call(current_win, function()
         vim.fn.winrestview(current_view)
       end)
-      -- Use the same anchor technique as initial render to establish scrollbind
-      local sess = lifecycle.get_session(tabpage)
-      local orig_win = sess and sess.original_win or current_win
-      local mod_win = sess and sess.modified_win or other_win
-      local orig_buf_nr = sess and sess.original_bufnr or vim.api.nvim_win_get_buf(orig_win)
-      local mod_buf_nr = sess and sess.modified_bufnr or vim.api.nvim_win_get_buf(mod_win)
-      local diff_result = sess and sess.stored_diff_result
-      local orig_cur = { current_view.lnum, current_view.col }
-      local mod_cur = { other_view.lnum, other_view.col }
-      if not is_on_original then
-        orig_cur, mod_cur = mod_cur, orig_cur
-      end
-      render.establish_scrollbind(orig_win, mod_win, orig_buf_nr, mod_buf_nr, diff_result, orig_cur, mod_cur)
+      vim.wo[current_win].scrollbind = saved_scrollbind_current
+      vim.wo[other_win].scrollbind = saved_scrollbind_other
     end
 
     -- Restore when cursor moves out of the moved block

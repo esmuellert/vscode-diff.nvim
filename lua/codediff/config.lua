@@ -97,6 +97,7 @@ M.defaults = {
       open_in_prev_tab = "gf", -- Open current buffer in previous tab (or new tab before current)
       close_on_open_in_prev_tab = false, -- Close codediff tab after opening in previous tab
       toggle_stage = "-", -- Stage/unstage current file (works in explorer and diff buffers)
+      toggle_reviewed = "v", -- Mark/unmark current file as reviewed (explorer/history mode)
       stage_hunk = "<leader>hs", -- Stage the hunk under cursor to git index
       unstage_hunk = "<leader>hu", -- Unstage the hunk under cursor from git index
       discard_hunk = "<leader>hr", -- Discard the hunk under cursor (working tree only)

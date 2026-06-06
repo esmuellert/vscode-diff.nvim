@@ -233,6 +233,7 @@ Setup entry point:
         open_in_prev_tab = "gf",
         close_on_open_in_prev_tab = false,
         toggle_stage = "-",
+        toggle_reviewed = "v",
         hunk_textobject = "ih",
         show_help = "g?",
         align_move = "gm",

@@ -242,7 +242,7 @@ function M.create_tree_file_nodes(files, git_root, group)
 end
 
 -- Prepare node for rendering (format display)
-function M.prepare_node(node, max_width, selected_path, selected_group)
+function M.prepare_node(node, max_width, selected_path, selected_group, viewed_files)
   local line = Line()
   local data = node.data or {}
   local explorer_config = config.options.explorer or {}
@@ -295,6 +295,8 @@ function M.prepare_node(node, max_width, selected_path, selected_group)
   else
     -- Match both path AND group to handle files in both staged and unstaged
     local is_selected = data.path and data.path == selected_path and data.group == selected_group
+    local viewed_key = data.path and data.group and (data.group .. ":" .. data.path)
+    local is_viewed = viewed_key and viewed_files and viewed_files[viewed_key]
 
     -- Get selected background color once
     local selected_bg = nil
@@ -342,6 +344,9 @@ function M.prepare_node(node, max_width, selected_path, selected_group)
       line:append(icon_part, get_hl(data.icon_color))
     end
 
+    local viewed_marker = is_viewed and "✓ " or "  "
+    line:append(viewed_marker, get_hl(is_viewed and "CodeDiffExplorerViewed" or "Normal"))
+
     -- Status symbol at the end (e.g., "M", "D", "??")
     local status_symbol = data.status_symbol or ""
 
@@ -353,7 +358,7 @@ function M.prepare_node(node, max_width, selected_path, selected_group)
 
     -- Calculate how much width we've used and reserve for status
     local status_margin = config.options.explorer.status_right_margin or 1
-    local used_width = vim.fn.strdisplaywidth(indent) + vim.fn.strdisplaywidth(icon_part)
+    local used_width = vim.fn.strdisplaywidth(indent) + vim.fn.strdisplaywidth(icon_part) + vim.fn.strdisplaywidth(viewed_marker)
     -- Reserve = symbol + 2 cells of minimum gap from content + configurable trailing margin
     local status_reserve = vim.fn.strdisplaywidth(status_symbol) + 2 + status_margin
     local available_for_content = max_width - used_width - status_reserve
@@ -390,10 +395,11 @@ function M.prepare_node(node, max_width, selected_path, selected_group)
     end
 
     -- Append filename (normal weight) and directory (dimmed)
-    line:append(filename, get_hl("Normal"))
+    local file_hl = is_viewed and "CodeDiffExplorerViewed" or "Normal"
+    line:append(filename, get_hl(file_hl))
     if #directory > 0 then
-      line:append(" ", get_hl("Normal"))
-      line:append(directory, get_hl("ExplorerDirectorySmall"))
+      line:append(" ", get_hl(file_hl))
+      line:append(directory, get_hl(is_viewed and "CodeDiffExplorerViewed" or "ExplorerDirectorySmall"))
     end
 
     -- Right-align status symbol; trailing `status_margin` cells keep it visible against the window edge

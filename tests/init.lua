@@ -31,8 +31,12 @@ if vim.fn.isdirectory(plenary_dir) == 0 then
 end
 vim.opt.rtp:prepend(plenary_dir)
 
--- Load plugin files (for integration tests that need commands)
-vim.cmd('runtime! plugin/*.lua plugin/*.vim')
+-- Load this project's plugin files only (for integration tests that need commands).
+-- Avoid `runtime! plugin/*.lua`, which also sources unrelated user plugins on
+-- the runtimepath and can make tests fail depending on the local Neovim setup.
+for _, plugin_file in ipairs(vim.fn.glob(cwd .. "/plugin/*.lua", false, true)) do
+  vim.cmd("source " .. vim.fn.fnameescape(plugin_file))
+end
 
 -- Setup plugin
 require("codediff").setup()
