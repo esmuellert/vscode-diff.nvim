@@ -138,7 +138,7 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
       view_mode = "list",   -- "list" or "tree" for files under commits
     },
 
-    -- Keymaps in diff view
+    -- Keymaps in diff view (can also be a table of keys)
     keymaps = {
       view = {
         quit = "q",                    -- Close diff tab
@@ -162,7 +162,7 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
         toggle_layout = "t", -- Toggle between side-by-side and inline layout
       },
       explorer = {
-        select = "<CR>",    -- Open diff for selected file
+        select = { "<CR>", "o" },    -- Open diff for selected file
         hover = "K",        -- Show file diff preview
         refresh = "R",      -- Refresh git status
         toggle_view_mode = "i",  -- Toggle between 'list' and 'tree' views

@@ -469,27 +469,56 @@ function M.set_tab_keymap(tabpage, mode, lhs, rhs, opts)
   local base_opts = { noremap = true, silent = true, nowait = true }
 
   if vim.api.nvim_buf_is_valid(sess.original_bufnr) then
-    vim.keymap.set(mode, lhs, rhs, vim.tbl_extend("force", base_opts, opts, { buffer = sess.original_bufnr }))
+    M.set_keymap(mode, lhs, rhs, vim.tbl_extend("force", base_opts, opts, { buffer = sess.original_bufnr }))
     sess.keymap_buffers[sess.original_bufnr] = true
   end
 
   if vim.api.nvim_buf_is_valid(sess.modified_bufnr) then
-    vim.keymap.set(mode, lhs, rhs, vim.tbl_extend("force", base_opts, opts, { buffer = sess.modified_bufnr }))
+    M.set_keymap(mode, lhs, rhs, vim.tbl_extend("force", base_opts, opts, { buffer = sess.modified_bufnr }))
     sess.keymap_buffers[sess.modified_bufnr] = true
   end
 
   local explorer = sess.explorer
   if explorer and explorer.bufnr and vim.api.nvim_buf_is_valid(explorer.bufnr) then
-    vim.keymap.set(mode, lhs, rhs, vim.tbl_extend("force", base_opts, opts, { buffer = explorer.bufnr }))
+    M.set_keymap(mode, lhs, rhs, vim.tbl_extend("force", base_opts, opts, { buffer = explorer.bufnr }))
     sess.keymap_buffers[explorer.bufnr] = true
   end
 
   if sess.result_bufnr and vim.api.nvim_buf_is_valid(sess.result_bufnr) then
-    vim.keymap.set(mode, lhs, rhs, vim.tbl_extend("force", base_opts, opts, { buffer = sess.result_bufnr }))
+    M.set_keymap(mode, lhs, rhs, vim.tbl_extend("force", base_opts, opts, { buffer = sess.result_bufnr }))
     sess.keymap_buffers[sess.result_bufnr] = true
   end
 
   return true
+end
+
+--- Keymap set wrapper to allow lists of keys
+---@param modes string|string[] Mode "short-name" (see |nvim_set_keymap()|), or a list thereof.
+---@param lhs string|string[] Left-hand side |{lhs}| of the mapping, can also be a list.
+---@param rhs string|function Right-hand side |{rhs}| of the mapping, can be a Lua function.
+---@param opts? vim.keymap.set.Opts
+function M.set_keymap(modes, lhs, rhs, opts)
+  if type(lhs) == "string" then
+    vim.keymap.set(modes, lhs, rhs, opts)
+  else
+    for _, key in ipairs(lhs) do
+      vim.keymap.set(modes, key, rhs, opts)
+    end
+  end
+end
+
+--- Keymap del wrapper to delete lists of keys
+---@param modes string|string[]
+---@param lhs string|string[]
+---@param opts? vim.keymap.del.Opts
+function M.del_keymap(mode, lhs, opts)
+  if type(lhs) == "string" then
+    vim.keymap.del(mode, lhs, opts)
+  else
+    for _, key in ipairs(lhs) do
+      vim.keymap.del(mode, key, opts)
+    end
+  end
 end
 
 --- Remove codediff keymaps from a session's buffers
@@ -506,7 +535,7 @@ function M.clear_tab_keymaps(tabpage)
     end
     for _, key in pairs(keys) do
       if key then
-        pcall(vim.keymap.del, "n", key, { buffer = bufnr })
+        pcall(M.del_keymap, "n", key, { buffer = bufnr })
       end
     end
   end

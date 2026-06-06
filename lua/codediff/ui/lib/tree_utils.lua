@@ -151,7 +151,8 @@ function M.setup_fold_keymaps(opts)
   for _, binding in ipairs(fold_bindings) do
     local key = keymaps[binding.key]
     if key then
-      vim.keymap.set("n", key, binding.fn, vim.tbl_extend("force", map_options, { buffer = bufnr, desc = binding.desc }))
+      local set_keymap = require("codediff.ui.lifecycle.accessors").set_keymap
+      set_keymap("n", key, binding.fn, vim.tbl_extend("force", map_options, { buffer = bufnr, desc = binding.desc }))
     end
   end
 end

@@ -250,8 +250,9 @@ function M.toggle(tabpage)
 
   -- Close keymaps
   local show_help_key = keymaps.view.show_help or "g?"
+  local set_keymap = require("codediff.ui.lifecycle.accessors").set_keymap
   for _, key in ipairs({ "q", "<Esc>", show_help_key }) do
-    vim.keymap.set("n", key, function()
+    set_keymap("n", key, function()
       if vim.api.nvim_win_is_valid(win) then
         vim.api.nvim_win_close(win, true)
       end
