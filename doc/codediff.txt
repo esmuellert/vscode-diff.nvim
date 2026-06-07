@@ -195,11 +195,17 @@ Setup entry point:
       jump_to_first_change = true,
       highlight_priority = 100,
       compute_moves = false,
+      compact_context_lines = 3,
+      compact_sync_folds = true,
+      cycle_hunks_across_files = true,
     },
     explorer = {
       position = "left",
+      hidden = false,
       width = 40,
       height = 15,
+      auto_refresh = true,
+      auto_open_on_cursor = false,
       indent_markers = true,
       icons = {
         folder_closed = "",
@@ -210,6 +216,7 @@ Setup entry point:
       file_filter = {
         ignore = { ".git/**", ".jj/**" },
       },
+      status_right_margin = 1,
       visible_groups = {
         staged = true,
         unstaged = true,
@@ -234,6 +241,7 @@ Setup entry point:
         show_help = "g?",
         align_move = "gm",
         toggle_layout = "t",
+        toggle_compact = "gc",
       },
       explorer = {
         select = "<CR>",

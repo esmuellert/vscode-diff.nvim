@@ -26,7 +26,10 @@ local function load_virtual_buffer_content(buf, git_root, commit, filepath)
         api.nvim_buf_set_lines(buf, 0, -1, false, { "" })
         vim.bo[buf].modifiable = false
         vim.bo[buf].readonly = true
-        vim.bo[buf].filetype = ""
+        -- Clear filetype without firing FileType autocmd (see issue #323; matches setup_buffer below).
+        api.nvim_buf_call(buf, function()
+          vim.cmd("noautocmd setlocal filetype=")
+        end)
         vim.diagnostic.enable(false, { bufnr = buf })
 
         -- Fire loaded event so diff rendering proceeds

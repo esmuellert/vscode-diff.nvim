@@ -54,7 +54,19 @@ local function compute_and_render_inline(
   if modified_win and vim.api.nvim_win_is_valid(modified_win) then
     vim.wo[modified_win].wrap = false
     if auto_scroll_to_first_hunk and lines_diff.changes and #lines_diff.changes > 0 then
-      local target_line = lines_diff.changes[1].modified.start_line
+      -- Honor session.pending_cursor_landing (cycle-hunks-across-files
+      -- backward direction sets it to "last"; see ui/view/navigation.lua).
+      -- Look up the session via the window's tabpage because this code can
+      -- run from a scheduled callback on a different tab.
+      local lifecycle = require("codediff.ui.lifecycle")
+      local tabpage = vim.api.nvim_win_get_tabpage(modified_win)
+      local session = tabpage and lifecycle.get_session(tabpage) or nil
+      local landing = session and session.pending_cursor_landing
+      if session then session.pending_cursor_landing = nil end
+
+      local target_line = landing == "last"
+        and lines_diff.changes[#lines_diff.changes].modified.start_line
+        or lines_diff.changes[1].modified.start_line
       pcall(vim.api.nvim_win_set_cursor, modified_win, { target_line, 0 })
       vim.api.nvim_set_current_win(modified_win)
       vim.cmd("normal! zz")
@@ -549,30 +561,17 @@ function M.show_single_file(tabpage, file_path, opts)
   -- Load the file
   local file_bufnr
   if opts.revision and opts.git_root then
-    -- Virtual file: create scratch buffer and fetch content
-    file_bufnr = vim.api.nvim_create_buf(false, true)
-    vim.bo[file_bufnr].buftype = "nofile"
+    -- Virtual file: reuse a buffer keyed by (git_root, revision, path) via the
+    -- codediff:// URL scheme. This guarantees a stable bufnr across repeated
+    -- calls (same fix as side_by_side.load_virtual_file). The BufReadCmd in
+    -- core/virtual_file.lua handles content fetching and intentionally avoids
+    -- setting filetype to prevent LSP attach crashes on the custom URI scheme.
+    local virtual_file = require("codediff.core.virtual_file")
+    local url = virtual_file.create_url(opts.git_root, opts.revision, opts.rel_path or file_path)
+    file_bufnr = vim.fn.bufadd(url)
+    vim.fn.bufload(file_bufnr)
     vim.api.nvim_win_set_buf(mod_win, file_bufnr)
     welcome_window.sync(mod_win)
-    local ft = vim.filetype.match({ filename = opts.rel_path or file_path })
-    if ft then
-      vim.bo[file_bufnr].filetype = ft
-    end
-
-    local git = require("codediff.core.git")
-    git.get_file_content(opts.revision, opts.git_root, opts.rel_path or file_path, function(err, lines)
-      vim.schedule(function()
-        if not vim.api.nvim_buf_is_valid(file_bufnr) then
-          return
-        end
-        if err then
-          lines = {}
-        end
-        vim.bo[file_bufnr].modifiable = true
-        vim.api.nvim_buf_set_lines(file_bufnr, 0, -1, false, lines)
-        vim.bo[file_bufnr].modifiable = false
-      end)
-    end)
   else
     -- Real file
     file_bufnr = vim.fn.bufadd(file_path)

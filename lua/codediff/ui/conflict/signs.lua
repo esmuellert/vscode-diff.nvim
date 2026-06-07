@@ -33,7 +33,11 @@ function M.refresh_all_conflict_signs(session)
     -- Check if extmark position is reasonable (not spanning entire buffer or starting at 0 when it shouldn't)
     local mark_start = mark[1]
     local mark_end = mark[3].end_row
-    local expected_start = block.base_range.start_line - 1
+    -- The extmark is placed at the block's position in the auto-merged Result
+    -- buffer (result_range), so compare against that. Legacy blocks without
+    -- result_range fall back to base_range.
+    local expected_range = block.result_range or block.base_range
+    local expected_start = expected_range.start_line - 1
     -- If extmark start moved to 0 but expected start is not 0, it's corrupted (common after undo/redo)
     if mark_start == 0 and expected_start > 0 then
       needs_reinit = true

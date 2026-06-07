@@ -1,0 +1,75 @@
+-- Tests for lua/codediff/ui/highlights.lua color resolution.
+-- Specifically guards regression #366: highlight groups that use `fg + reverse`
+-- (e.g. built-in `sorbet`) must be read as bg when populating CodeDiffLineInsert
+-- / CodeDiffLineDelete, because Neovim's renderer swaps fg<->bg at draw time.
+
+local highlights = require("codediff.ui.highlights")
+
+local function reset_codediff()
+  -- Wipe any cached CodeDiff highlights so each test starts clean
+  pcall(vim.api.nvim_set_hl, 0, "CodeDiffLineInsert", {})
+  pcall(vim.api.nvim_set_hl, 0, "CodeDiffLineDelete", {})
+  require("codediff").setup({})
+end
+
+describe("highlights.lua color derivation", function()
+  before_each(reset_codediff)
+
+  it("reads bg directly for colorschemes that use bg-based diff highlights", function()
+    -- Mimic the default convention: DiffAdd uses bg + (optional) fg, no reverse
+    vim.api.nvim_set_hl(0, "DiffAdd", { bg = 0x123456 })
+    vim.api.nvim_set_hl(0, "DiffDelete", { bg = 0x654321 })
+    highlights.setup()
+
+    local insert = vim.api.nvim_get_hl(0, { name = "CodeDiffLineInsert", link = false })
+    local delete = vim.api.nvim_get_hl(0, { name = "CodeDiffLineDelete", link = false })
+    assert.are.equal(0x123456, insert.bg, "Insert bg should come from DiffAdd.bg")
+    assert.are.equal(0x654321, delete.bg, "Delete bg should come from DiffDelete.bg")
+  end)
+
+  it("reads fg when colorscheme uses fg + reverse (regression: #366 sorbet)", function()
+    -- Mimic sorbet's pattern: fg holds the green/red color and reverse=true
+    -- means Neovim renders it as a background at draw time.
+    vim.api.nvim_set_hl(0, "DiffAdd", { fg = 0x00af5f, bg = 0x000000, reverse = true })
+    vim.api.nvim_set_hl(0, "DiffDelete", { fg = 0xd70000, bg = 0x000000, reverse = true })
+    highlights.setup()
+
+    local insert = vim.api.nvim_get_hl(0, { name = "CodeDiffLineInsert", link = false })
+    local delete = vim.api.nvim_get_hl(0, { name = "CodeDiffLineDelete", link = false })
+    assert.are.equal(0x00af5f, insert.bg,
+      "Insert bg should come from DiffAdd.fg when reverse=true")
+    assert.are.equal(0xd70000, delete.bg,
+      "Delete bg should come from DiffDelete.fg when reverse=true")
+  end)
+
+  it("honors cterm.reverse independently of gui reverse", function()
+    -- Some colorschemes set the reverse flag only on the cterm side.
+    vim.api.nvim_set_hl(0, "DiffAdd", {
+      bg = 0x123456,
+      ctermfg = 35,
+      ctermbg = 16,
+      cterm = { reverse = true },
+    })
+    highlights.setup()
+
+    local insert = vim.api.nvim_get_hl(0, { name = "CodeDiffLineInsert", link = false })
+    assert.are.equal(0x123456, insert.bg, "GUI bg unaffected when only cterm reverses")
+    assert.are.equal(35, insert.ctermbg, "Cterm bg should come from ctermfg under cterm.reverse")
+  end)
+
+  it("re-derives on :colorscheme change", function()
+    -- First setup: bg-based DiffAdd
+    vim.api.nvim_set_hl(0, "DiffAdd", { bg = 0x111111 })
+    highlights.setup()
+    local before = vim.api.nvim_get_hl(0, { name = "CodeDiffLineInsert", link = false }).bg
+    assert.are.equal(0x111111, before)
+
+    -- Switch convention by emitting a ColorScheme event with a new DiffAdd
+    vim.api.nvim_set_hl(0, "DiffAdd", { fg = 0x222222, reverse = true })
+    vim.cmd("doautocmd ColorScheme")
+
+    local after = vim.api.nvim_get_hl(0, { name = "CodeDiffLineInsert", link = false }).bg
+    assert.are.equal(0x222222, after,
+      "ColorScheme autocmd should re-derive Insert bg from new DiffAdd")
+  end)
+end)

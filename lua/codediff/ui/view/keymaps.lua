@@ -6,6 +6,7 @@ local auto_refresh = require("codediff.ui.auto_refresh")
 local config = require("codediff.config")
 local navigation = require("codediff.ui.view.navigation")
 local render = require("codediff.ui.view.render")
+local compact = require("codediff.ui.view.compact")
 
 -- Centralized keymap setup for all diff view keymaps
 -- This function sets up ALL keymaps in one place for better maintainability
@@ -590,6 +591,11 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
       require("codediff.ui.view").toggle_layout(tabpage)
     end, { desc = "Toggle diff layout" })
   end
+  if keymaps.toggle_compact then
+    lifecycle.set_tab_keymap(tabpage, "n", keymaps.toggle_compact, function()
+      compact.toggle(tabpage)
+    end, { desc = "Toggle compact mode" })
+  end
 
   -- Toggle stage/unstage (- key) - only in explorer mode
   -- Support legacy config: keymaps.explorer.toggle_stage (deprecated)
@@ -834,6 +840,9 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
   if keymaps.align_move and not is_inline and config.options.diff.compute_moves then
     lifecycle.set_tab_keymap(tabpage, "n", keymaps.align_move, align_move, { desc = "Align moved code block" })
   end
+
+  -- Re-apply compact mode folds if active (persists across file switches)
+  compact.reapply(tabpage)
 end
 
 return M

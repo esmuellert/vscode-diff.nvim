@@ -97,16 +97,21 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
       conflict_result_width_ratio = { 1, 1, 1 }, -- Width ratio for center layout panes {left, center, right} (e.g., {1, 2, 1} for wider result)
       cycle_next_hunk = true,             -- Wrap around when navigating hunks (]c/[c): false to stop at first/last
       cycle_next_file = true,             -- Wrap around when navigating files (]f/[f): false to stop at first/last
+      cycle_hunks_across_files = true,    -- ]c/[c at file boundary hops to first/last hunk of next/prev file (explorer/history)
       jump_to_first_change = true,        -- Auto-scroll to first change when opening a diff: false to stay at same line
       highlight_priority = 100,           -- Priority for line-level diff highlights (increase to override LSP highlights)
       compute_moves = false,              -- Detect moved code blocks (opt-in, matches VSCode experimental.showMoves)
+      compact_context_lines = 3,          -- Number of context lines around hunks in compact mode
+      compact_sync_folds = true,          -- Sync fold open/close across panes (mirrors Vim diff mode behavior)
     },
 
     -- Explorer panel configuration
     explorer = {
       position = "left",  -- "left" or "bottom"
+      hidden = false,  -- Initial visibility state
       width = 40,         -- Width when position is "left" (columns)
       height = 15,        -- Height when position is "bottom" (lines)
+      auto_refresh = true,  -- Auto-refresh file list on focus / git index changes (set false to avoid lag in huge repos; R still refreshes manually)
       indent_markers = true,  -- Show indent markers in tree view (│, ├, └)
       initial_focus = "explorer",  -- Initial focus: "explorer", "original", or "modified"
       icons = {
@@ -119,6 +124,8 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
         ignore = { ".git/**", ".jj/**" },  -- Glob patterns to hide (e.g., {"*.lock", "dist/*"})
       },
       focus_on_select = false,  -- Jump to modified pane after selecting a file (default: stay in explorer)
+      auto_open_on_cursor = false, -- Rebind j/k/Down/Up in the explorer to also open the file under the cursor
+      status_right_margin = 1,  -- Trailing cells between status symbol (M/A/D) and right edge; increase if Nerd Font icons clip it
       visible_groups = {       -- Which groups to show (can be toggled at runtime)
         staged = true,
         unstaged = true,
@@ -157,6 +164,7 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
         show_help = "g?",   -- Show floating window with available keymaps
         align_move = "gm", -- Temporarily align moved code blocks across panes
         toggle_layout = "t", -- Toggle between side-by-side and inline layout
+        toggle_compact = "gc", -- Toggle compact mode (fold unchanged regions)
       },
       explorer = {
         select = "<CR>",    -- Open diff for selected file
@@ -733,7 +741,7 @@ codediff.nvim/
 
 - [x] Inline diff mode (single buffer view)
 - [x] Moved code detection (VSCode parity)
-- [ ] Fold support for large diffs
+- [x] Fold support for large diffs
 
 ## VSCode Reference
 

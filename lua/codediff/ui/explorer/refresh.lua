@@ -7,6 +7,12 @@ local welcome = require("codediff.ui.welcome")
 -- Setup auto-refresh triggers for explorer
 -- Returns a cleanup function that should be called when the explorer is destroyed
 function M.setup_auto_refresh(explorer, tabpage)
+  local explorer_config = config.options.explorer or {}
+  if explorer_config.auto_refresh == false then
+    explorer._cleanup_auto_refresh = function() end
+    return
+  end
+
   local refresh_timer = nil
   local debounce_ms = 500 -- Wait 500ms after last event
   local git_watcher = nil

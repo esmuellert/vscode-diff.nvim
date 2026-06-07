@@ -5,6 +5,7 @@ local accessors = require("codediff.ui.lifecycle.accessors")
 local session = require("codediff.ui.lifecycle.session")
 local state = require("codediff.ui.lifecycle.state")
 local welcome_window = require("codediff.ui.view.welcome_window")
+local compat = require("codediff.core.compat")
 
 -- Autocmd group for cleanup
 local augroup = vim.api.nvim_create_augroup("codediff_lifecycle", { clear = true })
@@ -66,12 +67,12 @@ local function cleanup_diff(tabpage)
   for _, client in ipairs(clients) do
     if client.server_capabilities.semanticTokensProvider then
       if original_virtual_uri then
-        pcall(client.notify, "textDocument/didClose", {
+        pcall(compat.lsp_notify, client, "textDocument/didClose", {
           textDocument = { uri = original_virtual_uri },
         })
       end
       if modified_virtual_uri then
-        pcall(client.notify, "textDocument/didClose", {
+        pcall(compat.lsp_notify, client, "textDocument/didClose", {
           textDocument = { uri = modified_virtual_uri },
         })
       end
@@ -176,19 +177,21 @@ function M.setup_autocmds()
   vim.api.nvim_create_autocmd("TabClosed", {
     group = augroup,
     callback = function()
-      -- TabClosed doesn't give us the tab number, so we need to scan
-      -- Remove any diffs for tabs that no longer exist
-      local valid_tabs = {}
-      for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
-        valid_tabs[tabpage] = true
-      end
-
-      local active_diffs = session.get_active_diffs()
-      for tabpage, _ in pairs(active_diffs) do
-        if not valid_tabs[tabpage] then
-          cleanup_diff(tabpage)
+      vim.schedule(function()
+        -- TabClosed doesn't give us the tab number, so we need to scan
+        -- Remove any diffs for tabs that no longer exist
+        local valid_tabs = {}
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+          valid_tabs[tabpage] = true
         end
-      end
+
+        local active_diffs = session.get_active_diffs()
+        for tabpage, _ in pairs(active_diffs) do
+          if not valid_tabs[tabpage] then
+            cleanup_diff(tabpage)
+          end
+        end
+      end)
     end,
   })
 
@@ -207,6 +210,22 @@ function M.setup_autocmds()
         if diff_win_count <= threshold then
           cleanup_diff(current_tab)
         end
+      end
+    end,
+  })
+
+  -- Re-pin panel widths on terminal/tmux resize for every active diff session
+  -- (see issue #346). VimResized is editor-global, so one autocmd handles all
+  -- tabs; layout.arrange() is a no-op for tabs without a session.
+  vim.api.nvim_create_autocmd("VimResized", {
+    group = augroup,
+    callback = function()
+      local ok_l, layout = pcall(require, "codediff.ui.layout")
+      if not ok_l then
+        return
+      end
+      for tabpage, _ in pairs(session.get_active_diffs()) do
+        pcall(layout.arrange, tabpage)
       end
     end,
   })

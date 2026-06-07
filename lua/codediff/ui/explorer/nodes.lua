@@ -281,8 +281,8 @@ function M.prepare_node(node, max_width, selected_path, selected_group)
 
   if data.type == "group" then
     -- Group header
-    line:append(" ", "Directory")
-    line:append(node.text, "Directory")
+    line:append(" ", "CodeDiffExplorerTreeGroup")
+    line:append(node.text, "CodeDiffExplorerTreeGroup")
   elseif data.type == "directory" then
     -- Directory node (tree view mode) - with indent markers
     local indent = build_indent_markers(data.indent_state)
@@ -352,8 +352,10 @@ function M.prepare_node(node, max_width, selected_path, selected_group)
     local directory = (view_mode == "tree") and "" or full_path:sub(1, -(#filename + 1))
 
     -- Calculate how much width we've used and reserve for status
+    local status_margin = config.options.explorer.status_right_margin or 1
     local used_width = vim.fn.strdisplaywidth(indent) + vim.fn.strdisplaywidth(icon_part)
-    local status_reserve = vim.fn.strdisplaywidth(status_symbol) + 3 -- 2 spaces before + 1 space after status
+    -- Reserve = symbol + 2 cells of minimum gap from content + configurable trailing margin
+    local status_reserve = vim.fn.strdisplaywidth(status_symbol) + 2 + status_margin
     local available_for_content = max_width - used_width - status_reserve
 
     -- Show: filename + full directory path, truncate directory from left if needed
@@ -394,14 +396,14 @@ function M.prepare_node(node, max_width, selected_path, selected_group)
       line:append(directory, get_hl("ExplorerDirectorySmall"))
     end
 
-    -- Add padding to push status symbol to the right edge
+    -- Right-align status symbol; trailing `status_margin` cells keep it visible against the window edge
     local content_len = vim.fn.strdisplaywidth(filename) + space_len + vim.fn.strdisplaywidth(directory)
-    local padding_needed = available_for_content - content_len + 2
-    if padding_needed > 0 then
-      line:append(string.rep(" ", padding_needed), get_hl("Normal"))
-    end
+    local padding_needed = math.max(2, available_for_content - content_len + 2)
+    line:append(string.rep(" ", padding_needed), get_hl("Normal"))
     line:append(status_symbol, get_hl(data.status_color))
-    line:append(" ", get_hl("Normal")) -- Right padding (matches status_reserve calculation)
+    if status_margin > 0 then
+      line:append(string.rep(" ", status_margin), get_hl("Normal"))
+    end
   end
 
   return line

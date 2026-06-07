@@ -321,4 +321,116 @@ describe("Inline diff with explorer", function()
     vim.fn.delete(orig_path)
     vim.fn.delete(mod_path)
   end)
+
+  -- =========================================================================
+  -- Test 5: Repeated show_single_file for the same real file keeps bufnr stable
+  -- =========================================================================
+  -- Regression test for #401 (real-file path). bufadd-based loading guarantees
+  -- the same bufnr for the same file path, so the window swap is a no-op and
+  -- the cursor is preserved across explorer refresh ticks.
+  it("Repeated show_single_file with same real file keeps bufnr stable", function()
+    local temp_dir = get_temp_dir()
+    local _, tabpage = create_explorer_placeholder(temp_dir)
+
+    local file_path = get_temp_path("inline_dedup_real.txt")
+    vim.fn.writefile({ "line one", "line two", "line three" }, file_path)
+
+    inline_view.show_single_file(tabpage, file_path)
+    vim.cmd("redraw")
+    vim.wait(200, function()
+      local s = lifecycle.get_session(tabpage)
+      return s and s.modified_path == file_path
+    end, 20)
+
+    local session_first = lifecycle.get_session(tabpage)
+    assert.is_not_nil(session_first, "Session should exist after first call")
+    local bufnr_first = session_first.modified_bufnr
+    assert.is_true(vim.api.nvim_buf_is_valid(bufnr_first), "First bufnr should be valid")
+
+    -- Place the cursor on line 3 to detect any reset
+    local mod_win = session_first.modified_win
+    if mod_win and vim.api.nvim_win_is_valid(mod_win) then
+      pcall(vim.api.nvim_win_set_cursor, mod_win, { 3, 0 })
+    end
+
+    for _ = 1, 4 do
+      inline_view.show_single_file(tabpage, file_path)
+    end
+
+    local session_after = lifecycle.get_session(tabpage)
+    assert.equal(bufnr_first, session_after.modified_bufnr,
+      "Repeated show_single_file should not change modified_bufnr (got "
+        .. tostring(session_after.modified_bufnr) .. ", expected " .. tostring(bufnr_first) .. ")")
+
+    vim.fn.delete(file_path)
+  end)
+
+  -- =========================================================================
+  -- Test 6: Repeated show_single_file for staged virtual file keeps bufnr
+  -- stable (the original #401 scenario)
+  -- =========================================================================
+  -- Previously the virtual-file branch did vim.api.nvim_create_buf(false, true)
+  -- on every call, so each refresh tick swapped a fresh scratch buffer into
+  -- the modified window and reset the cursor. The fix replaces that with
+  -- bufadd(virtual_file.create_url(...)), which returns a stable bufnr keyed
+  -- by (git_root, revision, path) — same pattern as side_by_side.lua.
+  it("Repeated show_single_file for staged virtual file keeps bufnr stable (#401)", function()
+    if vim.fn.executable("git") ~= 1 then
+      pending("git not available")
+      return
+    end
+
+    -- Create a real git repo with a staged newly-added file
+    local repo = vim.fn.tempname()
+    vim.fn.mkdir(repo, "p")
+    local function git(args)
+      local out = vim.fn.system({ "git", "-C", repo, unpack(args) })
+      assert(vim.v.shell_error == 0, "git " .. table.concat(args, " ") .. " failed: " .. out)
+    end
+    git({ "init", "-q" })
+    git({ "config", "user.email", "t@t" })
+    git({ "config", "user.name", "t" })
+
+    local rel = "newfile.txt"
+    vim.fn.writefile({ "alpha", "beta", "gamma", "delta" }, repo .. "/" .. rel)
+    git({ "add", rel })
+
+    local _, tabpage = create_explorer_placeholder(repo)
+
+    inline_view.show_single_file(tabpage, rel, {
+      revision = ":0",
+      git_root = repo,
+      rel_path = rel,
+      side = "modified",
+    })
+
+    vim.cmd("redraw")
+    vim.wait(500, function()
+      local s = lifecycle.get_session(tabpage)
+      return s and s.modified_revision == ":0" and s.modified_path == rel
+    end, 20)
+
+    local session_first = lifecycle.get_session(tabpage)
+    assert.is_not_nil(session_first, "Session should exist after first call")
+    local bufnr_first = session_first.modified_bufnr
+    assert.is_true(vim.api.nvim_buf_is_valid(bufnr_first), "First bufnr should be valid")
+    assert.equal(":0", session_first.modified_revision, "modified_revision should be :0")
+
+    -- Repeated calls — would churn bufnr without #401 fix
+    for _ = 1, 5 do
+      inline_view.show_single_file(tabpage, rel, {
+        revision = ":0",
+        git_root = repo,
+        rel_path = rel,
+        side = "modified",
+      })
+    end
+
+    local session_after = lifecycle.get_session(tabpage)
+    assert.equal(bufnr_first, session_after.modified_bufnr,
+      "Staged virtual file: bufnr must stay stable across repeated show_single_file calls (got "
+        .. tostring(session_after.modified_bufnr) .. ", expected " .. tostring(bufnr_first) .. ")")
+
+    vim.fn.delete(repo, "rf")
+  end)
 end)

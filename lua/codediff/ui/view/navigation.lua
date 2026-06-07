@@ -4,6 +4,37 @@ local M = {}
 local lifecycle = require("codediff.ui.lifecycle")
 local config = require("codediff.config")
 
+-- Hop to the next/previous file in the explorer's list.
+--
+-- The cursor will land on the first or last hunk of the new file once the
+-- file finishes loading; we communicate that wish by stashing
+-- `session.pending_cursor_landing` on the current session, which the
+-- diff-render completion path in view/render.lua reads and clears
+-- synchronously (no autocmds, no async tracking needed here).
+--
+-- Returns true if a hop was performed.
+local function hop_to_adjacent_file(direction)
+  local tabpage = vim.api.nvim_get_current_tabpage()
+  local panel_obj = lifecycle.get_explorer(tabpage)
+  if not panel_obj then
+    -- Cross-file cycling only makes sense in explorer/history mode.
+    return false
+  end
+
+  local session = lifecycle.get_session(tabpage)
+  if session then
+    -- "next" → land on first hunk of the next file (the natural forward walk)
+    -- "prev" → land on last hunk of the previous file (the natural backward walk)
+    session.pending_cursor_landing = direction == "next" and "first" or "last"
+  end
+
+  if direction == "next" then
+    return M.next_file()
+  else
+    return M.prev_file()
+  end
+end
+
 -- Navigate to next hunk in the current diff view
 -- Returns true if navigation succeeded, false otherwise
 function M.next_hunk()
@@ -56,6 +87,12 @@ function M.next_hunk()
       vim.api.nvim_echo({ { string.format("Hunk %d of %d", i, #diff_result.changes), "None" } }, false, {})
       return true
     end
+  end
+
+  -- At the end of the file's hunks. Try to hop to the next file before
+  -- falling back to within-file wrap.
+  if config.options.diff.cycle_hunks_across_files and hop_to_adjacent_file("next") then
+    return true
   end
 
   -- Wrap around to first hunk (if cycling enabled)
@@ -125,6 +162,11 @@ function M.prev_hunk()
       vim.api.nvim_echo({ { string.format("Hunk %d of %d", i, #diff_result.changes), "None" } }, false, {})
       return true
     end
+  end
+
+  -- Before the first hunk in this file. Try to hop to the previous file.
+  if config.options.diff.cycle_hunks_across_files and hop_to_adjacent_file("prev") then
+    return true
   end
 
   -- Wrap around to last hunk (if cycling enabled)

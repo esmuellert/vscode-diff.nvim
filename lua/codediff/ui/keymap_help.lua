@@ -65,6 +65,7 @@ local function build_sections(keymaps, is_explorer, is_history, is_conflict)
   if km.align_move then
     table.insert(view_items, { km.align_move, "Align moved code block" })
   end
+  table.insert(view_items, { km.toggle_compact, "Toggle compact mode (fold unchanged)" })
   table.insert(view_items, { km.hunk_textobject, "Hunk textobject (visual/operator)" })
   table.insert(view_items, { km.show_help, "Toggle this help" })
   table.insert(sections, section("VIEW", view_items))

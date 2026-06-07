@@ -106,12 +106,32 @@ function M.compute_and_render(
     vim.wo[original_win].wrap = false
     vim.wo[modified_win].wrap = false
 
-    -- Step 2: Determine target cursor positions
+    -- Step 2: Determine target cursor positions.
+    -- The two panes show different content, so original/modified line
+    -- numbers for the same hunk diverge whenever there are insertions or
+    -- deletions before it. Use per-pane coordinates (matches the
+    -- ui/view/navigation.lua next_hunk/prev_hunk convention).
     local orig_cursor, mod_cursor
     if auto_scroll_to_first_hunk and #lines_diff.changes > 0 then
-      local target_line
+      -- Honor session.pending_cursor_landing (set by the cycle-hunks-across-
+      -- files navigation path; see ui/view/navigation.lua). It's a one-shot
+      -- intent — read and clear here so the next render doesn't reapply it.
+      -- Look up the session by the modified window's tabpage rather than
+      -- find_tabpage_by_buffer (the session's bufnrs are updated AFTER
+      -- this render in the file-switch path) or current tabpage (this code
+      -- can run from a scheduled callback on a different tab).
+      local lifecycle = require("codediff.ui.lifecycle")
+      local tabpage = (modified_win and vim.api.nvim_win_is_valid(modified_win))
+        and vim.api.nvim_win_get_tabpage(modified_win) or nil
+      local session = tabpage and lifecycle.get_session(tabpage) or nil
+      local landing = session and session.pending_cursor_landing
+      if session then session.pending_cursor_landing = nil end
+
       if line_range then
-        -- Find the first hunk overlapping with or nearest to the line range
+        -- Range mode: find the first hunk overlapping the line range, then
+        -- use original-side coords for that hunk on both panes (line_range
+        -- itself is original-side input from history mode).
+        local target_line
         local range_start, range_end = line_range[1], line_range[2]
         for _, change in ipairs(lines_diff.changes) do
           local hunk_start = change.original.start_line
@@ -124,11 +144,15 @@ function M.compute_and_render(
         if not target_line then
           target_line = range_start
         end
+        orig_cursor = { target_line, 0 }
+        mod_cursor = { target_line, 0 }
       else
-        target_line = lines_diff.changes[1].original.start_line
+        local hunk = landing == "last"
+          and lines_diff.changes[#lines_diff.changes]
+          or lines_diff.changes[1]
+        orig_cursor = { hunk.original.start_line, 0 }
+        mod_cursor = { hunk.modified.start_line, 0 }
       end
-      orig_cursor = { target_line, 0 }
-      mod_cursor = { target_line, 0 }
     elseif saved_cursor then
       orig_cursor = { saved_cursor[1], 0 }
       mod_cursor = saved_cursor
@@ -228,6 +252,10 @@ function M.compute_and_render_conflict(original_buf, modified_buf, base_lines, o
     base_to_original_diff = base_to_original_diff,
     base_to_modified_diff = base_to_modified_diff,
     conflict_blocks = render_result and render_result.conflict_blocks or {},
+    -- Pass through the per-side content so callers (e.g. conflict_window's
+    -- auto-merge seed) can compute Result without re-fetching buffers.
+    original_lines = original_lines,
+    modified_lines = modified_lines,
   }
 end
 

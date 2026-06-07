@@ -4,6 +4,7 @@ local M = {}
 
 local config = require("codediff.config")
 local highlights = require("codediff.ui.highlights")
+local compat = require("codediff.core.compat")
 
 -- Dedicated namespace for inline diff (separate from side-by-side namespaces)
 M.ns_inline = vim.api.nvim_create_namespace("codediff-inline")
@@ -126,7 +127,7 @@ local function utf16_col_to_byte_col(line, utf16_col)
   if not line or utf16_col <= 1 then
     return utf16_col
   end
-  local ok, byte_idx = pcall(vim.str_byteindex, line, utf16_col - 1, true)
+  local ok, byte_idx = pcall(compat.str_byteindex_utf16, line, utf16_col - 1)
   if ok then
     return byte_idx + 1
   end
