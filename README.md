@@ -97,7 +97,7 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
       conflict_result_width_ratio = { 1, 1, 1 }, -- Width ratio for center layout panes {left, center, right} (e.g., {1, 2, 1} for wider result)
       cycle_next_hunk = true,             -- Wrap around when navigating hunks (]c/[c): false to stop at first/last
       cycle_next_file = true,             -- Wrap around when navigating files (]f/[f): false to stop at first/last
-      cycle_hunks_across_files = true,    -- ]c/[c at file boundary hops to first/last hunk of next/prev file (explorer/history)
+      cycle_hunks_across_files = false,   -- ]c/[c at file boundary hops to first/last hunk of next/prev file (explorer/history)
       jump_to_first_change = true,        -- Auto-scroll to first change when opening a diff: false to stay at same line
       highlight_priority = 100,           -- Priority for line-level diff highlights (increase to override LSP highlights)
       compute_moves = false,              -- Detect moved code blocks (opt-in, matches VSCode experimental.showMoves)

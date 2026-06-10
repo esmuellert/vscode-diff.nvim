@@ -81,17 +81,11 @@ describe("cycle_hunks_across_files (#161)", function()
   end
 
   it("OFF: ]c on the last hunk wraps within the same file (legacy behavior)", function()
-    -- Explicitly disable the option to verify the legacy code path still
-    -- works when the user opts out of cross-file cycling.
-    local cfg = require("codediff.config")
-    cfg.options = vim.deepcopy(cfg.defaults)
-    cfg.options.diff.cycle_hunks_across_files = false
-
     local tabpage, session, explorer = open_explorer("a.txt")
     assert.is_not_nil(session)
     assert.is_not_nil(explorer)
     assert.is_false(config.options.diff.cycle_hunks_across_files,
-      "option must be false for this test")
+      "option defaults to false")
 
     local starting_file = explorer.current_file_path
     local changes = session.stored_diff_result.changes
