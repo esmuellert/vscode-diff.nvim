@@ -77,12 +77,16 @@ function M.next_hunk()
 
   local cursor = vim.api.nvim_win_get_cursor(0)
   local current_line = cursor[1]
+  local buf_line_count = vim.api.nvim_buf_line_count(0)
 
-  -- Find next hunk after current line
+  -- Find next hunk after current line. Compare against the clamped target (where
+  -- the cursor can actually land), not the raw line: a trailing deletion sits
+  -- past the buffer end, so once we're on the clamped last line there is nowhere
+  -- to move and we must report failure (return false) rather than spin in place.
   for i, mapping in ipairs(diff_result.changes) do
-    local target_line = is_original and mapping.original.start_line or mapping.modified.start_line
+    local target_line = math.min(is_original and mapping.original.start_line or mapping.modified.start_line, buf_line_count)
     if target_line > current_line then
-      pcall(vim.api.nvim_win_set_cursor, 0, { target_line, 0 })
+      vim.api.nvim_win_set_cursor(0, { target_line, 0 })
       vim.cmd("normal! zz")
       vim.api.nvim_echo({ { string.format("Hunk %d of %d", i, #diff_result.changes), "None" } }, false, {})
       return true
@@ -99,7 +103,8 @@ function M.next_hunk()
   if config.options.diff.cycle_next_hunk then
     local first_hunk = diff_result.changes[1]
     local target_line = is_original and first_hunk.original.start_line or first_hunk.modified.start_line
-    pcall(vim.api.nvim_win_set_cursor, 0, { target_line, 0 })
+    target_line = math.min(target_line, buf_line_count)
+    vim.api.nvim_win_set_cursor(0, { target_line, 0 })
     vim.cmd("normal! zz")
     vim.api.nvim_echo({ { string.format("Hunk 1 of %d", #diff_result.changes), "None" } }, false, {})
     return true
@@ -151,13 +156,15 @@ function M.prev_hunk()
 
   local cursor = vim.api.nvim_win_get_cursor(0)
   local current_line = cursor[1]
+  local buf_line_count = vim.api.nvim_buf_line_count(0)
 
-  -- Find previous hunk before current line (search backwards)
+  -- Find previous hunk before current line (search backwards). Compare against
+  -- the clamped target so the "did we actually move" contract matches next_hunk.
   for i = #diff_result.changes, 1, -1 do
     local mapping = diff_result.changes[i]
-    local target_line = is_original and mapping.original.start_line or mapping.modified.start_line
+    local target_line = math.min(is_original and mapping.original.start_line or mapping.modified.start_line, buf_line_count)
     if target_line < current_line then
-      pcall(vim.api.nvim_win_set_cursor, 0, { target_line, 0 })
+      vim.api.nvim_win_set_cursor(0, { target_line, 0 })
       vim.cmd("normal! zz")
       vim.api.nvim_echo({ { string.format("Hunk %d of %d", i, #diff_result.changes), "None" } }, false, {})
       return true
@@ -173,7 +180,8 @@ function M.prev_hunk()
   if config.options.diff.cycle_next_hunk then
     local last_hunk = diff_result.changes[#diff_result.changes]
     local target_line = is_original and last_hunk.original.start_line or last_hunk.modified.start_line
-    pcall(vim.api.nvim_win_set_cursor, 0, { target_line, 0 })
+    target_line = math.min(target_line, buf_line_count)
+    vim.api.nvim_win_set_cursor(0, { target_line, 0 })
     vim.cmd("normal! zz")
     vim.api.nvim_echo({ { string.format("Hunk %d of %d", #diff_result.changes, #diff_result.changes), "None" } }, false, {})
     return true
