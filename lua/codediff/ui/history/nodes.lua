@@ -4,6 +4,7 @@ local M = {}
 
 local Tree = require("codediff.ui.lib.tree")
 local Line = require("codediff.ui.lib.line")
+local tree_utils = require("codediff.ui.lib.tree_utils")
 local config = require("codediff.config")
 
 -- Status symbols and colors (reuse from explorer)
@@ -14,16 +15,6 @@ local STATUS_SYMBOLS = {
   R = { symbol = "R", color = "CodeDiffStatusRenamed" },
 }
 
--- File icons (basic fallback)
-function M.get_file_icon(path)
-  local has_devicons, devicons = pcall(require, "nvim-web-devicons")
-  if has_devicons then
-    local icon, color = devicons.get_icon(path, nil, { default = true })
-    return icon or "", color
-  end
-  return "", nil
-end
-
 -- Create commit node with its file children
 -- commit: { hash, short_hash, author, date, date_relative, subject }
 -- files: { { path, status, old_path }, ... }
@@ -32,7 +23,7 @@ function M.create_commit_node(commit, files, git_root)
   local file_nodes = {}
 
   for i, file in ipairs(files) do
-    local icon, icon_color = M.get_file_icon(file.path)
+    local icon, icon_color = tree_utils.get_file_icon(file.path)
     local status_info = STATUS_SYMBOLS[file.status] or { symbol = file.status, color = "Normal" }
 
     file_nodes[#file_nodes + 1] = Tree.Node({
@@ -79,7 +70,7 @@ function M.create_list_file_nodes(files, commit_hash, git_root)
   local file_nodes = {}
 
   for i, file in ipairs(files) do
-    local icon, icon_color = M.get_file_icon(file.path)
+    local icon, icon_color = tree_utils.get_file_icon(file.path)
     local status_info = STATUS_SYMBOLS[file.status] or { symbol = file.status, color = "Normal" }
 
     file_nodes[#file_nodes + 1] = Tree.Node({
@@ -185,7 +176,7 @@ function M.create_tree_file_nodes(files, commit_hash, git_root)
       else
         -- File node
         local file = item._file
-        local icon, icon_color = M.get_file_icon(file.path)
+        local icon, icon_color = tree_utils.get_file_icon(file.path)
         local status_info = STATUS_SYMBOLS[file.status] or { symbol = file.status, color = "Normal" }
 
         nodes[#nodes + 1] = Tree.Node({

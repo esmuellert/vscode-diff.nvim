@@ -1,5 +1,8 @@
 local M = {}
 
+local devicons, mini_icons
+local icons_provider_resolved = false
+
 function M.find_foldable_node(node, tree)
   if node:is_foldable() then
     return node
@@ -154,6 +157,36 @@ function M.setup_fold_keymaps(opts)
       vim.keymap.set("n", key, binding.fn, vim.tbl_extend("force", map_options, { buffer = bufnr, desc = binding.desc }))
     end
   end
+end
+
+-- File icons (basic fallback)
+function M.get_file_icon(path)
+  if not (devicons or mini_icons) then
+    if icons_provider_resolved then
+      return "", nil
+    end
+
+    local ok, mod = pcall(require, "nvim-web-devicons")
+    if ok then
+      devicons = mod
+    else
+      ok, mod = pcall(require, "mini.icons")
+      if ok then
+        mini_icons = mod
+      end
+    end
+
+    icons_provider_resolved = true
+  end
+
+  local icon, color
+  if devicons then
+    icon, color = devicons.get_icon(path, nil, { default = true })
+  elseif mini_icons then
+    icon, color = mini_icons.get("file", path)
+  end
+
+  return icon or "", color
 end
 
 return M

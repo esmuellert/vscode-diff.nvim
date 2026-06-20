@@ -4,6 +4,7 @@ local M = {}
 
 local Tree = require("codediff.ui.lib.tree")
 local Line = require("codediff.ui.lib.line")
+local tree_utils = require("codediff.ui.lib.tree_utils")
 local config = require("codediff.config")
 
 -- Merge artifact patterns (created by git mergetool)
@@ -65,16 +66,6 @@ function M.filter_merge_artifacts(files)
   return filtered
 end
 
--- File icons (basic fallback)
-function M.get_file_icon(path)
-  local has_devicons, devicons = pcall(require, "nvim-web-devicons")
-  if has_devicons then
-    local icon, color = devicons.get_icon(path, nil, { default = true })
-    return icon or "", color
-  end
-  return "", nil
-end
-
 -- Folder icon (configurable via config, with nerd font defaults)
 function M.get_folder_icon(is_open)
   local explorer_config = config.options.explorer or {}
@@ -91,7 +82,7 @@ end
 function M.create_file_nodes(files, git_root, group)
   local nodes = {}
   for _, file in ipairs(files) do
-    local icon, icon_color = M.get_file_icon(file.path)
+    local icon, icon_color = tree_utils.get_file_icon(file.path)
     local status_info = STATUS_SYMBOLS[file.status] or { symbol = file.status, color = "Normal" }
 
     nodes[#nodes + 1] = Tree.Node({
@@ -214,7 +205,7 @@ function M.create_tree_file_nodes(files, git_root, group)
       else
         -- File node
         local file = item._file
-        local icon, icon_color = M.get_file_icon(file.path)
+        local icon, icon_color = tree_utils.get_file_icon(file.path)
         local status_info = STATUS_SYMBOLS[file.status] or { symbol = file.status, color = "Normal" }
 
         nodes[#nodes + 1] = Tree.Node({
