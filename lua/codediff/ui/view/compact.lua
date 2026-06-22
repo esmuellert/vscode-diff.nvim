@@ -315,6 +315,12 @@ function M.reapply(tabpage)
 
   local changes = session.stored_diff_result.changes
   if not changes or #changes == 0 then
+    if session.layout == "inline" then
+      if session.modified_win then visible_lines_by_win[session.modified_win] = nil end
+    else
+      if session.original_win then visible_lines_by_win[session.original_win] = nil end
+      if session.modified_win then visible_lines_by_win[session.modified_win] = nil end
+    end
     return
   end
 
