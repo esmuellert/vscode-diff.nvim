@@ -475,4 +475,70 @@ describe("compact mode (#344)", function()
         "modified pane: corresponding line " .. mod_target .. " should also be inside a closed fold (synced), got " .. mod_after)
     end)
   end)
+
+  -- =====================================================================
+  -- reapply with empty changes (new/untracked file switch)
+  -- =====================================================================
+
+  describe("reapply with empty changes", function()
+    it("clears stale fold data so foldexpr returns '0' for all lines (side-by-side)", function()
+      local original, modified = {}, {}
+      for i = 1, 30 do
+        original[i] = "line " .. i
+        modified[i] = "line " .. i
+      end
+      modified[15] = "line 15 CHANGED"
+
+      local tabpage, session = create_session(original, modified)
+      assert.is_true(compact.enable(tabpage))
+
+      -- foldexpr should return "1" for a line far from the hunk
+      local fold_before = vim.api.nvim_win_call(session.modified_win, function()
+        vim.v.lnum = 1
+        return compact.foldexpr_eval()
+      end)
+      assert.equal("1", fold_before, "line 1 should be foldable before reapply")
+
+      -- Simulate switching to a file with no changes (untracked/new file)
+      session.stored_diff_result = { changes = {}, moves = {} }
+      compact.reapply(tabpage)
+
+      -- After reapply with empty changes, foldexpr should return "0" for all lines
+      for _, win in ipairs({ session.original_win, session.modified_win }) do
+        local result = vim.api.nvim_win_call(win, function()
+          vim.v.lnum = 1
+          return compact.foldexpr_eval()
+        end)
+        assert.equal("0", result,
+          "foldexpr should return '0' after reapply with empty changes (win " .. win .. ")")
+      end
+    end)
+
+    it("clears stale fold data so foldexpr returns '0' for all lines (inline)", function()
+      require("codediff").setup({
+        diff = { layout = "inline", compact_context_lines = 3 },
+      })
+
+      local original, modified = {}, {}
+      for i = 1, 30 do
+        original[i] = "line " .. i
+        modified[i] = "line " .. i
+      end
+      modified[15] = "line 15 CHANGED"
+
+      local tabpage, session = create_session(original, modified)
+      assert.is_true(compact.enable(tabpage))
+
+      -- Simulate switching to a file with no changes
+      session.stored_diff_result = { changes = {}, moves = {} }
+      compact.reapply(tabpage)
+
+      local result = vim.api.nvim_win_call(session.modified_win, function()
+        vim.v.lnum = 1
+        return compact.foldexpr_eval()
+      end)
+      assert.equal("0", result,
+        "foldexpr should return '0' after reapply with empty changes (inline)")
+    end)
+  end)
 end)
