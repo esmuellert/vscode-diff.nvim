@@ -28,6 +28,7 @@ function M.setup_explorer(tabpage, session_config, original_win, modified_win)
   if not session_config.git_root then
     explorer_opts.dir1 = session_config.original_path
     explorer_opts.dir2 = session_config.modified_path
+    explorer_opts.paths = session_config.explorer_data.paths
   end
   if session_config.explorer_data.focus_file then
     explorer_opts.focus_file = session_config.explorer_data.focus_file
