@@ -179,6 +179,8 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
     tabpage = tabpage,
     dir1 = opts.dir1,
     dir2 = opts.dir2,
+    paths = opts.paths, -- Dir mode: restrict refresh to these relative paths
+
     base_revision = base_revision,
     target_revision = target_revision,
     status_result = status_result, -- Store initial status result

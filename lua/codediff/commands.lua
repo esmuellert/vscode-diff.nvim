@@ -159,7 +159,11 @@ local function handle_file_diff(file_a, file_b, global_opts)
   end
 end
 
-local function handle_dir_diff(dir1, dir2, global_opts)
+-- opts.paths: optional list of relative paths to restrict the comparison to.
+--   When provided, only those paths are diffed (missing on either side => a
+--   creation/deletion), avoiding a full scan of the (possibly huge) trees.
+local function handle_dir_diff(dir1, dir2, global_opts, opts)
+  opts = opts or {}
   local dir_mod = require("codediff.core.dir")
 
   -- Expand ~ and environment variables in paths
@@ -175,8 +179,15 @@ local function handle_dir_diff(dir1, dir2, global_opts)
     return
   end
 
-  local diff = dir_mod.diff_directories(dir1, dir2)
+  local diff = dir_mod.diff_directories(dir1, dir2, { paths = opts.paths })
   local status_result = diff.status_result
+
+  if diff.missing and #diff.missing > 0 then
+    vim.notify(
+      ("codediff: %d path(s) not found in either directory (ignored), e.g. %s"):format(#diff.missing, diff.missing[1]),
+      vim.log.levels.WARN
+    )
+  end
 
   if #status_result.unstaged == 0 and #status_result.staged == 0 then
     vim.notify("No differences between directories", vim.log.levels.INFO)
@@ -194,10 +205,20 @@ local function handle_dir_diff(dir1, dir2, global_opts)
     layout = global_opts.layout,
     explorer_data = {
       status_result = status_result,
+      paths = opts.paths, -- carried so refresh keeps the same filter
     },
   }
 
   view.create(session_config, "")
+end
+
+-- Public entry point for a path-restricted directory diff.
+-- opts.paths: list of relative paths to compare (required for the filtered
+--   behavior; omit for a full-tree diff, equivalent to `:CodeDiff dir1 dir2`).
+-- opts.layout: "inline" | "side-by-side" (optional).
+function M.dir_diff(dir1, dir2, opts)
+  opts = opts or {}
+  handle_dir_diff(dir1, dir2, { layout = opts.layout }, { paths = opts.paths })
 end
 
 -- Handle file history command
