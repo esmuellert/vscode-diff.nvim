@@ -9,6 +9,7 @@ local lifecycle = require("codediff.ui.lifecycle")
 local config = require("codediff.config")
 local view = require("codediff.ui.view")
 local path = require("codediff.core.path")
+local ap = require("codediff.core.argparse")
 
 --- Parse triple-dot syntax for merge-base comparisons.
 -- @param arg string: The argument to parse
@@ -621,193 +622,238 @@ function M.vscode_merge(opts, global_opts)
   end
 end
 
+-- ── Command tree (argparse) ────────────────────────────────────────────────
+-- The :CodeDiff grammar is declared once as an argparse Command tree. The
+-- handlers reproduce the previous dispatch exactly; revision/file/dir and
+-- triple-dot detection stays in the handlers because it touches the filesystem.
+
+-- Translate global flags into the { layout, exit_on_close } table handlers expect.
+local function to_global_opts(m)
+  local layout
+  if m:get_flag("inline") then
+    layout = "inline"
+  elseif m:get_flag("side_by_side") then
+    layout = "side-by-side"
+  end
+  return { layout = layout, exit_on_close = m:get_flag("exit_on_close") or nil }
+end
+
+-- Expand % (current file) and ~/env in a path argument.
+local function expand_arg_path(p)
+  if p == "%" then
+    return vim.api.nvim_buf_get_name(0)
+  end
+  return vim.fn.expand(p)
+end
+
+-- Cached git revision candidates (completion fires on every keystroke).
+local rev_cache = { candidates = nil, git_root = nil, timestamp = 0 }
+local function rev_candidates()
+  local now = vim.loop.now() / 1000
+  local git_root = git.get_git_root_sync(vim.fn.getcwd())
+  if rev_cache.candidates and rev_cache.git_root == git_root and (now - rev_cache.timestamp) < 5 then
+    return rev_cache.candidates
+  end
+  local cands = git.get_rev_candidates(git_root)
+  rev_cache.candidates, rev_cache.git_root, rev_cache.timestamp = cands, git_root, now
+  return cands
+end
+
+-- Completor: git refs, plus their `ref...` merge-base variants.
+local function complete_revisions(ctx)
+  local lead = ctx.arg_lead or ""
+  local base = lead:match("^(.+)%.%.%.$")
+  local out = {}
+  for _, r in ipairs(rev_candidates()) do
+    if base then
+      table.insert(out, base .. "..." .. r)
+    else
+      table.insert(out, r)
+      table.insert(out, r .. "...")
+    end
+  end
+  return out
+end
+
+-- Completor: file paths.
+local function complete_files(ctx)
+  return vim.fn.getcompletion(ctx.arg_lead or "", "file")
+end
+
+-- Build the :CodeDiff command tree.
+local function build_app()
+  local Arg = ap.Arg
+
+  local app = ap
+    .Command
+    .new("CodeDiff")
+    :about("VSCode-style diff view")
+    :arg(Arg.flag("inline"):long("--inline"):global(true))
+    :arg(Arg.flag("side_by_side"):long("--side-by-side"):global(true))
+    :arg(Arg.flag("exit_on_close"):long("--exit-on-close"):global(true))
+    -- Default action: explorer for the working tree, a revision, or two revisions.
+    :arg(Arg.new("rev1"):completor(complete_revisions))
+    :arg(Arg.new("rev2"):completor(complete_revisions))
+    :handler(function(m)
+      local go = to_global_opts(m)
+      local a, b = m:get_one("rev1"), m:get_one("rev2")
+      if not a then
+        handle_explorer(nil, nil, go)
+        return
+      end
+      if b then
+        local e1, e2 = vim.fn.expand(a), vim.fn.expand(b)
+        if vim.fn.isdirectory(e1) == 1 and vim.fn.isdirectory(e2) == 1 then
+          handle_dir_diff(e1, e2, go)
+          return
+        end
+      end
+      local base, target = parse_triple_dot(a)
+      if base then
+        handle_explorer_merge_base(base, target, go)
+      elseif b then
+        handle_explorer(a, b, go)
+      else
+        handle_explorer(a, nil, go)
+      end
+    end)
+
+  app:subcommand(ap.Command.new("file"):arg(Arg.new("a"):completor(complete_revisions)):arg(Arg.new("b"):completor(complete_files)):handler(function(m)
+    local go = to_global_opts(m)
+    local a, b = m:get_one("a"), m:get_one("b")
+    if a and b then
+      if vim.fn.filereadable(a) == 1 and vim.fn.filereadable(b) == 1 then
+        handle_file_diff(a, b, go)
+      else
+        handle_git_diff(a, b, go)
+      end
+    elseif a then
+      local base, target = parse_triple_dot(a)
+      if base then
+        handle_git_diff_merge_base(base, target, go)
+      else
+        handle_git_diff(a, nil, go)
+      end
+    else
+      vim.notify("Usage: :CodeDiff file <revision> [revision2] OR :CodeDiff file <file_a> <file_b>", vim.log.levels.ERROR)
+    end
+  end))
+
+  app:subcommand(ap.Command.new("dir"):arg(Arg.new("d1"):completor(complete_files)):arg(Arg.new("d2"):completor(complete_files)):handler(function(m)
+    local d1, d2 = m:get_one("d1"), m:get_one("d2")
+    if d1 and d2 then
+      handle_dir_diff(d1, d2, to_global_opts(m))
+    else
+      vim.notify("Usage: :CodeDiff dir <dir1> <dir2>", vim.log.levels.ERROR)
+    end
+  end))
+
+  app:subcommand(
+    ap.Command
+      .new("history")
+      :arg(Arg.new("arg1"):completor(complete_revisions))
+      :arg(Arg.new("arg2"):completor(complete_files))
+      :arg(Arg.flag("reverse"):long("--reverse"):short("-r"))
+      :arg(Arg.new("base"):long("--base"):short("-b"):completor(complete_revisions))
+      :handler(function(m)
+        local go = to_global_opts(m)
+        local flags = { reverse = m:get_flag("reverse"), base = m:get_one("base") }
+        local arg1, arg2 = m:get_one("arg1"), m:get_one("arg2")
+        local range, file_path
+        if arg1 and arg2 then
+          range = arg1
+          file_path = expand_arg_path(arg2)
+        elseif arg1 then
+          local expanded = expand_arg_path(arg1)
+          if vim.fn.filereadable(expanded) == 1 then
+            file_path = expanded
+          else
+            range = arg1
+          end
+        end
+        local line_range = m:range()
+        if line_range and not file_path then
+          local buf_name = vim.api.nvim_buf_get_name(0)
+          if buf_name ~= "" then
+            file_path = buf_name
+          else
+            vim.notify("Line-range history requires a file buffer", vim.log.levels.ERROR)
+            return
+          end
+        end
+        handle_history(range, file_path, flags, line_range, go)
+      end)
+  )
+
+  app:subcommand(ap.Command.new("merge"):arg(Arg.new("file"):completor(complete_files)):handler(function(m)
+    local file = m:get_one("file")
+    if not file then
+      vim.notify("Usage: :CodeDiff merge <filename>", vim.log.levels.ERROR)
+      return
+    end
+    M.vscode_merge({ fargs = { file } }, to_global_opts(m))
+  end))
+
+  app:subcommand(ap.Command.new("install"):handler(function(m)
+    local force = m:bang()
+    local installer = require("codediff.core.installer")
+    if force then
+      vim.notify("Reinstalling libvscode-diff...", vim.log.levels.INFO)
+    end
+    local success, err = installer.install({ force = force, silent = false })
+    if success then
+      vim.notify("libvscode-diff installation successful!", vim.log.levels.INFO)
+    else
+      vim.notify("Installation failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+    end
+  end))
+
+  return app
+end
+
+local _app
+local function get_app()
+  _app = _app or build_app()
+  return _app
+end
+
+-- Tokens the completion engine sees: drop the command name and the partial lead.
+local function completion_prior(cmd_line, arg_lead)
+  local toks = vim.split(cmd_line, "%s+", { trimempty = true })
+  table.remove(toks, 1)
+  if arg_lead ~= "" and toks[#toks] == arg_lead then
+    table.remove(toks)
+  end
+  return toks
+end
+
+-- Completion entry point shared by :CodeDiff and :VscodeDiff.
+function M.complete(arg_lead, cmd_line)
+  return ap.complete.complete(get_app(), completion_prior(cmd_line, arg_lead), arg_lead)
+end
+
 function M.vscode_diff(opts)
-  -- Check if current tab is a diff view and toggle (close) it if so
+  -- Toggle: close the diff view if the current tab already is one.
   local current_tab = vim.api.nvim_get_current_tabpage()
   if lifecycle.get_session(current_tab) then
     lifecycle.close(current_tab)
     return
   end
 
-  -- Pre-parse global flags; strip them so subcommand dispatch sees clean args
-  local global_opts = {}
-  local args = {}
-  for _, arg in ipairs(opts.fargs) do
-    if arg == "--inline" then
-      global_opts.layout = "inline"
-    elseif arg == "--side-by-side" then
-      global_opts.layout = "side-by-side"
-    elseif arg == "--exit-on-close" then
-      global_opts.exit_on_close = true
-    else
-      table.insert(args, arg)
-    end
+  -- Normalize the `install!` alias into the `install` subcommand + bang.
+  local fargs, bang = opts.fargs, opts.bang
+  if fargs[1] == "install!" then
+    fargs = vim.list_slice(fargs, 1, #fargs)
+    fargs[1] = "install"
+    bang = true
   end
 
-  if #args == 0 then
-    -- :CodeDiff without arguments opens explorer mode
-    handle_explorer(nil, nil, global_opts)
-    return
-  end
-
-  -- Auto-detect two directory arguments: :CodeDiff dir1 dir2
-  if #args == 2 then
-    local expanded1 = vim.fn.expand(args[1])
-    local expanded2 = vim.fn.expand(args[2])
-    if vim.fn.isdirectory(expanded1) == 1 and vim.fn.isdirectory(expanded2) == 1 then
-      handle_dir_diff(expanded1, expanded2, global_opts)
-      return
-    end
-  end
-
-  local subcommand = args[1]
-
-  if subcommand == "merge" then
-    -- :CodeDiff merge <filename> - Merge Tool Mode
-    if #args ~= 2 then
-      vim.notify("Usage: :CodeDiff merge <filename>", vim.log.levels.ERROR)
-      return
-    end
-    M.vscode_merge({ fargs = { args[2] } }, global_opts)
-  elseif subcommand == "file" then
-    if #args == 2 then
-      -- Check for triple-dot syntax: :CodeDiff file main...
-      local base, target = parse_triple_dot(args[2])
-      if base then
-        handle_git_diff_merge_base(base, target, global_opts)
-      else
-        -- :CodeDiff file HEAD
-        handle_git_diff(args[2], nil, global_opts)
-      end
-    elseif #args == 3 then
-      -- Check if arguments are files or revisions
-      local arg1 = args[2]
-      local arg2 = args[3]
-
-      -- If both are readable files, treat as file diff
-      if vim.fn.filereadable(arg1) == 1 and vim.fn.filereadable(arg2) == 1 then
-        -- :CodeDiff file file_a.txt file_b.txt
-        handle_file_diff(arg1, arg2, global_opts)
-      else
-        -- Assume revisions: :CodeDiff file main HEAD
-        handle_git_diff(arg1, arg2, global_opts)
-      end
-    else
-      vim.notify("Usage: :CodeDiff file <revision> [revision2] OR :CodeDiff file <file_a> <file_b>", vim.log.levels.ERROR)
-    end
-  elseif subcommand == "dir" then
-    -- :CodeDiff dir dir1 dir2
-    if #args ~= 3 then
-      vim.notify("Usage: :CodeDiff dir <dir1> <dir2>", vim.log.levels.ERROR)
-      return
-    end
-    handle_dir_diff(args[2], args[3], global_opts)
-  elseif subcommand == "history" then
-    -- :CodeDiff history [range] [file] [--reverse|-r]
-    -- :'<,'>CodeDiff history                  - line-range history for selection
-    -- Examples:
-    --   :CodeDiff history                    - last 100 commits
-    --   :CodeDiff history HEAD~10            - last 10 commits
-    --   :CodeDiff history origin/main..HEAD  - commits in range
-    --   :CodeDiff history HEAD~10 %          - last 10 commits for current file
-    --   :CodeDiff history %                  - history for current file
-    --   :CodeDiff history path/to/file.lua   - history for specific file
-    --   :CodeDiff history --reverse          - last 100 commits (oldest first)
-    --   :CodeDiff history HEAD~10 -r         - last 10 commits (oldest first)
-
-    -- Import flag parser
-    local args_parser = require("codediff.core.args")
-
-    -- Define flag spec for history command
-    local flag_spec = {
-      ["--reverse"] = { short = "-r", type = "boolean" },
-      ["--base"] = { short = "-b", type = "string" },
-    }
-
-    -- Parse args: separate positional from flags
-    local remaining_args = vim.list_slice(args, 2) -- Skip "history" subcommand
-    local positional, flags, parse_err = args_parser.parse_args(remaining_args, flag_spec)
-
-    if parse_err then
-      vim.notify("Error: " .. parse_err, vim.log.levels.ERROR)
-      return
-    end
-
-    -- Use positional[1], positional[2] instead of args[2], args[3]
-    local arg1 = positional[1]
-    local arg2 = positional[2]
-    local range = nil
-    local file_path = nil
-
-    -- Helper to expand path (handles % and normal paths)
-    local function expand_path(p)
-      if p == "%" then
-        return vim.api.nvim_buf_get_name(0)
-      else
-        return vim.fn.expand(p)
-      end
-    end
-
-    if arg1 and arg2 then
-      -- Two params: first is range, second is file_path
-      range = arg1
-      file_path = expand_path(arg2)
-    elseif arg1 then
-      -- One param: try as file_path first, otherwise treat as range
-      local expanded = expand_path(arg1)
-      if vim.fn.filereadable(expanded) == 1 then
-        file_path = expanded
-      else
-        range = arg1
-      end
-    end
-
-    -- Detect visual range: opts.range == 2 means a range was explicitly given
-    -- (e.g., :'<,'>CodeDiff history)
-    local line_range = nil
-    if opts.range == 2 then
-      line_range = { opts.line1, opts.line2 }
-      -- Visual range implies current file
-      if not file_path then
-        local buf_name = vim.api.nvim_buf_get_name(0)
-        if buf_name ~= "" then
-          file_path = buf_name
-        else
-          vim.notify("Line-range history requires a file buffer", vim.log.levels.ERROR)
-          return
-        end
-      end
-    end
-
-    handle_history(range, file_path, flags, line_range, global_opts)
-  elseif subcommand == "install" or subcommand == "install!" then
-    -- :CodeDiff install or :CodeDiff install!
-    -- Handle both :CodeDiff! install and :CodeDiff install!
-    local force = opts.bang or subcommand == "install!"
-    local installer = require("codediff.core.installer")
-
-    if force then
-      vim.notify("Reinstalling libvscode-diff...", vim.log.levels.INFO)
-    end
-
-    local success, err = installer.install({ force = force, silent = false })
-
-    if success then
-      vim.notify("libvscode-diff installation successful!", vim.log.levels.INFO)
-    else
-      vim.notify("Installation failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
-    end
-  else
-    -- :CodeDiff <revision> [revision2] - opens explorer mode
-    -- Check for triple-dot syntax: :CodeDiff main...
-    local base, target = parse_triple_dot(subcommand)
-    if base then
-      handle_explorer_merge_base(base, target, global_opts)
-    elseif #args == 2 then
-      handle_explorer(args[1], args[2], global_opts)
-    else
-      handle_explorer(subcommand, nil, global_opts)
-    end
+  local _, err = get_app():execute(fargs, {
+    bang = bang,
+    range = opts.range == 2 and { opts.line1, opts.line2 } or nil,
+  })
+  if err then
+    vim.notify("CodeDiff: " .. tostring(err), vim.log.levels.ERROR)
   end
 end
 
