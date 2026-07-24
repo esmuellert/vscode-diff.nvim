@@ -1,7 +1,7 @@
 [stack]
 upstream = 2253030fc17c8356a2ff1026f25cb9b570bdd91f
-expectedHead = 887768dba06f77f9fe031b905a10fc7f6cf93145
-expectedTree = bacd5aaa9786876ae20927b41531a829260b43c6
+expectedHead = 366e6398d73facea8bf132318ce2d4c45abbfc60
+expectedTree = 4657e0f90b6741cbd38cb464dd782ec4bff16440
 testCommand = make test
 publishRemote = origin
 publishBranch = main
@@ -14,7 +14,6 @@ patches =
     local-benchmarks
     explorer-gf
     initial-explorer-selection
-    hide-native-tabline
     preserve-explorer-state
     highlight-attributes
     intraline-line-matching
@@ -40,12 +39,6 @@ description = fix(explorer): select the first visible file on initial open
 file = patches/005-initial-explorer-selection.patch
 originCommit = 5cd6863e6220528b220612de35988379fac37f68
 pullRequest = https://github.com/esmuellert/codediff.nvim/pull/460
-
-[patch "hide-native-tabline"]
-description = fix(ui): hide the native tabline in CodeDiff views
-file = patches/009-hide-native-tabline.patch
-originCommit = 59f06411b7bc9c89a41c67d0e20dcdb79c88a6a5
-pullRequest = https://github.com/esmuellert/codediff.nvim/pull/441
 
 [patch "preserve-explorer-state"]
 description = fix(explorer): preserve tree state across refreshes

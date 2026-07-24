@@ -1,4 +1,4 @@
-From 05c91c55b1415e13998acd0f4eea502025a71669 Mon Sep 17 00:00:00 2001
+From f8485fc871d40d939173f7557d72b84f34e8d863 Mon Sep 17 00:00:00 2001
 From: Richard Gill <richard@rgill.co.uk>
 Date: Sat, 18 Jul 2026 16:30:00 +0100
 Subject: [PATCH] fix: build fork native library locally
