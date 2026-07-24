@@ -622,6 +622,11 @@ function M.vscode_merge(opts, global_opts)
 end
 
 function M.vscode_diff(opts)
+  -- Optionally sync builtin 'diffopt' (iwhite*) onto codediff options.
+  pcall(function()
+    require("codediff.builtin_compat").apply_diffopt()
+  end)
+
   -- Check if current tab is a diff view and toggle (close) it if so
   local current_tab = vim.api.nvim_get_current_tabpage()
   if lifecycle.get_session(current_tab) then

@@ -165,6 +165,17 @@ M.defaults = {
       diffget_current = "3do", -- Get hunk from current (right/ours) buffer
     },
   },
+
+  -- Compatibility with Neovim's built-in diff (vimdiff) entry points.
+  -- Thin proxy commands / autocmds only; no engine changes.
+  builtin_compat = {
+    -- Register :Diffsplit and :Diffoff proxy commands.
+    commands = true,
+    -- Handle `nvim -d file1 file2` at startup by opening codediff.
+    nvim_d = true,
+    -- Sync 'diffopt' iwhite/iwhiteeol onto codediff ignore_trim_whitespace.
+    sync_diffopt = false,
+  },
 }
 
 M.options = vim.deepcopy(M.defaults)

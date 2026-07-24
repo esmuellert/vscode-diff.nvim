@@ -13,6 +13,9 @@ local virtual_file = require('codediff.core.virtual_file')
 virtual_file.setup()
 highlights.setup()
 
+-- Thin built-in-diff compatibility (proxy commands + autocmds; cheap).
+require('codediff.builtin_compat').setup()
+
 -- Re-apply highlights on ColorScheme change
 vim.api.nvim_create_autocmd("ColorScheme", {
   group = vim.api.nvim_create_augroup("CodeDiffHighlights", { clear = true }),
