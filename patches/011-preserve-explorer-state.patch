@@ -1,4 +1,4 @@
-From 5f6c1f9db2ed459d46c77cc50e6eeeb567085192 Mon Sep 17 00:00:00 2001
+From 86fea9944f9ab223c5d2242f1769f342ecf056f5 Mon Sep 17 00:00:00 2001
 From: Richard Gill <richard@rgill.co.uk>
 Date: Thu, 16 Jul 2026 21:19:53 +0100
 Subject: [PATCH] fix: preserve explorer tree state across refreshes

@@ -1,7 +1,7 @@
 [stack]
-upstream = 2253030fc17c8356a2ff1026f25cb9b570bdd91f
-expectedHead = 366e6398d73facea8bf132318ce2d4c45abbfc60
-expectedTree = 4657e0f90b6741cbd38cb464dd782ec4bff16440
+upstream = 8bd120d5e02172852e788adde2abc94383cae741
+expectedHead = abb75f057fde25d7eea4466919a8ef776f418f54
+expectedTree = fdbf14988c00ba25fb019ea80168cc496f0e5e37
 testCommand = make test
 publishRemote = origin
 publishBranch = main
@@ -12,10 +12,7 @@ referencePatches =
     design-line-wrapping
 patches =
     local-benchmarks
-    explorer-gf
-    initial-explorer-selection
     preserve-explorer-state
-    highlight-attributes
     intraline-line-matching
     native-gutter-signs
     explorer-line-statistics
@@ -28,29 +25,11 @@ file = patches/003-local-benchmarks.patch
 originCommit = cfd02bb94a4906b344bcdb573e38b552d4d3f27a
 pullRequest = https://github.com/esmuellert/codediff.nvim/pull/458
 
-[patch "explorer-gf"]
-description = fix: "gf" shortcut should open selected explorer file in previous tab
-file = patches/004-explorer-gf.patch
-originCommit = c705be714f92cf3364fc4e51363e9bf2979d6b01
-pullRequest = https://github.com/esmuellert/codediff.nvim/pull/321
-
-[patch "initial-explorer-selection"]
-description = fix(explorer): select the first visible file on initial open
-file = patches/005-initial-explorer-selection.patch
-originCommit = 5cd6863e6220528b220612de35988379fac37f68
-pullRequest = https://github.com/esmuellert/codediff.nvim/pull/460
-
 [patch "preserve-explorer-state"]
 description = fix(explorer): preserve tree state across refreshes
 file = patches/011-preserve-explorer-state.patch
 originCommit = 47c55ba63c21960d479c38d40486b45f26ddbdfb
 pullRequest = https://github.com/esmuellert/codediff.nvim/pull/443
-
-[patch "highlight-attributes"]
-description = fix(highlights): preserve character group attributes
-file = patches/013-highlight-attributes.patch
-originCommit = dab51ea7ee1eed05ec4a2c7eb918783ea3b8a606
-pullRequest = https://github.com/esmuellert/codediff.nvim/pull/447
 
 [patch "explorer-line-statistics"]
 description = feat(explorer): Git stats + Explorer Keymaps + Explorer line renderer
