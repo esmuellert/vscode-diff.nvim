@@ -55,6 +55,16 @@ local function open_explorer(temp_dir, focus_file)
   return ready, tabpage, explorer
 end
 
+local function find_file_node(explorer, predicate)
+  for line = 1, vim.api.nvim_buf_line_count(explorer.bufnr) do
+    local node = explorer.tree:get_node(line)
+    local data = node and node.data
+    if data and data.path and predicate(data) then
+      return line, data.path, data.group
+    end
+  end
+end
+
 describe("Explorer Mode", function()
   local temp_dir
   local original_cwd
@@ -480,6 +490,37 @@ describe("Explorer Mode", function()
     assert.is_true(notified, "Should notify for non-git directory")
   end)
 
+  it("Opens the explorer file under the cursor in the previous tab", function()
+    require("codediff").setup({
+      diff = { layout = "side-by-side" },
+      explorer = { auto_open_on_cursor = true },
+      keymaps = { view = { open_in_prev_tab = "P" } },
+    })
+
+    local previous_tab = vim.api.nvim_get_current_tabpage()
+    local ready, tabpage, explorer = open_explorer(temp_dir, "file1.txt")
+    assert.is_true(ready, "Explorer should be ready with an initial selection")
+    vim.api.nvim_set_current_tabpage(tabpage)
+
+    local target_line, target_path = find_file_node(explorer, function(data)
+      return data.path ~= explorer.current_file_path
+    end)
+    assert.is_not_nil(target_line, "Should find a different file node")
+
+    vim.api.nvim_set_current_win(explorer.winid)
+    vim.api.nvim_win_set_cursor(explorer.winid, { target_line, 0 })
+    local callback = vim.api.nvim_buf_call(explorer.bufnr, function()
+      return vim.fn.maparg("P", "n", false, true).callback
+    end)
+    assert.is_function(callback, "open_in_prev_tab mapping should exist in explorer buffer")
+    callback()
+
+    assert.equals(previous_tab, vim.api.nvim_get_current_tabpage())
+    local expected_path = vim.uv.fs_realpath(vim.fs.joinpath(temp_dir, target_path))
+    local actual_path = vim.uv.fs_realpath(vim.api.nvim_buf_get_name(0))
+    assert.equals(expected_path, actual_path)
+  end)
+
   -- Test: auto_open_on_cursor opens the file under cursor after j/k
   it("Auto-opens diff under cursor when auto_open_on_cursor is enabled", function()
     require("codediff").setup({
@@ -496,22 +537,9 @@ describe("Explorer Mode", function()
 
     -- Find a file node and its delta from the current cursor line.
     local cur_line = vim.api.nvim_win_get_cursor(explorer.winid)[1]
-    local target_line, target_path, target_group
-    local line_count = vim.api.nvim_buf_line_count(explorer.bufnr)
-    for line = 1, line_count do
-      local node = explorer.tree:get_node(line)
-      if node and node.data then
-        local t = node.data.type
-        if t ~= "group" and t ~= "directory" then
-          if node.data.path ~= initial_path or node.data.group ~= initial_group then
-            target_line = line
-            target_path = node.data.path
-            target_group = node.data.group
-            break
-          end
-        end
-      end
-    end
+    local target_line, target_path, target_group = find_file_node(explorer, function(data)
+      return data.path ~= initial_path or data.group ~= initial_group
+    end)
     assert.is_not_nil(target_line, "Should find a second file node to navigate to")
 
     -- Press j (or k) the right number of times to reach the target line.
