@@ -22,31 +22,31 @@ patches =
 [patch "local-benchmarks"]
 description = Add local performance benchmarks
 file = patches/003-local-benchmarks.patch
-originCommit = cfd02bb94a4906b344bcdb573e38b552d4d3f27a
+originCommit = 7873437263a5af86fa8d4830df56adfc55a6ee51
 pullRequest = https://github.com/esmuellert/codediff.nvim/pull/458
 
 [patch "preserve-explorer-state"]
 description = fix(explorer): preserve tree state across refreshes
 file = patches/011-preserve-explorer-state.patch
-originCommit = 47c55ba63c21960d479c38d40486b45f26ddbdfb
+originCommit = 0b71d250c70781418120caab0af4eb29c9b0ca1b
 pullRequest = https://github.com/esmuellert/codediff.nvim/pull/443
 
 [patch "explorer-line-statistics"]
 description = feat(explorer): Git stats + Explorer Keymaps + Explorer line renderer
 file = patches/016-explorer-line-statistics.patch
-originCommit = fa861a647e059ea115fd70f3adb9b6246412de57
+originCommit = 40595138dc56e07890ebb1c70e1e76062213683b
 pullRequest = https://github.com/esmuellert/codediff.nvim/pull/448
 
 [patch "intraline-line-matching"]
 description = feat: add line matching strategies
 file = patches/014-intraline-line-matching.patch
-originCommit = 46adf53a909a2842633186adc51d1c85eca40047
+originCommit = c52464a5bf61cf1eaab4ec364e4042aa710047eb
 pullRequest = https://github.com/esmuellert/codediff.nvim/pull/459
 
 [patch "native-gutter-signs"]
 description = Added native gutter signs support
 file = patches/015-native-gutter-signs.patch
-originCommit = 67f7c483a8ef05447ec1d4a412a4e7553bade06b
+originCommit = d3cb2ea809b48a65404806051d97cf6fa23b4c24
 pullRequest = https://github.com/esmuellert/codediff.nvim/pull/451
 
 [patch "local-native-build"]
