@@ -1,7 +1,7 @@
 [stack]
 upstream = 8bd120d5e02172852e788adde2abc94383cae741
-expectedHead = abb75f057fde25d7eea4466919a8ef776f418f54
-expectedTree = fdbf14988c00ba25fb019ea80168cc496f0e5e37
+expectedHead = 516a65faa15c2817ef8176631464be75b1345808
+expectedTree = 899ac55d917d3493bc44f36d4a6b25cc5bc26b3a
 testCommand = make test
 publishRemote = origin
 publishBranch = main
@@ -17,6 +17,7 @@ patches =
     native-gutter-signs
     explorer-line-statistics
     local-native-build
+    pi-code-annotations
     fork-notice
 
 [patch "local-benchmarks"]
@@ -62,6 +63,11 @@ originCommit = 0b15ee032d53279e264112a45b4bbc45abf11429
 description = design: synchronized line wrapping and viewport rendering
 file = patches/019-design-line-wrapping.patch
 originCommit = 70ff0766533682c312a835e79584d942859fe827
+
+[patch "pi-code-annotations"]
+description = feat: add diff annotation integration API
+file = patches/021-pi-code-annotations.patch
+originCommit = 1220624e59d0bc9424a9bfca93f5ef2d8211bddd
 
 [patch "fork-notice"]
 file = patches/020-fork-notice.patch

@@ -1,0 +1,343 @@
+From 319fff314995f5bf8c693aa02126c0e17e2f755a Mon Sep 17 00:00:00 2001
+From: Richard Gill <richard@rgill.co.uk>
+Date: Sat, 25 Jul 2026 15:10:56 +0100
+Subject: [PATCH] feat: add diff annotation integration API
+
+---
+ README.md                             |  9 ++++-
+ lua/codediff/init.lua                 | 26 ++++++++++++++
+ lua/codediff/ui/filler.lua            |  2 +-
+ lua/codediff/ui/move.lua              | 35 ++++++++++++++++++
+ lua/codediff/ui/view/side_by_side.lua | 13 +++++++
+ tests/api_spec.lua                    | 40 +++++++++++++++++++++
+ tests/ui/filler_spec.lua              | 11 ++++++
+ tests/ui/move_virtlines_spec.lua      | 51 +++++++++++++++++++++++++++
+ 8 files changed, 185 insertions(+), 2 deletions(-)
+
+diff --git a/README.md b/README.md
+index 37ec535..e0121d3 100644
+--- a/README.md
++++ b/README.md
+@@ -709,13 +709,20 @@ git.get_git_root("/path/to/file.lua", function(err, git_root)
+ end)
+ ```
+ 
++### Diff View Integrations
++
++`require("codediff").get_diff_context(bufnr)` returns the buffer's `tabpage`, `side`, `git_root`, and `path` when it belongs to a diff view.
++
++`require("codediff").render_aligned_modified_virtual_lines(opts)` places caller-owned virtual lines in the modified buffer and balancing filler in the original buffer. It returns `false` when the tab is not an active two-pane side-by-side diff. `opts` contains `tabpage`, zero-based `line`, `namespace`, `virt_lines`, and optional `priority`.
++
+ ### User Autocmd Events
+ 
+ CodeDiff emits `User` autocmd events at key lifecycle points, allowing you to customize behavior without config flags:
+ 
+ | Event | When | Data |
+ |-------|------|------|
+-| `CodeDiffOpen` | After diff view is fully ready | `tabpage`, `mode` |
++| `CodeDiffOpen` | After the diff tab opens | `tabpage`, `mode` |
++| `CodeDiffViewUpdated` | After diff buffers render or the selected file changes | `tabpage` |
+ | `CodeDiffClose` | Before cleanup starts | `tabpage`, `mode` |
+ | `CodeDiffFileSelect` | When a file is selected in explorer | `tabpage`, `path`, `status` |
+ 
+diff --git a/lua/codediff/init.lua b/lua/codediff/init.lua
+index 431a485..d0f77b5 100644
+--- a/lua/codediff/init.lua
++++ b/lua/codediff/init.lua
+@@ -10,6 +10,32 @@ function M.setup(opts)
+   render.setup_highlights()
+ end
+ 
++function M.render_aligned_modified_virtual_lines(opts)
++  return require("codediff.ui.move").render_aligned_modified_virtual_lines(opts)
++end
++
++function M.get_diff_context(bufnr)
++  local lifecycle = require("codediff.ui.lifecycle")
++  local tabpage = lifecycle.find_tabpage_by_buffer(bufnr)
++  local session = tabpage and lifecycle.get_session(tabpage)
++  if not session then
++    return nil
++  end
++
++  local side = session.original_bufnr == bufnr and "original" or session.modified_bufnr == bufnr and "modified" or nil
++  if not side then
++    return nil
++  end
++
++  local ref = side == "original" and session.original or session.modified
++  return {
++    tabpage = tabpage,
++    side = side,
++    git_root = session.git_root,
++    path = ref and ref.absolute or nil,
++  }
++end
++
+ -- Navigate to next hunk in the current diff view
+ -- Returns true if navigation succeeded, false otherwise
+ function M.next_hunk()
+diff --git a/lua/codediff/ui/filler.lua b/lua/codediff/ui/filler.lua
+index d182089..a257276 100644
+--- a/lua/codediff/ui/filler.lua
++++ b/lua/codediff/ui/filler.lua
+@@ -60,7 +60,7 @@ function M.place(bufnr, after_line_0idx, count, opts)
+     virt_lines[index] = line == "" and {} or { { line, "CodeDiffFiller" } }
+   end
+ 
+-  return vim.api.nvim_buf_set_extmark(bufnr, highlights.ns_filler, after_line_0idx, 0, {
++  return vim.api.nvim_buf_set_extmark(bufnr, opts.namespace or highlights.ns_filler, after_line_0idx, 0, {
+     virt_lines = virt_lines,
+     virt_lines_above = above,
+     priority = opts.priority,
+diff --git a/lua/codediff/ui/move.lua b/lua/codediff/ui/move.lua
+index d7c02ff..0f3c249 100644
+--- a/lua/codediff/ui/move.lua
++++ b/lua/codediff/ui/move.lua
+@@ -160,10 +160,45 @@ local function place_annotation(ann_bufnr, filler_bufnr, ann_line, label, change
+   })
+ end
+ 
++local function place_aligned_modified_filler(session, opts)
++  local filler_bufnr = session.original_bufnr
++  local changes = session.stored_diff_result.changes or {}
++  local annotation_line = opts.line + 1
++  local change = find_change_for_mod(annotation_line, changes)
++  local filler_anchor, filler_above = compute_filler_position(annotation_line, change, false, changes, vim.api.nvim_buf_line_count(filler_bufnr))
++  pcall(filler_renderer.place, filler_bufnr, filler_anchor, #opts.virt_lines, {
++    above = filler_above,
++    priority = opts.priority or 300,
++    namespace = opts.namespace,
++  })
++end
++
+ -- ============================================================================
+ -- Public API
+ -- ============================================================================
+ 
++function M.render_aligned_modified_virtual_lines(opts)
++  local lifecycle = require("codediff.ui.lifecycle")
++  local session = lifecycle.get_session(opts.tabpage or vim.api.nvim_get_current_tabpage())
++  if not session or session.layout ~= "side-by-side" or session.single_pane or not session.stored_diff_result then
++    return false
++  end
++
++  local ann_bufnr = session.modified_bufnr
++  local filler_bufnr = session.original_bufnr
++  if not ann_bufnr or not filler_bufnr or not vim.api.nvim_buf_is_valid(ann_bufnr) or not vim.api.nvim_buf_is_valid(filler_bufnr) then
++    return false
++  end
++
++  pcall(vim.api.nvim_buf_set_extmark, ann_bufnr, opts.namespace, opts.line, 0, {
++    virt_lines = opts.virt_lines,
++    virt_lines_above = true,
++    priority = opts.priority or 300,
++  })
++  place_aligned_modified_filler(session, opts)
++  return true
++end
++
+ --- Render all moved code indicators on both buffers.
+ --- @param left_bufnr number original buffer
+ --- @param right_bufnr number modified buffer
+diff --git a/lua/codediff/ui/view/side_by_side.lua b/lua/codediff/ui/view/side_by_side.lua
+index 055c59b..176af96 100644
+--- a/lua/codediff/ui/view/side_by_side.lua
++++ b/lua/codediff/ui/view/side_by_side.lua
+@@ -30,6 +30,14 @@ local setup_auto_refresh = render.setup_auto_refresh
+ local setup_conflict_result_window = conflict_window.setup_conflict_result_window
+ local setup_all_keymaps = view_keymaps.setup_all_keymaps
+ 
++local function emit_view_updated(tabpage)
++  vim.api.nvim_exec_autocmds("User", {
++    pattern = "CodeDiffViewUpdated",
++    modeline = false,
++    data = { tabpage = tabpage },
++  })
++end
++
+ -- ============================================================================
+ -- Create
+ -- ============================================================================
+@@ -248,6 +256,7 @@ function M.create(session_config, filetype, on_ready)
+                 conflict.setup_keymaps(tabpage)
+               end
+ 
++              emit_view_updated(tabpage)
+               -- Signal that view is ready
+               if on_ready then
+                 on_ready()
+@@ -303,6 +312,7 @@ function M.create(session_config, filetype, on_ready)
+           -- Setup auto-sync on file switch (after session is complete!)
+           lifecycle.setup_auto_sync_on_file_switch(tabpage, original_is_virtual, modified_is_virtual)
+ 
++          emit_view_updated(tabpage)
+           -- Signal that view is ready
+           if on_ready then
+             on_ready()
+@@ -517,6 +527,7 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
+               setup_all_keymaps(tabpage, original_info.bufnr, modified_info.bufnr, is_explorer_mode)
+               local conflict = require("codediff.ui.conflict")
+               conflict.setup_keymaps(tabpage)
++              emit_view_updated(tabpage)
+             end
+           end
+         end)
+@@ -551,6 +562,7 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
+         if saved_current_win and vim.api.nvim_win_is_valid(saved_current_win) then
+           vim.api.nvim_set_current_win(saved_current_win)
+         end
++        emit_view_updated(tabpage)
+       end
+     end
+   end
+@@ -788,6 +800,7 @@ local function show_single_file(tabpage, opts)
+   if keep_win and vim.api.nvim_win_is_valid(keep_win) then
+     welcome_window.sync_later(keep_win)
+   end
++  emit_view_updated(tabpage)
+ end
+ 
+ -- Load a real file from disk, return bufnr
+diff --git a/tests/api_spec.lua b/tests/api_spec.lua
+index d6f8144..b106809 100644
+--- a/tests/api_spec.lua
++++ b/tests/api_spec.lua
+@@ -11,6 +11,14 @@ describe("Public API", function()
+       assert.is_function(codediff.setup)
+     end)
+ 
++    it("exports get_diff_context function", function()
++      assert.is_function(codediff.get_diff_context)
++    end)
++
++    it("exports render_aligned_modified_virtual_lines function", function()
++      assert.is_function(codediff.render_aligned_modified_virtual_lines)
++    end)
++
+     it("exports next_hunk function", function()
+       assert.is_function(codediff.next_hunk)
+     end)
+@@ -28,6 +36,38 @@ describe("Public API", function()
+     end)
+   end)
+ 
++  describe("diff context", function()
++    it("returns nil when the buffer has no diff session", function()
++      assert.is_nil(codediff.get_diff_context(9999))
++    end)
++
++    it("returns the buffer's side and file context", function()
++      local lifecycle = require("codediff.ui.lifecycle")
++      local original_find_tabpage = lifecycle.find_tabpage_by_buffer
++      local original_get_session = lifecycle.get_session
++      lifecycle.find_tabpage_by_buffer = function()
++        return 7
++      end
++      lifecycle.get_session = function()
++        return {
++          git_root = "/repo",
++          original_bufnr = 10,
++          original = { absolute = "/repo/before.lua" },
++          modified_bufnr = 11,
++          modified = { absolute = "/repo/after.lua" },
++        }
++      end
++
++      local original = codediff.get_diff_context(10)
++      local modified = codediff.get_diff_context(11)
++      lifecycle.find_tabpage_by_buffer = original_find_tabpage
++      lifecycle.get_session = original_get_session
++
++      assert.are.same({ tabpage = 7, side = "original", git_root = "/repo", path = "/repo/before.lua" }, original)
++      assert.are.same({ tabpage = 7, side = "modified", git_root = "/repo", path = "/repo/after.lua" }, modified)
++    end)
++  end)
++
+   describe("navigation functions", function()
+     it("next_hunk returns false when no diff session", function()
+       local result = codediff.next_hunk()
+diff --git a/tests/ui/filler_spec.lua b/tests/ui/filler_spec.lua
+index 028701e..d8dda4b 100644
+--- a/tests/ui/filler_spec.lua
++++ b/tests/ui/filler_spec.lua
+@@ -46,6 +46,17 @@ describe("Configurable filler rendering", function()
+     vim.api.nvim_buf_delete(bufnr, { force = true })
+   end)
+ 
++  it("can place fillers in a caller namespace", function()
++    local bufnr = create_buffer()
++    local namespace = vim.api.nvim_create_namespace("codediff-filler-caller-test")
++    filler.place(bufnr, 0, 1, { namespace = namespace })
++
++    local marks = vim.api.nvim_buf_get_extmarks(bufnr, namespace, 0, -1, { details = true })
++    assert.equal(1, #marks)
++    assert.equal(string.rep("╱", 500), marks[1][4].virt_lines[1][1][1])
++    vim.api.nvim_buf_delete(bufnr, { force = true })
++  end)
++
+   it("keeps blank alignment rows when filler text is empty", function()
+     config.setup({ diff = { filler_text = "" } })
+     local bufnr = create_buffer()
+diff --git a/tests/ui/move_virtlines_spec.lua b/tests/ui/move_virtlines_spec.lua
+index e8cc7b5..5f49df6 100644
+--- a/tests/ui/move_virtlines_spec.lua
++++ b/tests/ui/move_virtlines_spec.lua
+@@ -102,6 +102,57 @@ describe("Move annotation virt_lines", function()
+     assert.is_true(#lines_diff.moves >= 1, "Should detect at least 1 move")
+   end)
+ 
++  it("renders external virtual lines with balancing filler", function()
++    local left_buf, right_buf, lines_diff = setup_move_buffers()
++    local lifecycle = require("codediff.ui.lifecycle")
++    local original_get_session = lifecycle.get_session
++    lifecycle.get_session = function()
++      return {
++        original_bufnr = left_buf,
++        modified_bufnr = right_buf,
++        layout = "side-by-side",
++        stored_diff_result = lines_diff,
++      }
++    end
++    local namespace = vim.api.nvim_create_namespace("codediff-external-annotation-test")
++
++    local rendered = require("codediff.ui.move").render_aligned_modified_virtual_lines({
++      line = 0,
++      namespace = namespace,
++      virt_lines = { { { "note: inspect this", "DiagnosticInfo" } } },
++    })
++    lifecycle.get_session = original_get_session
++
++    assert.is_true(rendered)
++    local annotation_marks = collect_virt_line_marks(right_buf, namespace)
++    local filler_marks = collect_virt_line_marks(left_buf, namespace)
++    assert.are.equal("note: inspect this", annotation_marks[1].texts[1])
++    assert.is_truthy(filler_marks[1].texts[1]:find("╱", 1, true))
++
++    vim.api.nvim_buf_delete(left_buf, { force = true })
++    vim.api.nvim_buf_delete(right_buf, { force = true })
++  end)
++
++  it("leaves unaligned layouts to the caller", function()
++    local lifecycle = require("codediff.ui.lifecycle")
++    local original_get_session = lifecycle.get_session
++    local session = { layout = "inline", stored_diff_result = { changes = {} } }
++    lifecycle.get_session = function()
++      return session
++    end
++    local opts = {
++      line = 0,
++      namespace = vim.api.nvim_create_namespace("codediff-unaligned-annotation-test"),
++      virt_lines = { { { "note: inspect this", "DiagnosticInfo" } } },
++    }
++
++    assert.is_false(require("codediff.ui.move").render_aligned_modified_virtual_lines(opts))
++    session.layout = "side-by-side"
++    session.single_pane = true
++    assert.is_false(require("codediff.ui.move").render_aligned_modified_virtual_lines(opts))
++    lifecycle.get_session = original_get_session
++  end)
++
+   -- 1. Annotation virt_line exists above moved block on original (left) side.
+   it("places annotation virt_line above moved block on original side", function()
+     local left_buf, right_buf, lines_diff = setup_move_buffers()
