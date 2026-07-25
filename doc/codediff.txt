@@ -240,6 +240,7 @@ Setup entry point:
         ignore = { ".git/**", ".jj/**" },
       },
       status_right_margin = 1,
+      status_gap = 0,
       visible_groups = {
         staged = true,
         unstaged = true,

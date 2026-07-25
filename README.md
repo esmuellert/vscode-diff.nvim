@@ -129,6 +129,7 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
       focus_on_select = false,  -- Jump to modified pane after selecting a file (default: stay in explorer)
       auto_open_on_cursor = false, -- Rebind j/k/Down/Up in the explorer to also open the file under the cursor
       status_right_margin = 1,  -- Trailing cells between status symbol (M/A/D) and right edge; increase if Nerd Font icons clip it
+      status_gap = 0, -- Minimum gap between content and the status column
       visible_groups = {       -- Which groups to show (can be toggled at runtime)
         staged = true,
         unstaged = true,
