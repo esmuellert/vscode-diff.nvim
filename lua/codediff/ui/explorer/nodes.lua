@@ -32,6 +32,30 @@ local STATUS_SYMBOLS = {
   ["!"] = { symbol = "!", color = "CodeDiffStatusConflict" },
 }
 
+-- Widest status symbol (e.g. "??"), so truncation aligns across all rows.
+local STATUS_SYMBOL_COLUMN_WIDTH = 0
+for _, entry in pairs(STATUS_SYMBOLS) do
+  STATUS_SYMBOL_COLUMN_WIDTH = math.max(STATUS_SYMBOL_COLUMN_WIDTH, vim.fn.strdisplaywidth(entry.symbol))
+end
+
+--- Truncate text to `keep_width` display cells, appending an ellipsis.
+local function truncate_by_width(text, keep_width)
+  local ellipsis = "…"
+  local chars_to_keep = math.max(1, keep_width - vim.fn.strdisplaywidth(ellipsis))
+
+  local byte_pos = 0
+  local accumulated_width = 0
+  for char in vim.gsplit(text, "") do
+    local char_width = vim.fn.strdisplaywidth(char)
+    if accumulated_width + char_width > chars_to_keep then
+      break
+    end
+    accumulated_width = accumulated_width + char_width
+    byte_pos = byte_pos + #char
+  end
+  return text:sub(1, byte_pos) .. ellipsis
+end
+
 -- Indent marker characters (neo-tree style)
 local INDENT_MARKERS = {
   edge = "│", -- Vertical line for non-last items
@@ -351,11 +375,11 @@ function M.prepare_node(node, max_width, selected_path, selected_group)
     -- In tree mode, don't show directory (it's in the hierarchy)
     local directory = (view_mode == "tree") and "" or full_path:sub(1, -(#filename + 1))
 
-    -- Calculate how much width we've used and reserve for status
+    -- Reserve a fixed-width status column + gap + margin, so truncation aligns across rows.
     local status_margin = config.options.explorer.status_right_margin or 1
+    local status_gap = config.options.explorer.status_gap or 0 -- gap between content and status column
     local used_width = vim.fn.strdisplaywidth(indent) + vim.fn.strdisplaywidth(icon_part)
-    -- Reserve = symbol + 2 cells of minimum gap from content + configurable trailing margin
-    local status_reserve = vim.fn.strdisplaywidth(status_symbol) + 2 + status_margin
+    local status_reserve = STATUS_SYMBOL_COLUMN_WIDTH + status_gap + status_margin
     local available_for_content = max_width - used_width - status_reserve
 
     -- Show: filename + full directory path, truncate directory from left if needed
@@ -366,26 +390,17 @@ function M.prepare_node(node, max_width, selected_path, selected_group)
     if filename_len + space_len + directory_len > available_for_content then
       -- Truncate directory from the right (keep the start)
       local available_for_dir = available_for_content - filename_len - space_len
-      if available_for_dir > 3 then
-        local ellipsis = "..."
-        local chars_to_keep = available_for_dir - vim.fn.strdisplaywidth(ellipsis)
-
-        -- Truncate directory by display width, not byte index
-        local byte_pos = 0
-        local accumulated_width = 0
-        for char in vim.gsplit(directory, "") do
-          local char_width = vim.fn.strdisplaywidth(char)
-          if accumulated_width + char_width > chars_to_keep then
-            break
-          end
-          accumulated_width = accumulated_width + char_width
-          byte_pos = byte_pos + #char
-        end
-        directory = directory:sub(1, byte_pos) .. ellipsis
+      if available_for_dir > 1 then
+        directory = truncate_by_width(directory, available_for_dir)
       else
-        -- Not enough space for directory, just show filename
+        -- Not enough space for directory, drop it entirely
         directory = ""
         space_len = 0
+
+        -- Filename alone may overflow too; truncate so the status symbol stays visible.
+        if filename_len > available_for_content then
+          filename = truncate_by_width(filename, available_for_content)
+        end
       end
     end
 
@@ -396,10 +411,11 @@ function M.prepare_node(node, max_width, selected_path, selected_group)
       line:append(directory, get_hl("ExplorerDirectorySmall"))
     end
 
-    -- Right-align status symbol; trailing `status_margin` cells keep it visible against the window edge
+    -- Status symbol right-aligned in its column (padded on the left) so "M" and "??" end flush.
     local content_len = vim.fn.strdisplaywidth(filename) + space_len + vim.fn.strdisplaywidth(directory)
-    local padding_needed = math.max(2, available_for_content - content_len + 2)
-    line:append(string.rep(" ", padding_needed), get_hl("Normal"))
+    local padding_needed = math.max(status_gap, available_for_content - content_len + status_gap)
+    local symbol_pad = STATUS_SYMBOL_COLUMN_WIDTH - vim.fn.strdisplaywidth(status_symbol)
+    line:append(string.rep(" ", symbol_pad + padding_needed), get_hl("Normal"))
     line:append(status_symbol, get_hl(data.status_color))
     if status_margin > 0 then
       line:append(string.rep(" ", status_margin), get_hl("Normal"))
