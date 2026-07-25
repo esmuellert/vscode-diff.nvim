@@ -1,13 +1,43 @@
 -- Test: render/core.lua - Core diff rendering logic
 -- Critical tests for the heart of diff visualization
 
+local config = require("codediff.config")
 local core = require("codediff.ui.core")
 local highlights = require("codediff.ui.highlights")
 local diff = require('codediff.core.diff')
 
+local function assert_ranged_line_highlight(bufnr, expected)
+  local marks = vim.api.nvim_buf_get_extmarks(bufnr, highlights.ns_highlight, 0, -1, { details = true })
+  local line_marks = {}
+  for _, mark in ipairs(marks) do
+    if mark[4].hl_eol then
+      table.insert(line_marks, mark)
+    end
+  end
+
+  assert.equal(1, #line_marks)
+  assert.equal(expected.start_row, line_marks[1][2])
+  assert.equal(expected.end_row, line_marks[1][4].end_row)
+  assert.equal(expected.hl_group, line_marks[1][4].hl_group)
+  assert.is_true(line_marks[1][4].hl_eol)
+  assert.equal(config.options.diff.highlight_priority, line_marks[1][4].priority)
+end
+
+local function assert_whole_file_highlight(bufnr, expected_group)
+  local marks = vim.api.nvim_buf_get_extmarks(bufnr, highlights.ns_highlight, 0, -1, { details = true })
+  assert.equal(1, #marks)
+  assert.equal(expected_group, marks[1][4].hl_group)
+  return marks[1][4]
+end
+
 describe("Render Core", function()
   before_each(function()
+    config.options.diff.highlight_added_deleted_files = true
     highlights.setup()
+  end)
+
+  it("disables whole-file highlights by default", function()
+    assert.is_false(config.defaults.diff.highlight_added_deleted_files)
   end)
 
   -- Test 1: Basic added lines rendering
@@ -170,8 +200,11 @@ describe("Render Core", function()
     core.render_diff(left_buf, right_buf, original, modified, lines_diff)
 
     -- Right should have highlights for added lines
-    local right_marks = vim.api.nvim_buf_get_extmarks(right_buf, highlights.ns_highlight, 0, -1, {})
-    assert.is_true(#right_marks >= 3, "Should have highlights for 3 added lines")
+    assert_ranged_line_highlight(right_buf, {
+      start_row = 1,
+      end_row = 4,
+      hl_group = "CodeDiffLineInsert",
+    })
 
     -- Left should have fillers
     local left_fillers = vim.api.nvim_buf_get_extmarks(left_buf, highlights.ns_filler, 0, -1, {})
@@ -196,8 +229,11 @@ describe("Render Core", function()
     core.render_diff(left_buf, right_buf, original, modified, lines_diff)
 
     -- Left should have highlights for deleted lines
-    local left_marks = vim.api.nvim_buf_get_extmarks(left_buf, highlights.ns_highlight, 0, -1, {})
-    assert.is_true(#left_marks >= 3, "Should have highlights for 3 deleted lines")
+    assert_ranged_line_highlight(left_buf, {
+      start_row = 1,
+      end_row = 4,
+      hl_group = "CodeDiffLineDelete",
+    })
 
     -- Right should have fillers
     local right_fillers = vim.api.nvim_buf_get_extmarks(right_buf, highlights.ns_filler, 0, -1, {})
@@ -492,5 +528,64 @@ describe("Render Core", function()
     assert.equal(0, #marks, "No changes should mean no highlights")
 
     vim.api.nvim_buf_delete(buf, {force = true})
+  end)
+
+  it("renders whole files with the highlight for their side", function()
+    local test_cases = {
+      { side = "modified", hl_group = "CodeDiffLineInsert" },
+      { side = "original", hl_group = "CodeDiffLineDelete" },
+    }
+
+    for _, test_case in ipairs(test_cases) do
+      local buf = vim.api.nvim_create_buf(false, true)
+      vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "one", "two", "three" })
+
+      core.render_whole_file(buf, test_case.side)
+
+      local details = assert_whole_file_highlight(buf, test_case.hl_group)
+      assert.equal(3, details.end_row)
+      assert.is_true(details.hl_eol)
+      vim.api.nvim_buf_delete(buf, { force = true })
+    end
+  end)
+
+  it("uses one whole-file extmark for empty and large buffers", function()
+    local large_file = {}
+    for line = 1, 10000 do
+      large_file[line] = "line " .. line
+    end
+
+    for _, lines in ipairs({ { "" }, large_file }) do
+      local buf = vim.api.nvim_create_buf(false, true)
+      vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+
+      core.render_whole_file(buf, "modified")
+
+      assert_whole_file_highlight(buf, "CodeDiffLineInsert")
+      vim.api.nvim_buf_delete(buf, { force = true })
+    end
+  end)
+
+  it("expands a whole-file extmark when virtual content loads", function()
+    local buf = vim.api.nvim_create_buf(false, true)
+    core.render_whole_file(buf, "original")
+
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "one", "two", "three" })
+
+    local details = assert_whole_file_highlight(buf, "CodeDiffLineDelete")
+    assert.equal(3, details.end_row)
+    vim.api.nvim_buf_delete(buf, { force = true })
+  end)
+
+  it("does not render whole-file highlights when disabled", function()
+    local buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "one", "two" })
+    config.options.diff.highlight_added_deleted_files = false
+
+    core.render_whole_file(buf, "modified")
+
+    local marks = vim.api.nvim_buf_get_extmarks(buf, highlights.ns_highlight, 0, -1, {})
+    assert.equal(0, #marks)
+    vim.api.nvim_buf_delete(buf, { force = true })
   end)
 end)

@@ -91,7 +91,7 @@ local function complete_codediff(arg_lead, cmd_line, _)
     end
 
     -- Layout flags available for all subcommands
-    local result = complete_flags({ "--inline", "--side-by-side" }, arg_lead)
+    local result = complete_flags({ "--inline", "--side-by-side", "--exit-on-close" }, arg_lead)
     if result then return result end
   end
 

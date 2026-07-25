@@ -5,6 +5,7 @@ local M = {}
 local lifecycle = require("codediff.ui.lifecycle")
 local auto_refresh = require("codediff.ui.auto_refresh")
 local config = require("codediff.config")
+local core = require("codediff.ui.core")
 local path = require("codediff.core.path")
 local diff_module = require("codediff.core.diff")
 local inline = require("codediff.ui.inline")
@@ -16,6 +17,15 @@ local helpers = require("codediff.ui.view.helpers")
 local panel = require("codediff.ui.view.panel")
 local is_virtual_revision = helpers.is_virtual_revision
 local prepare_buffer = helpers.prepare_buffer
+
+local function disable_refresh_and_clear_highlights(session)
+  for _, bufnr in pairs({ session.original_bufnr, session.modified_bufnr }) do
+    if vim.api.nvim_buf_is_valid(bufnr) then
+      auto_refresh.disable(bufnr)
+      lifecycle.clear_highlights(bufnr)
+    end
+  end
+end
 
 -- ============================================================================
 -- Compute diff and render inline highlights
@@ -145,15 +155,14 @@ function M.create(session_config, filetype, on_ready)
         if mb then
           setup_keymaps(tabpage, orig_scratch, mb)
         end
-      end
+      end,
+      session_config.exit_on_close
     )
 
     mark_inline(tabpage)
     -- Setup panels via shared module
     panel.setup_explorer(tabpage, session_config, modified_win, modified_win)
-    panel.setup_history(tabpage, session_config, modified_win, modified_win, orig_scratch, mod_scratch, function(tp, ob, mb)
-      setup_keymaps(tp, ob, mb)
-    end)
+    panel.setup_history(tabpage, session_config, modified_win, modified_win)
 
     layout.arrange(tabpage)
 
@@ -244,7 +253,8 @@ function M.create(session_config, filetype, on_ready)
           if mb then
             setup_keymaps(tabpage, original_info.bufnr, mb)
           end
-        end
+        end,
+        session_config.exit_on_close
       )
 
       mark_inline(tabpage)
@@ -310,9 +320,7 @@ function M.create(session_config, filetype, on_ready)
 
   -- Setup panels for non-placeholder explorer/history mode
   panel.setup_explorer(tabpage, session_config, modified_win, modified_win)
-  panel.setup_history(tabpage, session_config, modified_win, modified_win, original_info.bufnr, modified_info.bufnr, function(tp, ob, mb)
-    setup_keymaps(tp, ob, mb)
-  end)
+  panel.setup_history(tabpage, session_config, modified_win, modified_win)
 
   layout.arrange(tabpage)
 
@@ -341,19 +349,15 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
     return false
   end
 
-  local old_modified_buf = session.modified_bufnr
   local modified_win = session.modified_win
   if not modified_win or not vim.api.nvim_win_is_valid(modified_win) then
     return false
   end
 
-  -- Disable auto-refresh and clear old highlights from ALL namespaces.
   -- ns_highlight/ns_filler may linger after toggling from side-by-side.
-  if old_modified_buf and vim.api.nvim_buf_is_valid(old_modified_buf) then
-    auto_refresh.disable(old_modified_buf)
-    lifecycle.clear_highlights(old_modified_buf)
-  end
+  disable_refresh_and_clear_highlights(session)
 
+  session.single_side = nil
   lifecycle.update_diff_result(tabpage, nil)
 
   local original_is_virtual = is_virtual_revision(session_config.original_revision)
@@ -538,7 +542,7 @@ end
 --- Used for untracked (??), added (A), and deleted (D) files in explorer/history.
 ---@param tabpage number
 ---@param file_path string Path to load (absolute for real files)
----@param opts? { revision: string?, git_root: string?, rel_path: string? }
+---@param opts? { revision: string?, git_root: string?, rel_path: string?, side: "original"|"modified"? }
 function M.show_single_file(tabpage, file_path, opts)
   opts = opts or {}
   local session = lifecycle.get_session(tabpage)
@@ -554,14 +558,8 @@ function M.show_single_file(tabpage, file_path, opts)
   end
 
   -- Clear old inline decorations
-  if session.modified_bufnr and vim.api.nvim_buf_is_valid(session.modified_bufnr) then
-    inline.clear(session.modified_bufnr)
-  end
-
   -- Disable old auto-refresh
-  if session.modified_bufnr and vim.api.nvim_buf_is_valid(session.modified_bufnr) then
-    auto_refresh.disable(session.modified_bufnr)
-  end
+  disable_refresh_and_clear_highlights(session)
 
   -- Load the file
   local file_bufnr
@@ -602,6 +600,8 @@ function M.show_single_file(tabpage, file_path, opts)
   lifecycle.update_paths(tabpage, original, modified)
   lifecycle.update_revisions(tabpage, original_revision, modified_revision)
   lifecycle.update_diff_result(tabpage, { changes = {}, moves = {} })
+  session.single_side = side
+  core.render_whole_file(file_bufnr, side)
 
   local view_keymaps = require("codediff.ui.view.keymaps")
   view_keymaps.setup_all_keymaps(tabpage, orig_bufnr, mod_bufnr, session.mode == "explorer")
@@ -624,10 +624,8 @@ function M.show_welcome(tabpage, load_bufnr)
     return
   end
 
-  if session.modified_bufnr and vim.api.nvim_buf_is_valid(session.modified_bufnr) then
-    inline.clear(session.modified_bufnr)
-    auto_refresh.disable(session.modified_bufnr)
-  end
+  disable_refresh_and_clear_highlights(session)
+  session.single_side = nil
 
   vim.api.nvim_win_set_buf(mod_win, load_bufnr)
   welcome_window.sync(mod_win)

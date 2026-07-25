@@ -32,6 +32,16 @@ local function count_inline_extmarks(bufnr)
   return #marks
 end
 
+local function get_whole_file_extmarks(bufnr)
+  return vim.api.nvim_buf_get_extmarks(bufnr, highlights.ns_highlight, 0, -1, { details = true })
+end
+
+local function assert_whole_file_highlight(bufnr, expected_group, message)
+  local marks = get_whole_file_extmarks(bufnr)
+  assert.equal(1, #marks, message)
+  assert.equal(expected_group, marks[1][4].hl_group)
+end
+
 -- Helper: create an inline explorer placeholder session (no file selected yet)
 local function create_explorer_placeholder(temp_dir)
   local status_result = { unstaged = {}, staged = {}, conflicts = {} }
@@ -64,7 +74,7 @@ end
 
 describe("Inline diff with explorer", function()
   before_each(function()
-    require("codediff").setup({ diff = { layout = "inline" } })
+    require("codediff").setup({ diff = { layout = "inline", highlight_added_deleted_files = true } })
     highlights.setup()
   end)
 
@@ -205,7 +215,7 @@ describe("Inline diff with explorer", function()
   -- =========================================================================
   -- Test 3: Untracked file shows without diff extmarks
   -- =========================================================================
-  it("Untracked file via show_single_file has no inline extmarks", function()
+  it("Untracked file via show_single_file has a whole-file insert highlight", function()
     local temp_dir = get_temp_dir()
 
     -- First create an explorer placeholder to establish a session
@@ -241,6 +251,7 @@ describe("Inline diff with explorer", function()
     -- Verify: NO inline diff extmarks (no diff for untracked files)
     local marks = count_inline_extmarks(mod_buf)
     assert.equal(0, marks, "Untracked file should have no inline diff extmarks")
+    assert_whole_file_highlight(mod_buf, "CodeDiffLineInsert", "Untracked file should have one whole-file highlight")
 
     -- Verify: diff result should be empty
     assert.is_not_nil(session.stored_diff_result, "stored_diff_result should exist")
@@ -277,6 +288,7 @@ describe("Inline diff with explorer", function()
     local session_single = lifecycle.get_session(tabpage)
     local single_buf = session_single.modified_bufnr
     assert.equal(0, count_inline_extmarks(single_buf), "Single file should have no inline extmarks")
+    assert_whole_file_highlight(single_buf, "CodeDiffLineInsert", "Single file should have one whole-file extmark")
 
     -- Now switch to a diff (simulates selecting a modified file in explorer)
     local orig_lines = { "hello", "world" }
@@ -318,6 +330,7 @@ describe("Inline diff with explorer", function()
 
     local marks = count_inline_extmarks(diff_buf)
     assert.is_true(marks > 0, "Should have inline extmarks after switching back to diff (got " .. marks .. ")")
+    assert.equal(0, #get_whole_file_extmarks(single_buf), "Old single-file buffer should have its whole-file highlight cleared")
 
     -- Cleanup
     vim.fn.delete(untracked_path)
@@ -443,5 +456,35 @@ describe("Inline diff with explorer", function()
     )
 
     vim.fn.delete(repo, "rf")
+  end)
+
+  it("Deleted files use a whole-file delete highlight across suspend and resume", function()
+    local temp_dir = get_temp_dir()
+    local _, tabpage = create_explorer_placeholder(temp_dir)
+    local file_path = vim.fn.tempname() .. "_inline_deleted.txt"
+    vim.fn.writefile({ "deleted one", "deleted two" }, file_path)
+
+    inline_view.show_single_file(tabpage, file_path, { side = "original" })
+
+    local session = lifecycle.get_session(tabpage)
+    assert_whole_file_highlight(session.original_bufnr, "CodeDiffLineDelete")
+
+    local state = require("codediff.ui.lifecycle.state")
+    state.suspend_diff(tabpage)
+    assert.equal(0, #get_whole_file_extmarks(session.original_bufnr))
+
+    state.resume_diff(tabpage)
+    assert_whole_file_highlight(session.original_bufnr, "CodeDiffLineDelete")
+    assert.same({ changes = {}, moves = {} }, session.stored_diff_result)
+
+    vim.bo[session.original_bufnr].swapfile = false
+    vim.api.nvim_buf_set_lines(session.original_bufnr, -1, -1, false, { "deleted three" })
+    vim.cmd("redraw")
+    vim.wait(300)
+    assert.equal(1, #get_whole_file_extmarks(session.original_bufnr))
+    assert.same({ changes = {}, moves = {} }, session.stored_diff_result)
+    vim.bo[session.original_bufnr].modified = false
+
+    vim.fn.delete(file_path)
   end)
 end)

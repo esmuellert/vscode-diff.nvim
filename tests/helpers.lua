@@ -194,6 +194,23 @@ function M.wait_for_buffer_content(bufnr, expected, timeout_ms)
   end, 50)
 end
 
+--- Wait until the tabpage's *current* modified diff buffer contains `expected`.
+--- Unlike wait_for_buffer_content (fixed bufnr), this re-fetches the modified
+--- buffer on every poll, so it tolerates the buffer swap that view.update does
+--- when a diff switches between working-tree and staged (:0) revisions.
+function M.wait_for_modified_content(tabpage, expected, timeout_ms)
+  timeout_ms = timeout_ms or 5000
+  local lifecycle = require('codediff.ui.lifecycle')
+  return vim.wait(timeout_ms, function()
+    local _, mod_buf = lifecycle.get_buffers(tabpage)
+    if not mod_buf or not vim.api.nvim_buf_is_valid(mod_buf) then
+      return false
+    end
+    local lines = vim.api.nvim_buf_get_lines(mod_buf, 0, -1, false)
+    return table.concat(lines, '\n'):find(expected, 1, true) ~= nil
+  end, 50)
+end
+
 -- Get buffer content as a single string
 function M.get_buffer_content(bufnr)
   if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then

@@ -19,6 +19,7 @@ local welcome_window = require("codediff.ui.view.welcome_window")
 --     modified_revision = string?,
 --     original_state, modified_state,
 --     suspended = bool,
+--     single_side = "original" | "modified" | nil,
 --     stored_diff_result = table,
 --     changedtick = { original = number, modified = number },
 --     mtime = { original = number?, modified = number? },
@@ -64,7 +65,8 @@ function M.create_session(
   original_win,
   modified_win,
   lines_diff,
-  reapply_keymaps
+  reapply_keymaps,
+  exit_on_close
 )
   local state = require("codediff.ui.lifecycle.state")
   -- Save buffer states
@@ -91,7 +93,9 @@ function M.create_session(
 
     -- Lifecycle state
     layout = "side-by-side",
+    exit_on_close = exit_on_close == true,
     suspended = false,
+    single_side = nil,
     stored_diff_result = lines_diff,
     changedtick = {
       original = vim.api.nvim_buf_get_changedtick(original_bufnr),

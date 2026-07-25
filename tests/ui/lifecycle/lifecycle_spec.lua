@@ -41,6 +41,7 @@ describe("Render Lifecycle", function()
     end)
 
     assert.is_true(success, "Should create and complete session without error")
+    assert.is_nil(lifecycle.get_session(tabpage).single_side)
 
     vim.cmd('tabclose')
     vim.api.nvim_buf_delete(left_buf, {force = true})

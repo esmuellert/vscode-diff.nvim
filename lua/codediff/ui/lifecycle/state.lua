@@ -125,6 +125,14 @@ local function resume_diff(tabpage)
     return
   end
 
+  if diff.single_side then
+    local core = require("codediff.ui.core")
+    local bufnr = diff[diff.single_side .. "_bufnr"]
+    core.render_whole_file(bufnr, diff.single_side)
+    diff.suspended = false
+    return
+  end
+
   -- Check if buffer or file changed while suspended
   local original_tick_changed = vim.api.nvim_buf_get_changedtick(diff.original_bufnr) ~= diff.changedtick.original
   local modified_tick_changed = vim.api.nvim_buf_get_changedtick(diff.modified_bufnr) ~= diff.changedtick.modified

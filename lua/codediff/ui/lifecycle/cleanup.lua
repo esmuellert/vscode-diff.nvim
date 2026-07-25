@@ -240,7 +240,7 @@ end
 -- Aggressive cleanup for quitting neovim from the last diff tab.
 -- Deletes ALL codediff-owned buffers (explorer, scratch placeholders, virtual,
 -- result) so session-persistence plugins don't save them.
-function M.cleanup_for_quit(tabpage)
+local function cleanup_for_quit(tabpage)
   tabpage = tabpage or vim.api.nvim_get_current_tabpage()
   local active_diffs = session.get_active_diffs()
   local diff = active_diffs[tabpage]
@@ -280,6 +280,31 @@ function M.cleanup_for_quit(tabpage)
       end
     end
   end
+end
+
+function M.close(tabpage)
+  tabpage = tabpage or vim.api.nvim_get_current_tabpage()
+  local diff = session.get_active_diffs()[tabpage]
+  if not diff or not vim.api.nvim_tabpage_is_valid(tabpage) then
+    return false
+  end
+  if not accessors.confirm_close_with_unsaved(tabpage) then
+    return false
+  end
+
+  if diff.exit_on_close then
+    cleanup_for_quit(tabpage)
+    vim.cmd("qall")
+    return true
+  end
+
+  if #vim.api.nvim_list_tabpages() == 1 then
+    vim.cmd("tabnew")
+  end
+  local tab_nr = vim.api.nvim_tabpage_get_number(tabpage)
+  vim.cmd(tab_nr .. "tabclose")
+  cleanup_diff(tabpage)
+  return true
 end
 
 -- Cleanup all active diffs (useful for plugin unload/reload)

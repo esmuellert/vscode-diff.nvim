@@ -176,6 +176,7 @@ describe("gm align_move keymap", function()
     -- move.modified = { start_line = 9, end_line = 14 } (alpha block in modified)
 
     -- Focus original window and position cursor on the first line of the moved block
+    vim.wo[session.modified_win].scrolloff = 8
     vim.api.nvim_set_current_win(session.original_win)
     vim.api.nvim_win_set_cursor(session.original_win, { move.original.start_line, 0 })
     vim.cmd("normal! zz")
@@ -228,6 +229,7 @@ describe("gm align_move keymap", function()
     local move = moves[1]
 
     -- Note scrollbind state before gm
+    vim.wo[session.modified_win].scrolloff = 8
     local orig_sb_before = vim.wo[session.original_win].scrollbind
     local mod_sb_before = vim.wo[session.modified_win].scrollbind
 
@@ -258,6 +260,8 @@ describe("gm align_move keymap", function()
       "scrollbind should be restored on original window")
     assert.are.equal(mod_sb_before, vim.wo[session.modified_win].scrollbind,
       "scrollbind should be restored on modified window")
+    assert.are.equal(8, vim.wo[session.modified_win].scrolloff,
+      "scrolloff should be restored on modified window")
   end)
 
   -- ──────────────────────────────────────────────────────────────
@@ -398,6 +402,7 @@ describe("gm align_move keymap", function()
           if session and session.stored_diff_result.moves and #session.stored_diff_result.moves > 0 then
             local orig_win = session.original_win
             local mod_win = session.modified_win
+            vim.wo[mod_win].scrolloff = 0
 
             for _, move in ipairs(session.stored_diff_result.moves) do
               -- Position on first moved line

@@ -536,17 +536,17 @@ end
 
 -- Check if library needs update
 function M.needs_update()
-  -- Check libgomp first - if missing, we need to run installer regardless of main library status
-  if not check_system_libgomp() then
-    return true
-  end
-
   local plugin_root = get_plugin_root()
 
   -- Check unversioned first - assume manual build is always up to date
   local unversioned_lib = get_unversioned_lib_filename()
   if vim.fn.filereadable(plugin_root .. "/" .. unversioned_lib) == 1 then
     return false
+  end
+
+  -- Check libgomp - if missing, we need to run installer regardless of main library status
+  if not check_system_libgomp() then
+    return true
   end
 
   local current_version = get_current_version()

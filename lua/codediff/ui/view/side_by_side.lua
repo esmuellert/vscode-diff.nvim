@@ -6,6 +6,7 @@ local lifecycle = require("codediff.ui.lifecycle")
 local virtual_file = require("codediff.core.virtual_file")
 local auto_refresh = require("codediff.ui.auto_refresh")
 local config = require("codediff.config")
+local core = require("codediff.ui.core")
 local path = require("codediff.core.path")
 
 -- Eagerly load explorer and history to avoid lazy require failures
@@ -155,7 +156,8 @@ function M.create(session_config, filetype, on_ready)
         end
         local is_explorer = lifecycle.get_mode(tabpage) == "explorer"
         setup_all_keymaps(tabpage, ob, mb, is_explorer)
-      end
+      end,
+      session_config.exit_on_close
     )
   else
     -- Normal mode: Full rendering
@@ -233,7 +235,8 @@ function M.create(session_config, filetype, on_ready)
                   setup_all_keymaps(tabpage, ob, mb, false)
                   local conflict = require("codediff.ui.conflict")
                   conflict.setup_keymaps(tabpage)
-                end
+                end,
+                session_config.exit_on_close
               )
 
               -- Setup result window and keymaps
@@ -288,7 +291,8 @@ function M.create(session_config, filetype, on_ready)
               end
               local is_explorer = lifecycle.get_mode(tabpage) == "explorer"
               setup_all_keymaps(tabpage, ob, mb, is_explorer)
-            end
+            end,
+            session_config.exit_on_close
           )
           -- Enable auto-refresh for real file buffers only
           setup_auto_refresh(original_info.bufnr, modified_info.bufnr, original_is_virtual, modified_is_virtual)
@@ -362,9 +366,7 @@ function M.create(session_config, filetype, on_ready)
 
   -- Setup panels (explorer sidebar, history panel)
   panel.setup_explorer(tabpage, session_config, original_win, modified_win)
-  panel.setup_history(tabpage, session_config, original_win, modified_win, original_info.bufnr, modified_info.bufnr, function(tp, ob, mb)
-    setup_all_keymaps(tp, ob, mb, false)
-  end)
+  panel.setup_history(tabpage, session_config, original_win, modified_win)
 
   -- Emit CodeDiffOpen User autocmd
   vim.api.nvim_exec_autocmds("User", {
@@ -401,6 +403,7 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
   if not session then
     return false
   end
+  session.single_side = nil
 
   -- Get existing buffers and windows
   local old_original_buf, old_modified_buf = lifecycle.get_buffers(tabpage)
@@ -693,7 +696,7 @@ end
 --- Core implementation for showing a single file without diff.
 --- Closes the empty pane and loads the file into the remaining pane.
 ---@param tabpage number
----@param opts { keep: "original"|"modified", load_bufnr: number, original_path: string, modified_path: string, original_revision: string?, modified_revision: string? }
+---@param opts { keep: "original"|"modified", load_bufnr: number, original_path: string, modified_path: string, original_revision: string?, modified_revision: string?, highlight: boolean? }
 local function show_single_file(tabpage, opts)
   local session = lifecycle.get_session(tabpage)
   if not session then
@@ -702,17 +705,16 @@ local function show_single_file(tabpage, opts)
 
   lifecycle.update_layout(tabpage, "side-by-side")
   local orig_win, mod_win = lifecycle.get_windows(tabpage)
-  local highlights = require("codediff.ui.highlights")
 
   -- Clear highlights from current session buffers
   local old_orig_buf, old_mod_buf = lifecycle.get_buffers(tabpage)
-  if old_orig_buf and vim.api.nvim_buf_is_valid(old_orig_buf) then
-    vim.api.nvim_buf_clear_namespace(old_orig_buf, highlights.ns_highlight, 0, -1)
-    vim.api.nvim_buf_clear_namespace(old_orig_buf, highlights.ns_filler, 0, -1)
+  if old_orig_buf then
+    auto_refresh.disable(old_orig_buf)
+    lifecycle.clear_highlights(old_orig_buf)
   end
-  if old_mod_buf and vim.api.nvim_buf_is_valid(old_mod_buf) then
-    vim.api.nvim_buf_clear_namespace(old_mod_buf, highlights.ns_highlight, 0, -1)
-    vim.api.nvim_buf_clear_namespace(old_mod_buf, highlights.ns_filler, 0, -1)
+  if old_mod_buf then
+    auto_refresh.disable(old_mod_buf)
+    lifecycle.clear_highlights(old_mod_buf)
   end
 
   -- Mark single-pane BEFORE closing window (prevents cleanup trigger)
@@ -764,6 +766,10 @@ local function show_single_file(tabpage, opts)
     lifecycle.update_paths(tabpage, path.make_ref(opts.original_path or "", session.git_root), path.make_ref(opts.modified_path or "", session.git_root))
     lifecycle.update_revisions(tabpage, opts.original_revision, opts.modified_revision)
     lifecycle.update_diff_result(tabpage, { changes = {}, moves = {} })
+    session.single_side = opts.highlight ~= false and opts.keep or nil
+    if session.single_side then
+      core.render_whole_file(opts.load_bufnr, session.single_side)
+    end
 
     local view_keymaps = require("codediff.ui.view.keymaps")
     view_keymaps.setup_all_keymaps(tabpage, orig_bufnr, mod_bufnr, session.mode == "explorer")
@@ -848,6 +854,7 @@ end
 function M.show_welcome(tabpage, load_bufnr)
   show_single_file(tabpage, {
     keep = "modified",
+    highlight = false,
     load_bufnr = load_bufnr,
   })
 end

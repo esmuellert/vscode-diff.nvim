@@ -338,6 +338,9 @@ function M.set_explorer(tabpage, explorer)
   end
 
   sess.explorer = explorer
+  if sess.reapply_keymaps then
+    sess.reapply_keymaps()
+  end
   return true
 end
 
@@ -551,8 +554,11 @@ function M.setup_auto_sync_on_file_switch(tabpage, original_is_virtual, modified
     return
   end
 
-  -- Track current file path
-  local current_path = sess[working_side .. "_path"]
+  -- Session stores paths as PathRefs, so read .absolute for identity comparison.
+  -- (The old sess[working_side .. "_path"] field is gone and left this nil, which
+  -- defeated the change guard below and caused spurious re-updates.)
+  local working_ref = sess[working_side]
+  local current_path = working_ref and working_ref.absolute or nil
 
   -- Setup listener using BufWinEnter (fires when buffer enters window, even if existing buffer)
   local sync_group = vim.api.nvim_create_augroup("codediff_working_sync_" .. tabpage, { clear = true })
@@ -567,12 +573,17 @@ function M.setup_auto_sync_on_file_switch(tabpage, original_is_virtual, modified
         return
       end
 
+      local path = require("codediff.core.path")
       local new_path = vim.api.nvim_buf_get_name(args.buf)
 
       -- Skip virtual files - they're programmatic, not user navigation
       if new_path:match("^codediff://") then
         return
       end
+
+      -- Normalize to the same absolute form used for the session PathRefs so the
+      -- identity comparison is reliable across platforms.
+      new_path = new_path ~= "" and path.make_ref(new_path, nil).absolute or ""
 
       -- Check if file changed
       if new_path == "" or new_path == current_path then
@@ -599,7 +610,6 @@ function M.setup_auto_sync_on_file_switch(tabpage, original_is_virtual, modified
               end
 
               -- No pre-fetching needed, buffers will load content
-              local path = require("codediff.core.path")
               view.update(tabpage, {
                 mode = sess.mode,
                 git_root = nil,
@@ -617,7 +627,6 @@ function M.setup_auto_sync_on_file_switch(tabpage, original_is_virtual, modified
 
           -- No pre-fetching needed, buffers will load content
           vim.schedule(function()
-            local path = require("codediff.core.path")
             view.update(tabpage, {
               mode = sess.mode,
               git_root = new_git_root,

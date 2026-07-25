@@ -159,7 +159,10 @@ describe("Explorer Buffer Management", function()
     view.update(tabpage, config_changes, false)
     ready = h.wait_for_session_ready(tabpage)
 
-    -- Validate: Changes should show "change B" (the new unstaged change)
+    -- Validate: Changes should show "change B" (the new unstaged change).
+    -- Poll the current modified buffer (view.update swaps it) until the async
+    -- re-render lands, so this doesn't race on slow CI runners.
+    h.wait_for_modified_content(tabpage, "change B", 5000)
     _, modified_buf = lifecycle.get_buffers(tabpage)
     content = h.get_buffer_content(modified_buf)
     assert.is_not_nil(content, "Step 3 content should not be nil")
@@ -185,6 +188,8 @@ describe("Explorer Buffer Management", function()
     ready = h.wait_for_session_ready(tabpage)
     assert.is_true(ready, "Session should be ready after step 4 update")
 
+    -- Wait for the staged view to reflect the newly staged change B.
+    h.wait_for_modified_content(tabpage, "change B", 5000)
     _, modified_buf = lifecycle.get_buffers(tabpage)
     content = h.get_buffer_content(modified_buf)
     h.assert_contains(content, "change A", "Staged should show change A after staging B")
@@ -197,6 +202,8 @@ describe("Explorer Buffer Management", function()
     view.update(tabpage, config_changes, false)
     ready = h.wait_for_session_ready(tabpage)
 
+    -- Wait for the changes view to reflect both A and B after unstaging.
+    h.wait_for_modified_content(tabpage, "change B", 5000)
     _, modified_buf = lifecycle.get_buffers(tabpage)
     content = h.get_buffer_content(modified_buf)
     h.assert_contains(content, "change A", "Changes should show change A after unstage")

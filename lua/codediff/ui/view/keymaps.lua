@@ -8,6 +8,22 @@ local navigation = require("codediff.ui.view.navigation")
 local render = require("codediff.ui.view.render")
 local compact = require("codediff.ui.view.compact")
 
+local function get_explorer_target_file(explorer, session)
+  local node = explorer.tree and explorer.tree:get_node()
+  local data = node and node.data
+
+  if not data or data.type == "group" or data.type == "directory" or not data.path or data.path == "" then
+    return nil
+  end
+
+  local git_root = data.git_root or explorer.git_root or session.git_root
+  if not git_root or git_root == "" then
+    return nil
+  end
+
+  return vim.fs.joinpath(git_root, data.path)
+end
+
 -- Centralized keymap setup for all diff view keymaps
 -- This function sets up ALL keymaps in one place for better maintainability
 function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explorer_mode)
@@ -17,22 +33,6 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
   local session = lifecycle.get_session(tabpage)
   local is_history_mode = session and session.mode == "history"
   local is_inline = session and session.layout == "inline"
-
-  -- Helper: Quit diff view
-  local function quit_diff()
-    -- Check for unsaved conflict files before closing
-    if not lifecycle.confirm_close_with_unsaved(tabpage) then
-      return -- User cancelled
-    end
-    if #vim.api.nvim_list_tabpages() == 1 then
-      -- Last tab: clean up diff session first so session-persistence plugins
-      -- don't save scratch/virtual buffers, then quit neovim entirely.
-      lifecycle.cleanup_for_quit(tabpage)
-      vim.cmd("qall")
-    else
-      vim.cmd("tabclose")
-    end
-  end
 
   -- Helper: Toggle explorer visibility (explorer mode only)
   local function toggle_explorer()
@@ -275,16 +275,24 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
       side = "modified"
     end
 
-    -- Only operate on diff buffers; ignore explorer/history/result silently
-    if not side then
+    local explorer = lifecycle.get_explorer(tabpage)
+    local is_explorer_buf = explorer and explorer.bufnr and current_buf == explorer.bufnr
+
+    -- Only operate on diff and explorer buffers; ignore history/result silently
+    if not side and not is_explorer_buf then
       return
     end
 
     local is_virtual = (side == "original" and lifecycle.is_original_virtual(tabpage)) or (side == "modified" and lifecycle.is_modified_virtual(tabpage))
 
-    -- For virtual buffers, resolve the real file on disk
+    -- Resolve target file path
     local target_file
-    if is_virtual then
+    if is_explorer_buf then
+      target_file = get_explorer_target_file(explorer, session)
+      if not target_file then
+        return
+      end
+    elseif is_virtual then
       local original, modified = lifecycle.get_paths(tabpage)
       local ref = side == "original" and original or modified
       if not ref or ref.absolute == "" then
@@ -300,7 +308,7 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
       end
     end
 
-    local cursor = vim.api.nvim_win_get_cursor(0)
+    local cursor = side and vim.api.nvim_win_get_cursor(0) or nil
     local current_tab = vim.api.nvim_get_current_tabpage()
     local tabs = vim.api.nvim_list_tabpages()
 
@@ -332,7 +340,7 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
     end
 
     local ok, err
-    if is_virtual then
+    if is_virtual or is_explorer_buf then
       ok, err = pcall(vim.cmd, "edit " .. vim.fn.fnameescape(target_file))
     else
       ok, err = pcall(vim.api.nvim_win_set_buf, target_win, current_buf)
@@ -342,7 +350,9 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
       return
     end
 
-    pcall(vim.api.nvim_win_set_cursor, target_win, cursor)
+    if cursor then
+      pcall(vim.api.nvim_win_set_cursor, target_win, cursor)
+    end
 
     -- Optionally close codediff after navigating to file
     if config.options.keymaps.view.close_on_open_in_prev_tab then
@@ -570,7 +580,9 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
 
   -- Quit keymap (q)
   if keymaps.quit then
-    lifecycle.set_tab_keymap(tabpage, "n", keymaps.quit, quit_diff, { desc = "Close codediff tab" })
+    lifecycle.set_tab_keymap(tabpage, "n", keymaps.quit, function()
+      lifecycle.close(tabpage)
+    end, { desc = "Close codediff tab" })
   end
 
   -- Hunk navigation (]c, [c)
@@ -760,10 +772,12 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
     end)
     local saved_scrollbind_current = vim.wo[current_win].scrollbind
     local saved_scrollbind_other = vim.wo[other_win].scrollbind
+    local saved_scrolloff_other = vim.wo[other_win].scrolloff
 
     -- Disable scrollbind
     vim.wo[current_win].scrollbind = false
     vim.wo[other_win].scrollbind = false
+    vim.wo[other_win].scrolloff = 0
 
     -- Align using the annotation virt_line as anchor:
     -- Both sides have "⇄ moved" above their first moved line.
@@ -804,6 +818,9 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
       end
       restored = true
       pcall(vim.api.nvim_del_augroup_by_id, augroup)
+      if vim.api.nvim_win_is_valid(other_win) then
+        vim.wo[other_win].scrolloff = saved_scrolloff_other
+      end
       if not vim.api.nvim_win_is_valid(current_win) or not vim.api.nvim_win_is_valid(other_win) then
         return
       end

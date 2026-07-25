@@ -46,7 +46,7 @@ function M.next_hunk()
 
   local diff_result = session.stored_diff_result
   if not diff_result.changes or #diff_result.changes == 0 then
-    return false
+    return config.options.diff.cycle_hunks_across_files and hop_to_adjacent_file("next")
   end
 
   local current_buf = vim.api.nvim_get_current_buf()
@@ -120,7 +120,7 @@ function M.prev_hunk()
 
   local diff_result = session.stored_diff_result
   if not diff_result.changes or #diff_result.changes == 0 then
-    return false
+    return config.options.diff.cycle_hunks_across_files and hop_to_adjacent_file("prev")
   end
 
   local current_buf = vim.api.nvim_get_current_buf()

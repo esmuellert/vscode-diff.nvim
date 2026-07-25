@@ -86,6 +86,7 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
     -- Diff view behavior
     diff = {
       layout = "side-by-side",             -- Diff layout: "side-by-side" (two panes) or "inline" (single pane with virtual lines)
+      filler_text = "╱",                   -- Repeated filler pattern; use "" for blank alignment rows
       disable_inlay_hints = true,         -- Disable inlay hints in diff windows for cleaner view
       max_computation_time_ms = 5000,     -- Maximum time for diff computation (VSCode default)
       ignore_trim_whitespace = false,     -- Ignore leading/trailing whitespace changes (like diffopt+=iwhite)
@@ -99,6 +100,7 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
       cycle_next_file = true,             -- Wrap around when navigating files (]f/[f): false to stop at first/last
       cycle_hunks_across_files = false,   -- ]c/[c at file boundary hops to first/last hunk of next/prev file (explorer/history)
       jump_to_first_change = true,        -- Auto-scroll to first change when opening a diff: false to stay at same line
+      highlight_added_deleted_files = false, -- Tint full contents of added, untracked, and deleted files
       highlight_priority = 100,           -- Priority for line-level diff highlights (increase to override LSP highlights)
       compute_moves = false,              -- Detect moved code blocks (opt-in, matches VSCode experimental.showMoves)
       compact_context_lines = 3,          -- Number of context lines around hunks in compact mode
@@ -220,6 +222,8 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
   },
 }
 ```
+
+`diff.filler_text` accepts any non-empty text pattern and repeats it across filler rows. Set it to `""` to hide the decoration while preserving the rows that keep side-by-side and conflict panes aligned. Non-empty patterns use the `CodeDiffFiller` highlight group.
 
 The C library will be downloaded automatically on first use. No `build` step needed!
 
@@ -441,6 +445,7 @@ The history panel shows a list of commits. Each commit can be expanded to show i
 - `--reverse` or `-r`: Show commits in chronological order (oldest first) instead of reverse chronological. Useful for following development story from beginning to end, or reviewing PR changes in the order they were made.
 - `--base` or `-b`: Compare each commit against a fixed revision instead of its parent. Accepts any git revision (`HEAD`, branch name, commit hash) or `WORKING` for the current working tree.
 - `--inline` / `--side-by-side`: Override the diff layout for this invocation. These flags work with all `:CodeDiff` subcommands.
+- `--exit-on-close`: Exit Neovim when the CodeDiff session closes. Intended for external diff and merge tool processes.
 
 **Visual selection:** When called with a visual range (`:'<,'>CodeDiff history`), only commits that modified the selected lines are shown. This uses `git log -L` under the hood and is useful for tracing the evolution of a specific function or block in a large file.
 
@@ -453,7 +458,7 @@ Use CodeDiff as your git merge tool for resolving conflicts:
 
 ```bash
 git config --global merge.tool codediff
-git config --global mergetool.codediff.cmd 'nvim "$MERGED" -c "CodeDiff merge \"$MERGED\""'
+git config --global mergetool.codediff.cmd 'nvim "$MERGED" -c "CodeDiff --exit-on-close merge \"$MERGED\""'
 ```
 
 ### Git Diff Tool
@@ -462,7 +467,7 @@ Use CodeDiff as your git diff tool for viewing changes:
 
 ```bash
 git config --global diff.tool codediff
-git config --global difftool.codediff.cmd 'nvim "$LOCAL" "$REMOTE" +"CodeDiff file $LOCAL $REMOTE"'
+git config --global difftool.codediff.cmd 'nvim "$LOCAL" "$REMOTE" +"CodeDiff --exit-on-close file $LOCAL $REMOTE"'
 ```
 
 Then use `git difftool` to view diffs:
@@ -608,7 +613,7 @@ The plugin defines highlight groups matching VSCode's diff colors:
 - `CodeDiffLineDelete` - Light red background for deleted lines
 - `CodeDiffCharInsert` - Deep/dark green for inserted characters
 - `CodeDiffCharDelete` - Deep/dark red for deleted characters
-- `CodeDiffFiller` - Gray foreground for filler line slashes (`╱╱╱`)
+- `CodeDiffFiller` - Gray foreground for non-empty filler line patterns
 - `CodeDiffLineMove` - Background for moved code lines (derived from DiffChange)
 - `CodeDiffMoveTo` - Sign column and annotation color for move indicators
 
@@ -638,6 +643,8 @@ The plugin defines highlight groups matching VSCode's diff colors:
   - **Light themes** (`background = "light"`): Brightness multiplied by `0.92` (8% darker)
 - This auto-detection works out-of-box for most colorschemes
 - You can override with explicit `char_brightness` value if needed
+- Full-file highlighting for added, untracked, and deleted files is disabled by default
+- Set `diff.highlight_added_deleted_files = true` to enable it with `line_insert` and `line_delete`
 
 **Customization examples:**
 
