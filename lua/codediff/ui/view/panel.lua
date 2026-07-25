@@ -55,10 +55,7 @@ end
 ---@param session_config SessionConfig
 ---@param original_win number
 ---@param modified_win number
----@param original_bufnr number
----@param modified_bufnr number
----@param setup_keymaps_fn function
-function M.setup_history(tabpage, session_config, original_win, modified_win, original_bufnr, modified_bufnr, setup_keymaps_fn)
+function M.setup_history(tabpage, session_config, original_win, modified_win)
   if not (session_config.mode == "history" and session_config.history_data) then
     return
   end
@@ -85,9 +82,6 @@ function M.setup_history(tabpage, session_config, original_win, modified_win, or
   end
 
   layout.arrange(tabpage)
-
-  -- History mode needs keymaps set after session is created
-  setup_keymaps_fn(tabpage, original_bufnr, modified_bufnr)
 end
 
 return M

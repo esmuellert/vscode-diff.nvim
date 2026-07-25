@@ -85,6 +85,38 @@ local function resolve_color(value, fallback_gui, fallback_cterm)
   return { bg = fallback_gui, ctermbg = fallback_cterm }
 end
 
+local function is_highlight_group(value)
+  return type(value) == "string" and not value:match("^#%x%x%x%x%x%x$") and not value:match("^#%x%x%x$")
+end
+
+local function effective_colors(fg, bg, reverse, fallback_bg)
+  if reverse then
+    return bg, fg or fallback_bg
+  end
+  return fg, bg or fallback_bg
+end
+
+-- Unlike line highlights, configured character groups retain all attributes; fallbacks only fill missing backgrounds.
+local function resolve_char_highlight(configured_value, fallback_bg, fallback_cterm_bg)
+  if not is_highlight_group(configured_value) then
+    return resolve_color(configured_value, fallback_bg, fallback_cterm_bg)
+  end
+
+  local source = vim.api.nvim_get_hl(0, { name = configured_value, link = false })
+  local result = vim.deepcopy(source)
+  local cterm_reverse = (source.cterm and source.cterm.reverse) or source.reverse
+
+  result.fg, result.bg = effective_colors(source.fg, source.bg, source.reverse, fallback_bg)
+  result.ctermfg, result.ctermbg = effective_colors(source.ctermfg, source.ctermbg, cterm_reverse, fallback_cterm_bg)
+
+  result.reverse = nil
+  if result.cterm then
+    result.cterm.reverse = nil
+  end
+
+  return result
+end
+
 -- Returns the base 256 color palette index of rgb color cube where r, g, b are 0-5 inclusive.
 local function base256_color(r, g, b)
   return 16 + r * 36 + g * 6 + b
@@ -115,7 +147,7 @@ function M.setup()
 
   if opts.char_insert then
     -- Explicit char_insert provided - use it directly
-    char_insert_color = resolve_color(opts.char_insert, 0x2a4556, base256_color(0, 2, 0))
+    char_insert_color = resolve_char_highlight(opts.char_insert, 0x2a4556, base256_color(0, 2, 0))
   else
     -- Derive from line_insert with brightness adjustment
     char_insert_color = {
@@ -126,7 +158,7 @@ function M.setup()
 
   if opts.char_delete then
     -- Explicit char_delete provided - use it directly
-    char_delete_color = resolve_color(opts.char_delete, 0x4b2a3d, base256_color(2, 0, 0))
+    char_delete_color = resolve_char_highlight(opts.char_delete, 0x4b2a3d, base256_color(2, 0, 0))
   else
     -- Derive from line_delete with brightness adjustment
     char_delete_color = {
