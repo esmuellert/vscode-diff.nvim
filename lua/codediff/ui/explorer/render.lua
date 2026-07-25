@@ -565,65 +565,24 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
     end
   end
 
-  -- Find a file in the status lists, returns (file, group) or (nil, nil)
-  local function find_file_in_status(path)
-    if status_result.conflicts then
-      for _, f in ipairs(status_result.conflicts) do
-        if f.path == path then
-          return f, "conflicts"
-        end
+  local visible_files = refresh_module.get_all_files(tree)
+  local initial_file
+  if opts.focus_file then
+    for _, file in ipairs(visible_files) do
+      if file.data.path == opts.focus_file then
+        initial_file = file
+        break
       end
     end
-    for _, f in ipairs(status_result.unstaged) do
-      if f.path == path then
-        return f, "unstaged"
-      end
-    end
-    for _, f in ipairs(status_result.staged) do
-      if f.path == path then
-        return f, "staged"
-      end
-    end
-    return nil, nil
   end
-
-  -- Select initial file: prefer focus_file (current buffer) if changed, else first file
-  local initial_file, initial_file_group
-  local focus_file = opts and opts.focus_file
-  if focus_file then
-    initial_file, initial_file_group = find_file_in_status(focus_file)
-  end
-  if not initial_file then
-    if status_result.conflicts and #status_result.conflicts > 0 then
-      initial_file, initial_file_group = status_result.conflicts[1], "conflicts"
-    elseif #status_result.unstaged > 0 then
-      initial_file, initial_file_group = status_result.unstaged[1], "unstaged"
-    elseif #status_result.staged > 0 then
-      initial_file, initial_file_group = status_result.staged[1], "staged"
-    end
-  end
+  initial_file = initial_file or visible_files[1]
 
   if initial_file then
     vim.schedule(function()
-      -- Scroll explorer to the selected file using tree:get_node(line) lookup
-      if explorer.winid and vim.api.nvim_win_is_valid(explorer.winid) and vim.api.nvim_buf_is_valid(explorer.bufnr) then
-        local line_count = vim.api.nvim_buf_line_count(explorer.bufnr)
-        for line = 1, line_count do
-          local node = explorer.tree:get_node(line)
-          if node and node.data and node.data.path == initial_file.path and node.data.group == initial_file_group then
-            vim.api.nvim_win_set_cursor(explorer.winid, { line, 0 })
-            break
-          end
-        end
+      if explorer.winid and vim.api.nvim_win_is_valid(explorer.winid) and initial_file.node._line then
+        vim.api.nvim_win_set_cursor(explorer.winid, { initial_file.node._line, 0 })
       end
-
-      explorer.on_file_select({
-        path = initial_file.path,
-        old_path = initial_file.old_path,
-        status = initial_file.status,
-        git_root = git_root,
-        group = initial_file_group,
-      })
+      explorer.on_file_select(initial_file.data)
     end)
   end
 
