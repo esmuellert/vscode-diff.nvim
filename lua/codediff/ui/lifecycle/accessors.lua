@@ -358,6 +358,9 @@ function M.set_explorer(tabpage, explorer)
   end
 
   sess.explorer = explorer
+  if sess.reapply_keymaps then
+    sess.reapply_keymaps()
+  end
   return true
 end
 
