@@ -199,18 +199,27 @@ function M.setup_autocmds()
   vim.api.nvim_create_autocmd("BufEnter", {
     group = augroup,
     callback = function()
-      local current_tab = vim.api.nvim_get_current_tabpage()
-      local active_diffs = session.get_active_diffs()
-      local diff = active_diffs[current_tab]
-
-      if diff then
-        local diff_win_count = count_diff_windows()
-        local is_single_window = diff.single_pane == true or diff.layout == "inline"
-        local threshold = is_single_window and 0 or 1
-        if diff_win_count <= threshold then
-          cleanup_diff(current_tab)
-        end
+      local tabpage = vim.api.nvim_get_current_tabpage()
+      -- Skip scheduling work when this tab has no diff session
+      if not session.get_active_diffs()[tabpage] then
+        return
       end
+      -- Changing the window layout is not allowed inside BufEnter (E1312), so defer
+      vim.schedule(function()
+        -- Bail if the user switched tabs before this ran; cleanup targets the event's tab
+        if vim.api.nvim_get_current_tabpage() ~= tabpage then
+          return
+        end
+        local diff = session.get_active_diffs()[tabpage]
+        if diff then
+          local diff_win_count = count_diff_windows()
+          local is_single_window = diff.single_pane == true or diff.layout == "inline"
+          local threshold = is_single_window and 0 or 1
+          if diff_win_count <= threshold then
+            cleanup_diff(tabpage)
+          end
+        end
+      end)
     end,
   })
 
