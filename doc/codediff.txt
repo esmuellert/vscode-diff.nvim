@@ -315,9 +315,9 @@ Setup entry point:
 ==============================================================================
 GUTTER SIGNS                                         *codediff-gutter-signs*
 
-Gutter signs are disabled by default and require Neovim 0.9+. They are
-buffer-local, so they appear in every window showing a CodeDiff buffer until
-the diff view is suspended or closed.
+Gutter signs are disabled by default and require Neovim 0.9+. When enabled,
+they appear in every window displaying a buffer used by an active CodeDiff
+view. CodeDiff removes them when the view is suspended or closed.
 
 >lua
   -- Disabled by default; existing move annotations remain.

@@ -259,7 +259,7 @@ vim.opt.signcolumn = "yes"
 vim.opt.statuscolumn = "%C%=%l %s"
 ```
 
-`signcolumn = "yes:2"` allows a second sign on each line. Changed signs use priority 100 by default. An unchanged blocker at priority 99 can hide lower-priority Gitsigns, remote signs, diagnostics, or other signs across unchanged lines while the changed signs still win. Signs are buffer-local and therefore appear in every window showing a CodeDiff buffer until the diff view is suspended or closed. Gutter signs require Neovim 0.9 or newer.
+`signcolumn = "yes:2"` allows a second sign on each line. Changed signs use priority 100 by default. An unchanged blocker at priority 99 can hide lower-priority Gitsigns, remote signs, diagnostics, or other signs across unchanged lines while the changed signs still win. Gutter signs require Neovim 0.9 or newer. When enabled, they appear in every window displaying a buffer used by an active CodeDiff view. CodeDiff removes them when the view is suspended or closed.
 
 ### Managing Library Installation
 
