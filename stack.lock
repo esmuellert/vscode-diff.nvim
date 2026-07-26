@@ -1,7 +1,7 @@
 [stack]
 upstream = 8bd120d5e02172852e788adde2abc94383cae741
-expectedHead = cd7ed2ecb13fa1854f0dd0a5495c6b3e1c0b2d86
-expectedTree = a017017863a252cee6cdac271c3beaee7c87afb6
+expectedHead = b8de39081457ddd94d2138b2ae7b444c57c9dcf8
+expectedTree = bed217598fcb73e0ffc838285938eac60d400366
 testCommand = make test
 publishRemote = origin
 publishBranch = main
@@ -15,8 +15,8 @@ patches =
     intraline-line-matching
     native-gutter-signs
     explorer-line-statistics
-    local-native-build
     pi-code-annotations
+    local-native-build
     fork-notice
 
 [patch "local-benchmarks"]
