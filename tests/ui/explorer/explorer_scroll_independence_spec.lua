@@ -76,20 +76,26 @@ end
 
 describe("explorer scroll independence", function()
   local repo
+  local original_cwd
   before_each(function()
     require("codediff").setup()
     setup_command()
+    original_cwd = vim.fn.getcwd()
   end)
   after_each(function()
-    if repo then
-      repo.cleanup()
-      repo = nil
-    end
     pcall(function()
       while vim.fn.tabpagenr("$") > 1 do
         vim.cmd("tabclose!")
       end
     end)
+    -- Restore cwd BEFORE deleting the temp repo. open_codediff_and_wait chdir's
+    -- into repo.dir; if we delete it while cwd is still inside, the next test's
+    -- git/mkdir subprocesses fail with getcwd errors (E739) in CI.
+    vim.fn.chdir(original_cwd)
+    if repo then
+      repo.cleanup()
+      repo = nil
+    end
   end)
 
   it("keeps the explorer out of the diff scroll-sync group", function()
