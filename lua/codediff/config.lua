@@ -1,5 +1,6 @@
 -- Configuration module
 local M = {}
+local explorer_formatters = require("codediff.ui.explorer.formatters")
 
 M.defaults = {
   -- Highlight configuration
@@ -73,6 +74,11 @@ M.defaults = {
     auto_open_on_cursor = false, -- Rebind j/k/Down/Up in the explorer to also open the file under the cursor
     flatten_dirs = true, -- Flatten single-child directory chains in tree view (e.g., src/components/ui/)
     status_right_margin = 1, -- Trailing cells between the status symbol (M/A/D) and the right edge; increase if Nerd Font icons clip it
+    formatters = {
+      file = explorer_formatters.file,
+      folder = explorer_formatters.folder,
+      group = explorer_formatters.group,
+    },
     visible_groups = { -- Which groups to show in explorer (can be toggled at runtime)
       staged = true,
       unstaged = true,
