@@ -102,7 +102,7 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
       jump_to_first_change = true,        -- Auto-scroll to first change when opening a diff: false to stay at same line
       highlight_added_deleted_files = false, -- Tint full contents of added, untracked, and deleted files
       highlight_priority = 100,           -- Priority for line-level diff highlights (increase to override LSP highlights)
-      gutter_signs = false,                -- Native +/- signs; see Native gutter signs below
+      gutter_signs = false,                -- Gutter +/- signs; see Gutter signs below
       compute_moves = false,              -- Detect moved code blocks (opt-in, matches VSCode experimental.showMoves)
       compact_context_lines = 3,          -- Number of context lines around hunks in compact mode
       compact_sync_folds = true,          -- Sync fold open/close across panes (mirrors Vim diff mode behavior)
@@ -228,7 +228,7 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
 
 The C library will be downloaded automatically on first use. No `build` step needed!
 
-### Native gutter signs
+### Gutter signs
 
 ```lua
 -- Disabled by default; existing move annotations remain.
@@ -250,16 +250,16 @@ gutter_signs = {
 }
 ```
 
-Set this under `diff`. `insert_text` and `delete_text` must each occupy one or two display cells, as measured by `strdisplaywidth()`, because Neovim limits native sign text to two display cells. The fullwidth defaults each occupy two display cells.
+Set this under `diff`. `insert_text` and `delete_text` must each occupy one or two display cells, as measured by `strdisplaywidth()`, because Neovim limits sign text to two display cells. The fullwidth defaults each occupy two display cells.
 
-CodeDiff uses persistent native Neovim signs and does not modify `signcolumn` or `statuscolumn`. This example keeps a sign column and places signs after line numbers:
+CodeDiff uses persistent Neovim signs and does not modify `signcolumn` or `statuscolumn`. This example keeps a sign column and places signs after line numbers:
 
 ```lua
 vim.opt.signcolumn = "yes"
 vim.opt.statuscolumn = "%C%=%l %s"
 ```
 
-`signcolumn = "yes:2"` allows a second sign on each line. Changed signs use priority 100 by default. An unchanged blocker at priority 99 can hide lower-priority Gitsigns, remote signs, diagnostics, or other signs across unchanged lines while the changed signs still win. Signs are buffer-local and therefore appear in every window showing a CodeDiff buffer until the diff view is suspended or closed. Native gutter signs require Neovim 0.9 or newer.
+`signcolumn = "yes:2"` allows a second sign on each line. Changed signs use priority 100 by default. An unchanged blocker at priority 99 can hide lower-priority Gitsigns, remote signs, diagnostics, or other signs across unchanged lines while the changed signs still win. Signs are buffer-local and therefore appear in every window showing a CodeDiff buffer until the diff view is suspended or closed. Gutter signs require Neovim 0.9 or newer.
 
 ### Managing Library Installation
 

@@ -313,9 +313,9 @@ Setup entry point:
 <
 
 ==============================================================================
-NATIVE GUTTER SIGNS                                  *codediff-gutter-signs*
+GUTTER SIGNS                                         *codediff-gutter-signs*
 
-Native gutter signs are disabled by default and require Neovim 0.9+. They are
+Gutter signs are disabled by default and require Neovim 0.9+. They are
 buffer-local, so they appear in every window showing a CodeDiff buffer until
 the diff view is suspended or closed.
 
@@ -341,7 +341,7 @@ the diff view is suspended or closed.
 
 Place `gutter_signs` under `diff`. `insert_text` and `delete_text` must each
 occupy one or two display cells, as measured by strdisplaywidth(), because
-Neovim limits native sign text to two display cells. The fullwidth defaults
+Neovim limits sign text to two display cells. The fullwidth defaults
 each occupy two display cells.
 
 CodeDiff does not modify signcolumn or statuscolumn. This example keeps a sign

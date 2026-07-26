@@ -68,7 +68,7 @@ local changed_ranges = {
   },
 }
 
-describe("Native gutter signs", function()
+describe("Gutter signs", function()
   local session
 
   before_each(function()
