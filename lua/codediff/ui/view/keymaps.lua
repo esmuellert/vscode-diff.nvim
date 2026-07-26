@@ -5,7 +5,6 @@ local lifecycle = require("codediff.ui.lifecycle")
 local auto_refresh = require("codediff.ui.auto_refresh")
 local config = require("codediff.config")
 local navigation = require("codediff.ui.view.navigation")
-local render = require("codediff.ui.view.render")
 local compact = require("codediff.ui.view.compact")
 
 local function get_explorer_target_file(explorer, session)
@@ -770,13 +769,11 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
     local other_view = vim.api.nvim_win_call(other_win, function()
       return vim.fn.winsaveview()
     end)
-    local saved_scrollbind_current = vim.wo[current_win].scrollbind
-    local saved_scrollbind_other = vim.wo[other_win].scrollbind
     local saved_scrolloff_other = vim.wo[other_win].scrolloff
 
-    -- Disable scrollbind
-    vim.wo[current_win].scrollbind = false
-    vim.wo[other_win].scrollbind = false
+    -- Pause structural scroll-sync while we impose the move alignment.
+    local scroll = require("codediff.ui.scroll")
+    scroll.pause(tabpage)
     vim.wo[other_win].scrolloff = 0
 
     -- Align using the annotation virt_line as anchor:
@@ -824,26 +821,14 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
       if not vim.api.nvim_win_is_valid(current_win) or not vim.api.nvim_win_is_valid(other_win) then
         return
       end
-      -- Restore views first (before scrollbind)
+      -- Restore views first, then resume structural scroll-sync.
       vim.api.nvim_win_call(other_win, function()
         vim.fn.winrestview(other_view)
       end)
       vim.api.nvim_win_call(current_win, function()
         vim.fn.winrestview(current_view)
       end)
-      -- Use the same anchor technique as initial render to establish scrollbind
-      local sess = lifecycle.get_session(tabpage)
-      local orig_win = sess and sess.original_win or current_win
-      local mod_win = sess and sess.modified_win or other_win
-      local orig_buf_nr = sess and sess.original_bufnr or vim.api.nvim_win_get_buf(orig_win)
-      local mod_buf_nr = sess and sess.modified_bufnr or vim.api.nvim_win_get_buf(mod_win)
-      local diff_result = sess and sess.stored_diff_result
-      local orig_cur = { current_view.lnum, current_view.col }
-      local mod_cur = { other_view.lnum, other_view.col }
-      if not is_on_original then
-        orig_cur, mod_cur = mod_cur, orig_cur
-      end
-      render.establish_scrollbind(orig_win, mod_win, orig_buf_nr, mod_buf_nr, diff_result, orig_cur, mod_cur)
+      scroll.resume(tabpage)
     end
 
     -- Restore when cursor moves out of the moved block

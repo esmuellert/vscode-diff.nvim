@@ -6,52 +6,33 @@ local semantic = require("codediff.ui.semantic_tokens")
 local config = require("codediff.config")
 local diff_module = require("codediff.core.diff")
 
---- Establish scrollbind between two windows using the anchor technique.
---- Anchors at the first unchanged line (past any fillers at the start of file)
---- so that syncbind establishes the correct baseline, then scrolls back to the
---- desired cursor positions.
+--- Establish scroll synchronization between the two diff windows.
+--- Positions each pane's cursor on its own hunk line, then binds them with the
+--- structural virtual-row scroll-sync (see codediff.scrollsync) and aligns the
+--- original pane to the modified (primary) pane. Replaces native scrollbind so
+--- a full-screen filler block no longer causes scroll flicker.
 --- @param orig_win number
 --- @param mod_win number
---- @param orig_buf number
---- @param mod_buf number
---- @param lines_diff table: diff result with .changes
---- @param orig_cursor table|nil: {line, col} to restore on original side
---- @param mod_cursor table|nil: {line, col} to restore on modified side
+--- @param orig_buf number  (unused; kept for call-site compatibility)
+--- @param mod_buf number   (unused; kept for call-site compatibility)
+--- @param lines_diff table (unused; alignment is derived from placed fillers)
+--- @param orig_cursor table|nil: {line, col} on original side
+--- @param mod_cursor table|nil: {line, col} on modified side
 function M.establish_scrollbind(orig_win, mod_win, orig_buf, mod_buf, lines_diff, orig_cursor, mod_cursor)
-  -- When first change is a pure insertion/deletion at line 1, filler virt_lines
-  -- sit above line 1 on one side. Scrollbind at line 1 won't align because
-  -- one side has extra visual lines above. Fix: start scrollbind at the first
-  -- corresponding unchanged line after the initial change.
-  if lines_diff and lines_diff.changes and #lines_diff.changes > 0 then
-    local first = lines_diff.changes[1]
-    local orig_empty = first.original.start_line >= first.original.end_line
-    local mod_empty = first.modified.start_line >= first.modified.end_line
-    if (first.original.start_line == 1 or first.modified.start_line == 1) and (orig_empty or mod_empty) then
-      local anchor_orig = math.max(first.original.end_line, 1)
-      local anchor_mod = math.max(first.modified.end_line, 1)
-      anchor_orig = math.min(anchor_orig, vim.api.nvim_buf_line_count(orig_buf))
-      anchor_mod = math.min(anchor_mod, vim.api.nvim_buf_line_count(mod_buf))
-      vim.api.nvim_win_set_cursor(orig_win, { anchor_orig, 0 })
-      vim.api.nvim_win_set_cursor(mod_win, { anchor_mod, 0 })
-      vim.wo[orig_win].scrollbind = true
-      vim.wo[mod_win].scrollbind = true
-      vim.cmd("syncbind")
-      return
-    end
-  end
+  local scroll = require("codediff.ui.scroll")
+  local tabpage = vim.api.nvim_win_get_tabpage(mod_win)
 
-  -- Normal path: both at line 1, enable scrollbind, move to target
-  vim.api.nvim_win_set_cursor(orig_win, { 1, 0 })
-  vim.api.nvim_win_set_cursor(mod_win, { 1, 0 })
-  vim.wo[orig_win].scrollbind = true
-  vim.wo[mod_win].scrollbind = true
-
+  -- Place cursors on their respective hunk lines (per-pane coordinates).
   if orig_cursor then
     pcall(vim.api.nvim_win_set_cursor, orig_win, orig_cursor)
   end
   if mod_cursor then
     pcall(vim.api.nvim_win_set_cursor, mod_win, mod_cursor)
   end
+
+  -- Bind the two panes and align the original pane to the modified pane.
+  scroll.bind(tabpage, { orig_win, mod_win })
+  scroll.resync(tabpage, mod_win)
 end
 
 -- Common logic: Compute diff and render highlights
@@ -92,7 +73,7 @@ function M.compute_and_render(
     semantic.apply_semantic_tokens(modified_buf, original_buf)
   end
 
-  -- Setup scrollbind synchronization (only if windows provided)
+  -- Setup scroll synchronization (only if windows provided)
   if original_win and modified_win and vim.api.nvim_win_is_valid(original_win) and vim.api.nvim_win_is_valid(modified_win) then
     -- Save cursor position if we need to preserve it (on update)
     local saved_cursor = nil
@@ -100,7 +81,7 @@ function M.compute_and_render(
       saved_cursor = vim.api.nvim_win_get_cursor(modified_win)
     end
 
-    -- Step 1: Disable scrollbind while repositioning cursors
+    -- Step 1: Ensure native scrollbind is off (replaced by structural sync) and disable wrap
     vim.wo[original_win].scrollbind = false
     vim.wo[modified_win].scrollbind = false
     vim.wo[original_win].wrap = false
@@ -121,11 +102,12 @@ function M.compute_and_render(
       -- this render in the file-switch path) or current tabpage (this code
       -- can run from a scheduled callback on a different tab).
       local lifecycle = require("codediff.ui.lifecycle")
-      local tabpage = (modified_win and vim.api.nvim_win_is_valid(modified_win))
-        and vim.api.nvim_win_get_tabpage(modified_win) or nil
+      local tabpage = (modified_win and vim.api.nvim_win_is_valid(modified_win)) and vim.api.nvim_win_get_tabpage(modified_win) or nil
       local session = tabpage and lifecycle.get_session(tabpage) or nil
       local landing = session and session.pending_cursor_landing
-      if session then session.pending_cursor_landing = nil end
+      if session then
+        session.pending_cursor_landing = nil
+      end
 
       if line_range then
         -- Range mode: find the first hunk overlapping the line range, then
@@ -147,9 +129,7 @@ function M.compute_and_render(
         orig_cursor = { target_line, 0 }
         mod_cursor = { target_line, 0 }
       else
-        local hunk = landing == "last"
-          and lines_diff.changes[#lines_diff.changes]
-          or lines_diff.changes[1]
+        local hunk = landing == "last" and lines_diff.changes[#lines_diff.changes] or lines_diff.changes[1]
         orig_cursor = { hunk.original.start_line, 0 }
         mod_cursor = { hunk.modified.start_line, 0 }
       end
@@ -161,7 +141,7 @@ function M.compute_and_render(
       mod_cursor = { 1, 0 }
     end
 
-    -- Step 3: Establish scrollbind with anchor technique, then restore cursors
+    -- Step 3: Position cursors and bind the structural scroll-sync
     M.establish_scrollbind(original_win, modified_win, original_buf, modified_buf, lines_diff, orig_cursor, mod_cursor)
 
     -- Step 4: Center view on first hunk for initial open
@@ -217,16 +197,19 @@ function M.compute_and_render_conflict(original_buf, modified_buf, base_lines, o
   semantic.apply_semantic_tokens(original_buf, modified_buf)
   semantic.apply_semantic_tokens(modified_buf, original_buf)
 
-  -- Setup window options with scrollbind (filler lines enable proper alignment)
+  -- Setup window options with structural scroll-sync (filler lines enable proper alignment)
   if original_win and modified_win and vim.api.nvim_win_is_valid(original_win) and vim.api.nvim_win_is_valid(modified_win) then
     vim.wo[original_win].wrap = false
     vim.wo[modified_win].wrap = false
 
-    -- Reset scroll position and enable scrollbind
+    -- Reset scroll position and bind the two panes (the result pane, if any,
+    -- is added to the group later by conflict_window once it exists).
     vim.api.nvim_win_set_cursor(original_win, { 1, 0 })
     vim.api.nvim_win_set_cursor(modified_win, { 1, 0 })
-    vim.wo[original_win].scrollbind = true
-    vim.wo[modified_win].scrollbind = true
+    local scroll = require("codediff.ui.scroll")
+    local tabpage = vim.api.nvim_win_get_tabpage(modified_win)
+    scroll.bind(tabpage, { original_win, modified_win })
+    scroll.resync(tabpage, modified_win)
 
     -- Scroll to first change in either buffer
     if auto_scroll_to_first_hunk then
