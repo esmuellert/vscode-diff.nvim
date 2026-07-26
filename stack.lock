@@ -1,7 +1,7 @@
 [stack]
 upstream = 8bd120d5e02172852e788adde2abc94383cae741
-expectedHead = 516a65faa15c2817ef8176631464be75b1345808
-expectedTree = 899ac55d917d3493bc44f36d4a6b25cc5bc26b3a
+expectedHead = cd7ed2ecb13fa1854f0dd0a5495c6b3e1c0b2d86
+expectedTree = a017017863a252cee6cdac271c3beaee7c87afb6
 testCommand = make test
 publishRemote = origin
 publishBranch = main
@@ -12,7 +12,6 @@ referencePatches =
     design-line-wrapping
 patches =
     local-benchmarks
-    preserve-explorer-state
     intraline-line-matching
     native-gutter-signs
     explorer-line-statistics
@@ -25,12 +24,6 @@ description = Add local performance benchmarks
 file = patches/003-local-benchmarks.patch
 originCommit = 7873437263a5af86fa8d4830df56adfc55a6ee51
 pullRequest = https://github.com/esmuellert/codediff.nvim/pull/458
-
-[patch "preserve-explorer-state"]
-description = fix(explorer): preserve tree state across refreshes
-file = patches/011-preserve-explorer-state.patch
-originCommit = 0b71d250c70781418120caab0af4eb29c9b0ca1b
-pullRequest = https://github.com/esmuellert/codediff.nvim/pull/443
 
 [patch "explorer-line-statistics"]
 description = feat(explorer): Git stats + Explorer Keymaps + Explorer line renderer
