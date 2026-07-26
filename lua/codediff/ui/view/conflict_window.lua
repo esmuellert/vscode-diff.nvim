@@ -109,9 +109,11 @@ function M.setup_conflict_result_window(tabpage, session_config, original_win, m
   vim.wo[result_win].wrap = false
   vim.wo[result_win].cursorline = true
 
-  -- Enable scrollbind for result window
+  -- Add the result window to the structural scroll-sync group (all 3 panes).
   vim.api.nvim_win_set_cursor(result_win, { 1, 0 })
-  vim.wo[result_win].scrollbind = true
+  local scroll = require("codediff.ui.scroll")
+  scroll.bind(tabpage, { original_win, modified_win, result_win })
+  scroll.resync(tabpage, modified_win)
 
   -- Update lifecycle with result buffer/window FIRST
   -- (This must happen before setting winbar so ensure_no_winbar knows we're in conflict mode)

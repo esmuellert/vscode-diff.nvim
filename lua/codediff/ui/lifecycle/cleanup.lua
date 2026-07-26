@@ -121,6 +121,11 @@ local function cleanup_diff(tabpage)
   pcall(vim.api.nvim_del_augroup_by_name, "codediff_working_sync_" .. tabpage)
   pcall(vim.api.nvim_del_augroup_by_name, "CodeDiffConflictSigns_" .. tabpage)
 
+  -- Tear down the scroll-sync group for this tab
+  pcall(function()
+    require("codediff.ui.scroll").teardown(tabpage)
+  end)
+
   -- Remove from tracking
   active_diffs[tabpage] = nil
 end

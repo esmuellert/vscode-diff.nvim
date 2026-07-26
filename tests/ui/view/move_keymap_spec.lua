@@ -61,10 +61,7 @@ local function wait_for_session_with_moves(tabpage, timeout_ms)
   local session
   local ok = vim.wait(timeout_ms, function()
     session = lifecycle.get_session(tabpage)
-    return session
-      and session.stored_diff_result
-      and session.stored_diff_result.moves
-      and #session.stored_diff_result.moves > 0
+    return session and session.stored_diff_result and session.stored_diff_result.moves and #session.stored_diff_result.moves > 0
   end, 50)
   return ok, session
 end
@@ -109,8 +106,12 @@ describe("gm align_move keymap", function()
     while vim.fn.tabpagenr("$") > 1 do
       vim.cmd("tabclose!")
     end
-    if left_path then pcall(vim.fn.delete, left_path) end
-    if right_path then pcall(vim.fn.delete, right_path) end
+    if left_path then
+      pcall(vim.fn.delete, left_path)
+    end
+    if right_path then
+      pcall(vim.fn.delete, right_path)
+    end
     left_path, right_path = nil, nil
   end)
 
@@ -205,15 +206,13 @@ describe("gm align_move keymap", function()
     end)
 
     -- The paired block on the modified side should be aligned to the same visual row
-    assert.are.equal(orig_visual_after, mod_visual,
-      string.format("Moved block visual rows should match: original winline=%d, modified winline=%d",
-        orig_visual_after, mod_visual))
+    assert.are.equal(orig_visual_after, mod_visual, string.format("Moved block visual rows should match: original winline=%d, modified winline=%d", orig_visual_after, mod_visual))
   end)
 
   -- ──────────────────────────────────────────────────────────────
-  -- 4. Restore scrollbind on cursor leave
+  -- 4. Resume scroll-sync on cursor leave
   -- ──────────────────────────────────────────────────────────────
-  it("restores scrollbind when cursor leaves moved block", function()
+  it("pauses scroll-sync during move alignment and resumes on cursor leave", function()
     require("codediff").setup({ diff = { compute_moves = true, layout = "side-by-side" } })
     highlights.setup()
 
@@ -228,10 +227,15 @@ describe("gm align_move keymap", function()
     local moves = session.stored_diff_result.moves
     local move = moves[1]
 
-    -- Note scrollbind state before gm
+    local scroll = require("codediff.ui.scroll")
+    local group = scroll.get(tabpage)
+    assert.is_not_nil(group, "A scroll-sync group should be bound for the diff view")
+
+    -- Native scrollbind must never be enabled (replaced by structural sync).
     vim.wo[session.modified_win].scrolloff = 8
-    local orig_sb_before = vim.wo[session.original_win].scrollbind
-    local mod_sb_before = vim.wo[session.modified_win].scrollbind
+    assert.is_false(vim.wo[session.original_win].scrollbind, "native scrollbind stays off")
+    assert.is_false(vim.wo[session.modified_win].scrollbind, "native scrollbind stays off")
+    assert.is_falsy(group.paused, "scroll-sync active before alignment")
 
     -- Focus original window, position on moved block, trigger gm
     vim.api.nvim_set_current_win(session.original_win)
@@ -242,9 +246,8 @@ describe("gm align_move keymap", function()
     vim.api.nvim_feedkeys(gm_keys, "x", false)
     vim.cmd("redraw")
 
-    -- Scrollbind should be disabled while aligned
-    assert.is_false(vim.wo[session.original_win].scrollbind, "scrollbind should be disabled during alignment")
-    assert.is_false(vim.wo[session.modified_win].scrollbind, "scrollbind should be disabled during alignment")
+    -- Scroll-sync should be paused while the move alignment is imposed.
+    assert.is_true(group.paused, "scroll-sync should be paused during alignment")
 
     -- Move cursor OUT of the moved block range using feedkeys so CursorMoved fires.
     -- Note: CursorMoved does not fire in headless mode, so we manually trigger it
@@ -255,13 +258,9 @@ describe("gm align_move keymap", function()
     vim.cmd("doautocmd CursorMoved")
     vim.cmd("redraw")
 
-    -- Scrollbind should be restored to its original state
-    assert.are.equal(orig_sb_before, vim.wo[session.original_win].scrollbind,
-      "scrollbind should be restored on original window")
-    assert.are.equal(mod_sb_before, vim.wo[session.modified_win].scrollbind,
-      "scrollbind should be restored on modified window")
-    assert.are.equal(8, vim.wo[session.modified_win].scrolloff,
-      "scrolloff should be restored on modified window")
+    -- Scroll-sync should be resumed (not paused) after leaving the moved block.
+    assert.is_falsy(group.paused, "scroll-sync should resume after leaving the moved block")
+    assert.are.equal(8, vim.wo[session.modified_win].scrolloff, "scrolloff should be restored on modified window")
   end)
 
   -- ──────────────────────────────────────────────────────────────
@@ -303,7 +302,9 @@ describe("gm align_move keymap", function()
     vim.api.nvim_set_current_win(session.modified_win)
     vim.cmd("doautocmd WinLeave")
     -- Process vim.schedule callbacks so the deferred restore runs
-    vim.wait(100, function() return false end)
+    vim.wait(100, function()
+      return false
+    end)
     vim.cmd("redraw")
 
     -- Both windows should be back to pre-gm scroll positions
@@ -314,14 +315,13 @@ describe("gm align_move keymap", function()
       return vim.fn.winsaveview()
     end)
 
-    assert.are.equal(orig_view_before.topline, orig_view_after.topline,
-      "original window topline should be restored after WinLeave")
-    assert.are.equal(mod_view_before.topline, mod_view_after.topline,
-      "modified window topline should be restored after WinLeave")
-    assert.is_true(vim.wo[session.original_win].scrollbind,
-      "scrollbind should be re-enabled on original window")
-    assert.is_true(vim.wo[session.modified_win].scrollbind,
-      "scrollbind should be re-enabled on modified window")
+    assert.are.equal(orig_view_before.topline, orig_view_after.topline, "original window topline should be restored after WinLeave")
+    assert.are.equal(mod_view_before.topline, mod_view_after.topline, "modified window topline should be restored after WinLeave")
+    local group = require("codediff.ui.scroll").get(tabpage)
+    assert.is_not_nil(group, "scroll-sync group should exist")
+    assert.is_falsy(group.paused, "scroll-sync should be resumed after WinLeave restore")
+    assert.is_false(vim.wo[session.original_win].scrollbind, "native scrollbind stays off")
+    assert.is_false(vim.wo[session.modified_win].scrollbind, "native scrollbind stays off")
   end)
 
   -- ──────────────────────────────────────────────────────────────
@@ -378,7 +378,9 @@ describe("gm align_move keymap", function()
     local tested = 0
     while true do
       local name, ftype = vim.loop.fs_scandir_next(handle)
-      if not name then break end
+      if not name then
+        break
+      end
       if ftype == "directory" then
         local orig_path = pairs_dir .. "/" .. name .. "/original.txt"
         local mod_path = pairs_dir .. "/" .. name .. "/modified.txt"
@@ -411,9 +413,9 @@ describe("gm align_move keymap", function()
               vim.cmd("normal! zz")
               vim.cmd("redraw")
 
-              -- Get winline before align
-              vim.wo[orig_win].scrollbind = false
-              vim.wo[mod_win].scrollbind = false
+              -- Get winline before align (pause structural sync so our manual
+              -- alignment measurement is not overridden by the sync group)
+              require("codediff.ui.scroll").pause(tp)
 
               local my_wl = vim.api.nvim_win_call(orig_win, function()
                 vim.api.nvim_win_set_cursor(orig_win, { move.original.start_line, 0 })
@@ -440,18 +442,17 @@ describe("gm align_move keymap", function()
               local orig_lc = vim.api.nvim_buf_line_count(session.original_bufnr)
               local mod_lc = vim.api.nvim_buf_line_count(session.modified_bufnr)
               if orig_lc >= 30 and mod_lc >= 30 then
-                assert.are.equal(my_wl, other_wl,
-                  name .. ": gm alignment failed, orig_wl=" .. my_wl .. " mod_wl=" .. other_wl)
+                assert.are.equal(my_wl, other_wl, name .. ": gm alignment failed, orig_wl=" .. my_wl .. " mod_wl=" .. other_wl)
               end
 
-              -- Restore scrollbind
-              vim.wo[orig_win].scrollbind = true
-              vim.wo[mod_win].scrollbind = true
-              vim.cmd("syncbind")
+              -- Resume structural scroll-sync
+              require("codediff.ui.scroll").resume(tp)
             end
           end
 
-          while vim.fn.tabpagenr("$") > 1 do vim.cmd("tabclose!") end
+          while vim.fn.tabpagenr("$") > 1 do
+            vim.cmd("tabclose!")
+          end
           tested = tested + 1
         end
       end
