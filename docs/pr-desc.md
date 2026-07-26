@@ -1,3 +1,8 @@
+Fixes #454
+Fixes #473
+
+Related Neovim limitation: [neovim/neovim#40987](https://github.com/neovim/neovim/issues/40987)
+
 # Gutter signs design constraint
 
 Neovim ignores `sign_text` when an extmark has `ephemeral = true`. This is tracked in [neovim/neovim#32936](https://github.com/neovim/neovim/issues/32936) and was reproduced on Neovim 0.11.5 and 0.12.2.
