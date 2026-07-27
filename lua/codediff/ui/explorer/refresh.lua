@@ -100,6 +100,16 @@ function M.setup_auto_refresh(explorer, tabpage)
                 if watch_err then
                   return
                 end
+                -- Ignore lock files (index.lock, HEAD.lock, ...). A lock only
+                -- signals that a git operation is in flight, never that state
+                -- changed; the real change always arrives as a later write to
+                -- the target file. This also breaks a feedback loop: the
+                -- explorer's own `git status` momentarily creates index.lock,
+                -- which would otherwise wake this watcher and trigger another
+                -- status, indefinitely.
+                if filename and tostring(filename):match("%.lock$") then
+                  return
+                end
                 if not vim.api.nvim_tabpage_is_valid(tabpage) or explorer.is_hidden then
                   return
                 end

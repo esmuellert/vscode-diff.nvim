@@ -693,6 +693,34 @@ end
 -- Single-file display (no diff) for explorer special cases
 -- ============================================================================
 
+--- True when the pane already shows exactly what this call would render.
+--- Explorer refreshes re-select the file that is already open. For real diffs
+--- on_file_select short-circuits that, but untracked/added/deleted files return
+--- before reaching its guard, so the window was torn down and rebuilt on every
+--- refresh, and the layout pass at the end of the rebuild discarded any pane
+--- the user had resized. Comparing the displayed buffer covers path and
+--- revision at once, since virtual revisions resolve to distinct buffers.
+---@param session table
+---@param opts table
+---@return boolean
+local function single_file_unchanged(session, opts)
+  if not session.single_pane then
+    return false
+  end
+  if session.single_side ~= (opts.highlight ~= false and opts.keep or nil) then
+    return false
+  end
+  local keep_win = opts.keep == "original" and session.original_win or session.modified_win
+  local other_win = opts.keep == "original" and session.modified_win or session.original_win
+  if other_win and vim.api.nvim_win_is_valid(other_win) then
+    return false
+  end
+  if not keep_win or not vim.api.nvim_win_is_valid(keep_win) then
+    return false
+  end
+  return vim.api.nvim_win_get_buf(keep_win) == opts.load_bufnr
+end
+
 --- Core implementation for showing a single file without diff.
 --- Closes the empty pane and loads the file into the remaining pane.
 ---@param tabpage number
@@ -700,6 +728,10 @@ end
 local function show_single_file(tabpage, opts)
   local session = lifecycle.get_session(tabpage)
   if not session then
+    return
+  end
+
+  if single_file_unchanged(session, opts) then
     return
   end
 
