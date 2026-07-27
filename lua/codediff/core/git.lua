@@ -91,6 +91,27 @@ end
 
 -- Run a git command asynchronously
 -- Uses vim.system if available (Neovim 0.10+), falls back to vim.loop.spawn
+
+-- Git opportunistically rewrites the on-disk index as a side effect of
+-- read-only commands (`git status`/`git diff` refresh the stat cache, writing
+-- .git/index through .git/index.lock). The explorer watches .git to detect
+-- external changes, so those self-inflicted writes retriggered a refresh,
+-- which ran git again -- a self-sustaining loop that never settled.
+--
+-- --no-optional-locks (git 2.15+) suppresses exactly those optional
+-- operations. Commands that genuinely need a lock -- add, commit, restore --
+-- still take it, so staging and discarding are unaffected. Applied to every
+-- invocation so reading a repository can never mutate it.
+local function git_args(args)
+  local out = { "--no-optional-locks" }
+  vim.list_extend(out, args)
+  return out
+end
+
+local function git_argv(args)
+  return vim.list_extend({ "git" }, git_args(args))
+end
+
 local function run_git_async(args, opts, callback)
   opts = opts or {}
 
@@ -103,7 +124,7 @@ local function run_git_async(args, opts, callback)
       return
     end
 
-    vim.system(vim.list_extend({ "git" }, args), {
+    vim.system(git_argv(args), {
       cwd = opts.cwd,
       text = true,
     }, function(result)
@@ -130,7 +151,7 @@ local function run_git_async(args, opts, callback)
 
     ---@diagnostic disable-next-line: missing-fields
     handle = vim.loop.spawn("git", {
-      args = args,
+      args = git_args(args),
       cwd = opts.cwd,
       stdio = { nil, stdout, stderr },
     }, function(code)
@@ -548,7 +569,7 @@ function M.apply_patch(git_root, patch, opts, callback)
       return
     end
 
-    vim.system(vim.list_extend({ "git" }, args), {
+    vim.system(git_argv(args), {
       cwd = git_root,
       stdin = patch,
       text = true,
@@ -570,7 +591,7 @@ function M.apply_patch(git_root, patch, opts, callback)
     local handle
     ---@diagnostic disable-next-line: missing-fields
     handle = vim.loop.spawn("git", {
-      args = args,
+      args = git_args(args),
       cwd = git_root,
       stdio = { stdin_pipe, nil, stderr_pipe },
     }, function(code)
@@ -616,7 +637,7 @@ end
 -- Returns output string or nil on error
 local function run_git_sync(args, opts)
   opts = opts or {}
-  local cmd = vim.list_extend({ "git" }, args)
+  local cmd = git_argv(args)
 
   local result = vim.fn.systemlist(cmd)
   if vim.v.shell_error ~= 0 then
@@ -636,7 +657,7 @@ function M.get_git_root_sync(file_path)
     dir = vim.fn.fnamemodify(file_path, ":h")
   end
 
-  local cmd = { "git", "-C", dir, "rev-parse", "--show-toplevel" }
+  local cmd = git_argv({ "-C", dir, "rev-parse", "--show-toplevel" })
   local result = vim.fn.systemlist(cmd)
 
   if vim.v.shell_error ~= 0 or #result == 0 then

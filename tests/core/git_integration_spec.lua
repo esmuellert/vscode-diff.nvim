@@ -1,20 +1,22 @@
 -- Test: Git Integration
 -- Validates git operations, error handling, and async callbacks
 
-local git = require('codediff.core.git')
+local git = require("codediff.core.git")
 
 describe("Git Integration", function()
   -- Test 1: Detect non-git directory (async)
   it("Detects non-git directory", function()
     local callback_called = false
     local is_git = nil
-    
+
     git.get_git_root("/tmp", function(err, root)
       callback_called = true
       is_git = (err == nil and root ~= nil)
     end)
-    
-    vim.wait(2000, function() return callback_called end)
+
+    vim.wait(2000, function()
+      return callback_called
+    end)
     assert.is_true(callback_called, "Callback should be invoked")
     assert.equal("boolean", type(is_git), "Should determine if in git repo")
   end)
@@ -25,20 +27,22 @@ describe("Git Integration", function()
     if current_file == "" then
       current_file = vim.fn.getcwd() .. "/README.md"
     end
-    
+
     local callback_called = false
     local root = nil
-    
+
     git.get_git_root(current_file, function(err, git_root)
       callback_called = true
       if not err then
         root = git_root
       end
     end)
-    
-    vim.wait(2000, function() return callback_called end)
+
+    vim.wait(2000, function()
+      return callback_called
+    end)
     assert.is_true(callback_called, "Callback should be invoked")
-    
+
     if root then
       assert.equal("string", type(root), "Git root should be a string")
       assert.equal(1, vim.fn.isdirectory(root), "Git root should be a directory")
@@ -50,12 +54,12 @@ describe("Git Integration", function()
     local current_file = debug.getinfo(1).source:sub(2)
     local callback_called = false
     local got_error = false
-    
+
     -- First get git root
     git.get_git_root(current_file, function(err_root, git_root)
       if not err_root and git_root then
         local rel_path = git.get_relative_path(current_file, git_root)
-        
+
         git.get_file_content("invalid-revision-12345", git_root, rel_path, function(err, data)
           callback_called = true
           if err then
@@ -67,8 +71,10 @@ describe("Git Integration", function()
         got_error = true
       end
     end)
-    
-    vim.wait(2000, function() return callback_called end)
+
+    vim.wait(2000, function()
+      return callback_called
+    end)
     assert.is_true(callback_called, "Callback should be invoked")
   end)
 
@@ -76,11 +82,11 @@ describe("Git Integration", function()
   it("Can retrieve file from HEAD (if in git repo)", function()
     local test_passed = false
     local current_file = debug.getinfo(1).source:sub(2)
-    
+
     git.get_git_root(current_file, function(err_root, git_root)
       if not err_root and git_root then
         local rel_path = git.get_relative_path(current_file, git_root)
-        
+
         -- First resolve HEAD to commit hash
         git.resolve_revision("HEAD", git_root, function(err_resolve, commit_hash)
           if not err_resolve and commit_hash then
@@ -101,17 +107,19 @@ describe("Git Integration", function()
         test_passed = true
       end
     end)
-    
-    vim.wait(3000, function() return test_passed end)
+
+    vim.wait(3000, function()
+      return test_passed
+    end)
     assert.is_true(test_passed, "Test should complete")
   end)
 
   -- Test 5: Relative path calculation
   it("Calculates relative path correctly", function()
     -- Use Windows-style paths on Windows, Unix on Unix
-    local sep = package.config:sub(1,1)
+    local sep = package.config:sub(1, 1)
     local git_root, file_path, expected
-    
+
     if sep == "\\" then
       -- Windows
       git_root = "C:\\Users\\test\\project"
@@ -123,7 +131,7 @@ describe("Git Integration", function()
       file_path = "/home/user/project/src/file.lua"
       expected = "src/file.lua"
     end
-    
+
     local rel_path = git.get_relative_path(file_path, git_root)
     assert.equal("string", type(rel_path), "Should return string")
     assert.equal(expected, rel_path, "Should strip git root: got " .. rel_path)
@@ -133,13 +141,13 @@ describe("Git Integration", function()
   it("Provides good error for missing file in revision", function()
     local current_file = debug.getinfo(1).source:sub(2)
     local test_passed = false
-    
+
     git.get_git_root(current_file, function(err_root, git_root)
       if not err_root and git_root then
         git.resolve_revision("HEAD", git_root, function(err_resolve, commit_hash)
           if not err_resolve and commit_hash then
             local fake_path = "nonexistent_file_12345.txt"
-            
+
             git.get_file_content(commit_hash, git_root, fake_path, function(err, data)
               if err then
                 assert.equal("string", type(err), "Error should be a string")
@@ -155,17 +163,19 @@ describe("Git Integration", function()
         test_passed = true
       end
     end)
-    
-    vim.wait(3000, function() return test_passed end)
+
+    vim.wait(3000, function()
+      return test_passed
+    end)
     assert.is_true(test_passed, "Test should complete")
   end)
 
   -- Test 7: Handles special characters in filenames
   it("Handles filenames with spaces", function()
     -- Use Windows-style paths on Windows, Unix on Unix
-    local sep = package.config:sub(1,1)
+    local sep = package.config:sub(1, 1)
     local git_root, file_path, expected
-    
+
     if sep == "\\" then
       -- Windows
       git_root = "C:\\Users\\test\\project"
@@ -177,7 +187,7 @@ describe("Git Integration", function()
       file_path = "/home/user/project/src/my file.lua"
       expected = "src/my file.lua"
     end
-    
+
     local rel_path = git.get_relative_path(file_path, git_root)
     assert.equal(expected, rel_path, "Should handle spaces: got " .. rel_path)
   end)
@@ -187,15 +197,15 @@ describe("Git Integration", function()
     local current_file = debug.getinfo(1).source:sub(2)
     local call1_done = false
     local call2_done = false
-    
+
     git.get_git_root(current_file, function(err_root, git_root)
       if not err_root and git_root then
         local rel_path = git.get_relative_path(current_file, git_root)
-        
+
         git.get_file_content("invalid1", git_root, rel_path, function()
           call1_done = true
         end)
-        
+
         git.get_file_content("invalid2", git_root, rel_path, function()
           call2_done = true
         end)
@@ -204,9 +214,11 @@ describe("Git Integration", function()
         call2_done = true
       end
     end)
-    
-    vim.wait(3000, function() return call1_done and call2_done end)
-    
+
+    vim.wait(3000, function()
+      return call1_done and call2_done
+    end)
+
     assert.is_true(call1_done, "First call should complete")
     assert.is_true(call2_done, "Second call should complete")
   end)
@@ -217,21 +229,21 @@ describe("Git Integration", function()
     local test_passed = false
     local first_result = nil
     local second_result = nil
-    
+
     git.get_git_root(current_file, function(err_root, git_root)
       if not err_root and git_root then
         git.resolve_revision("HEAD", git_root, function(err_resolve, commit_hash)
           if not err_resolve and commit_hash then
             local rel_path = git.get_relative_path(current_file, git_root)
-            
+
             -- First call (cache miss)
             git.get_file_content(commit_hash, git_root, rel_path, function(err1, lines1)
               first_result = lines1
-              
+
               -- Second call (cache hit)
               git.get_file_content(commit_hash, git_root, rel_path, function(err2, lines2)
                 second_result = lines2
-                
+
                 if first_result and second_result then
                   assert.equal(#first_result, #second_result, "Cached content should match")
                   -- Verify they are separate copies (not same reference)
@@ -250,8 +262,10 @@ describe("Git Integration", function()
         test_passed = true
       end
     end)
-    
-    vim.wait(3000, function() return test_passed end)
+
+    vim.wait(3000, function()
+      return test_passed
+    end)
     assert.is_true(test_passed, "Test should complete")
   end)
 
@@ -259,7 +273,7 @@ describe("Git Integration", function()
   it("get_merge_base returns merge-base commit", function()
     local current_file = debug.getinfo(1).source:sub(2)
     local test_passed = false
-    
+
     git.get_git_root(current_file, function(err_root, git_root)
       if not err_root and git_root then
         -- Use HEAD and HEAD~1 which are guaranteed to exist and have a merge-base
@@ -279,8 +293,10 @@ describe("Git Integration", function()
         test_passed = true
       end
     end)
-    
-    vim.wait(3000, function() return test_passed end)
+
+    vim.wait(3000, function()
+      return test_passed
+    end)
     assert.is_true(test_passed, "Test should complete")
   end)
 
@@ -288,7 +304,7 @@ describe("Git Integration", function()
   it("get_merge_base handles invalid revision", function()
     local current_file = debug.getinfo(1).source:sub(2)
     local test_passed = false
-    
+
     git.get_git_root(current_file, function(err_root, git_root)
       if not err_root and git_root then
         git.get_merge_base("nonexistent-branch-12345", "HEAD", git_root, function(err, merge_base_hash)
@@ -300,8 +316,65 @@ describe("Git Integration", function()
         test_passed = true
       end
     end)
-    
-    vim.wait(3000, function() return test_passed end)
+
+    vim.wait(3000, function()
+      return test_passed
+    end)
     assert.is_true(test_passed, "Test should complete")
+  end)
+  -- Reading a repository must never write to it. `git status` normally
+  -- refreshes the on-disk index as a side effect (writing .git/index through
+  -- .git/index.lock). The explorer watches .git for external changes, so those
+  -- self-inflicted writes retriggered a refresh, which ran git again -- an
+  -- endless refresh loop. get_status must leave .git untouched.
+  it("get_status does not write to .git", function()
+    local h = require("tests.helpers")
+    local repo = h.create_temp_git_repo()
+    repo.write_file("tracked.txt", { "one", "two" })
+    repo.git("add -A")
+    repo.git("commit -m base")
+    -- Dirty the worktree so git has a stat change it would want to record.
+    repo.write_file("tracked.txt", { "one", "CHANGED" })
+    repo.write_file("untracked.txt", { "x" })
+
+    local uv = vim.uv or vim.loop
+    local events = {}
+    local watcher = uv.new_fs_event()
+    watcher:start(
+      repo.dir .. "/.git",
+      {},
+      vim.schedule_wrap(function(err, filename)
+        if not err then
+          table.insert(events, tostring(filename))
+        end
+      end)
+    )
+    -- Let any settling writes from the setup above drain first.
+    vim.wait(400, function()
+      return false
+    end)
+    events = {}
+
+    local done = false
+    git.get_status(repo.dir, function(err)
+      assert.is_nil(err, "get_status should succeed")
+      done = true
+    end)
+    vim.wait(5000, function()
+      return done
+    end)
+    -- Give the watcher time to deliver anything git may have written.
+    vim.wait(600, function()
+      return false
+    end)
+
+    pcall(function()
+      watcher:stop()
+      watcher:close()
+    end)
+    repo.cleanup()
+
+    assert.is_true(done, "get_status should complete")
+    assert.same({}, events, "reading status must not modify .git, got: " .. vim.inspect(events))
   end)
 end)

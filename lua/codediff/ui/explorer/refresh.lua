@@ -100,6 +100,15 @@ function M.setup_auto_refresh(explorer, tabpage)
                 if watch_err then
                   return
                 end
+                -- Lock files (index.lock, HEAD.lock, ...) only signal that a
+                -- git operation is in flight, never that state changed; the
+                -- real change always arrives as a later write to the target
+                -- file. Reacting to them refreshes against a half-written
+                -- repository and, when the write is our own, feeds a refresh
+                -- loop. Ignore them regardless of who created them.
+                if filename and tostring(filename):match("%.lock$") then
+                  return
+                end
                 if not vim.api.nvim_tabpage_is_valid(tabpage) or explorer.is_hidden then
                   return
                 end
