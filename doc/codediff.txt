@@ -374,14 +374,10 @@ CodeDiff defines highlight groups matching VSCode's diff colors:
 - CodeDiffHelpKey - key bindings in keymap help (links to Special)
 - CodeDiffHelpSep - separators in keymap help (links to NonText)
 - CodeDiffHelpDesc - descriptions in keymap help (links to Normal)
-
-To customize gutter colors, define these four highlight groups in your
-colorscheme configuration:
-
-- CodeDiffGutterInsert - insert sign (defaults to CodeDiffLineInsert)
-- CodeDiffGutterDelete - delete sign (defaults to CodeDiffLineDelete)
-- CodeDiffGutterInsertNumber - insert line number (defaults to CodeDiffCharInsert)
-- CodeDiffGutterDeleteNumber - delete line number (defaults to CodeDiffCharDelete)
+- CodeDiffGutterInsert - Gutter insert sign (defaults to CodeDiffLineInsert)
+- CodeDiffGutterDelete - Gutter delete sign (defaults to CodeDiffLineDelete)
+- CodeDiffGutterInsertNumber - Gutter insert line number (defaults to CodeDiffCharInsert)
+- CodeDiffGutterDeleteNumber - Gutter delete line number (defaults to CodeDiffCharDelete)
 
 Default behavior:
 - Uses DiffAdd and DiffDelete for line-level highlights

@@ -648,15 +648,18 @@ The plugin defines highlight groups matching VSCode's diff colors:
 - `CodeDiffCharInsert` - Deep/dark green for inserted characters
 - `CodeDiffCharDelete` - Deep/dark red for deleted characters
 - `CodeDiffFiller` - Gray foreground for non-empty filler line patterns
-- `CodeDiffLineMove` - Background for moved code lines (derived from DiffChange)
-- `CodeDiffMoveTo` - Sign column and annotation color for move indicators
-
-To customize gutter colors, define these four highlight groups in your colorscheme configuration:
-
-- `CodeDiffGutterInsert` - Insert sign; defaults to `CodeDiffLineInsert`
-- `CodeDiffGutterDelete` - Delete sign; defaults to `CodeDiffLineDelete`
-- `CodeDiffGutterInsertNumber` - Insert line number; defaults to `CodeDiffCharInsert`
-- `CodeDiffGutterDeleteNumber` - Delete line number; defaults to `CodeDiffCharDelete`
+- `CodeDiffLineMove` - Background for moved lines (derived from DiffChange)
+- `CodeDiffCharMove` - Character-level highlight for moved text
+- `CodeDiffMoveFrom` - Sign/annotation color for move source
+- `CodeDiffMoveTo` - Sign/annotation color for move destination
+- `CodeDiffHelpSection` - Section headings in keymap help (links to Statement)
+- `CodeDiffHelpKey` - Key bindings in keymap help (links to Special)
+- `CodeDiffHelpSep` - Separators in keymap help (links to NonText)
+- `CodeDiffHelpDesc` - Descriptions in keymap help (links to Normal)
+- `CodeDiffGutterInsert` - Gutter insert sign (defaults to `CodeDiffLineInsert`)
+- `CodeDiffGutterDelete` - Gutter delete sign (defaults to `CodeDiffLineDelete`)
+- `CodeDiffGutterInsertNumber` - Gutter insert line number (defaults to `CodeDiffCharInsert`)
+- `CodeDiffGutterDeleteNumber` - Gutter delete line number (defaults to `CodeDiffCharDelete`)
 
 <details open>
 <summary><b>📸 Visual Examples</b> (click to collapse)</summary>
