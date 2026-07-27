@@ -1,4 +1,4 @@
-From be567e0206a5d13977e4c6c9742447ddf9f518b2 Mon Sep 17 00:00:00 2001
+From ec3cfed688107afcc6c26027ec742aeccded2aca Mon Sep 17 00:00:00 2001
 From: Richard Gill <richard@rgill.co.uk>
 Date: Sat, 18 Jul 2026 07:25:57 +0100
 Subject: [PATCH] feat(explorer): add optional line change statistics
@@ -1068,7 +1068,7 @@ index 0000000..f9c443d
 +
 +return M
 diff --git a/lua/codediff/ui/explorer/nodes.lua b/lua/codediff/ui/explorer/nodes.lua
-index 3adb053..95428cd 100644
+index 705edcd..8ca6323 100644
 --- a/lua/codediff/ui/explorer/nodes.lua
 +++ b/lua/codediff/ui/explorer/nodes.lua
 @@ -3,8 +3,9 @@
@@ -1115,7 +1115,7 @@ index 3adb053..95428cd 100644
        },
      })
    end
-@@ -126,8 +146,9 @@ local function build_directory_tree(files)
+@@ -127,8 +147,9 @@ function M.create_tree_file_nodes(files, git_root, group)
      for i = 1, #parts - 1 do
        local dir_name = parts[i]
        if not current[dir_name] then
@@ -1126,7 +1126,7 @@ index 3adb053..95428cd 100644
        current = current[dir_name]._children
      end
  
-@@ -250,6 +271,9 @@ function M.create_tree_file_nodes(files, git_root, group, flattenable_paths)
+@@ -209,6 +230,9 @@ function M.create_tree_file_nodes(files, git_root, group)
              dir_path = full_path,
              group = group,
              indent_state = node_indent_state,
@@ -1136,7 +1136,7 @@ index 3adb053..95428cd 100644
            },
          }, children)
        else
-@@ -271,6 +295,7 @@ function M.create_tree_file_nodes(files, git_root, group, flattenable_paths)
+@@ -230,6 +254,7 @@ function M.create_tree_file_nodes(files, git_root, group)
              git_root = git_root,
              group = group,
              indent_state = node_indent_state,
@@ -1144,7 +1144,7 @@ index 3adb053..95428cd 100644
            },
          })
        end
-@@ -282,172 +307,133 @@ function M.create_tree_file_nodes(files, git_root, group, flattenable_paths)
+@@ -241,172 +266,133 @@ function M.create_tree_file_nodes(files, git_root, group)
    return build_nodes(dir_tree, "", {})
  end
  
@@ -1433,10 +1433,10 @@ index 3adb053..95428cd 100644
  
  return M
 diff --git a/lua/codediff/ui/explorer/refresh.lua b/lua/codediff/ui/explorer/refresh.lua
-index 2a16f33..31d410f 100644
+index ce30bf6..c27a7a5 100644
 --- a/lua/codediff/ui/explorer/refresh.lua
 +++ b/lua/codediff/ui/explorer/refresh.lua
-@@ -401,11 +401,11 @@ function M.refresh(explorer)
+@@ -392,11 +392,11 @@ function M.refresh(explorer)
      local diff = dir_mod.diff_directories(explorer.dir1, explorer.dir2)
      process_result(nil, diff.status_result)
    elseif explorer.base_revision and explorer.target_revision and explorer.target_revision ~= "WORKING" then
@@ -1452,7 +1452,7 @@ index 2a16f33..31d410f 100644
  end
  
 diff --git a/lua/codediff/ui/explorer/tree.lua b/lua/codediff/ui/explorer/tree.lua
-index b097a81..019e336 100644
+index 2f55cd8..13aed14 100644
 --- a/lua/codediff/ui/explorer/tree.lua
 +++ b/lua/codediff/ui/explorer/tree.lua
 @@ -6,6 +6,7 @@ local Tree = require("codediff.ui.lib.tree")
@@ -1485,7 +1485,7 @@ index b097a81..019e336 100644
  -- Create tree data structure from git status result
  function M.create_tree_data(status_result, git_root, base_revision, is_dir_mode, visible_groups)
    local explorer_config = config.options.explorer or {}
-@@ -45,10 +61,7 @@ function M.create_tree_data(status_result, git_root, base_revision, is_dir_mode,
+@@ -36,10 +52,7 @@ function M.create_tree_data(status_result, git_root, base_revision, is_dir_mode,
    if is_dir_mode or base_revision then
      -- Dir or revision mode: single group showing all changes
      return {
@@ -1497,7 +1497,7 @@ index b097a81..019e336 100644
      }
    else
      -- Status mode: separate conflicts/staged/unstaged groups
-@@ -56,35 +69,17 @@ function M.create_tree_data(status_result, git_root, base_revision, is_dir_mode,
+@@ -47,35 +60,17 @@ function M.create_tree_data(status_result, git_root, base_revision, is_dir_mode,
  
      -- Conflicts first (most important)
      if #conflict_nodes > 0 and visible_groups.conflicts ~= false then

@@ -1,4 +1,4 @@
-From 90dbd77434997736f780eac2fbe9cc38a40e4470 Mon Sep 17 00:00:00 2001
+From 493807a5f186a6df1c444250214194a227fcf5cf Mon Sep 17 00:00:00 2001
 From: Richard Gill <richard@rgill.co.uk>
 Date: Sat, 18 Jul 2026 16:30:00 +0100
 Subject: [PATCH] fix: build fork native library locally
@@ -18,7 +18,7 @@ Subject: [PATCH] fix: build fork native library locally
  create mode 100644 tests/core/local_builder_spec.lua
 
 diff --git a/README.md b/README.md
-index d626eef..37ec535 100644
+index 702982c..e0121d3 100644
 --- a/README.md
 +++ b/README.md
 @@ -38,8 +38,11 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e

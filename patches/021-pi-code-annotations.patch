@@ -1,4 +1,4 @@
-From 319fff314995f5bf8c693aa02126c0e17e2f755a Mon Sep 17 00:00:00 2001
+From 60b1919af9a9f437e445f16c3c79b19baff6067a Mon Sep 17 00:00:00 2001
 From: Richard Gill <richard@rgill.co.uk>
 Date: Sat, 25 Jul 2026 15:10:56 +0100
 Subject: [PATCH] feat: add diff annotation integration API
@@ -15,7 +15,7 @@ Subject: [PATCH] feat: add diff annotation integration API
  8 files changed, 185 insertions(+), 2 deletions(-)
 
 diff --git a/README.md b/README.md
-index 37ec535..e0121d3 100644
+index d626eef..702982c 100644
 --- a/README.md
 +++ b/README.md
 @@ -709,13 +709,20 @@ git.get_git_root("/path/to/file.lua", function(err, git_root)

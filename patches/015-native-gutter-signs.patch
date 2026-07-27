@@ -1,4 +1,4 @@
-From b1742e4d5fdea321ff76b0e266777daf765d9c16 Mon Sep 17 00:00:00 2001
+From 98fb37601f80fbfce7ba80bf29b4a41f14c01f29 Mon Sep 17 00:00:00 2001
 From: Richard Gill <richard@rgill.co.uk>
 Date: Fri, 17 Jul 2026 20:18:52 +0100
 Subject: [PATCH] Added native gutter signs support
@@ -524,7 +524,7 @@ index b29e4b6..1a355c0 100644
    return true
  end
 diff --git a/lua/codediff/ui/lifecycle/state.lua b/lua/codediff/ui/lifecycle/state.lua
-index f0baa3d..89d8a65 100644
+index 6a4b96a..2f4a698 100644
 --- a/lua/codediff/ui/lifecycle/state.lua
 +++ b/lua/codediff/ui/lifecycle/state.lua
 @@ -3,6 +3,7 @@
@@ -557,7 +557,7 @@ index f0baa3d..89d8a65 100644
 +      end
      end
  
-     -- Re-sync scrollbind ONLY if diff was recomputed and not inline mode
+     -- Re-align scroll-sync ONLY if diff was recomputed and not inline mode.
 diff --git a/lua/codediff/ui/move.lua b/lua/codediff/ui/move.lua
 index a929f7f..d7c02ff 100644
 --- a/lua/codediff/ui/move.lua
