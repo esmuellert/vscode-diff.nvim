@@ -58,7 +58,22 @@ local function append_text(segments, text, hl)
   end
 end
 
-local function truncate_segments(segments, max_width)
+local function fit_text(text, max_width)
+  local fitted = ""
+  local width = 0
+  for index = 0, vim.fn.strchars(text) - 1 do
+    local char = vim.fn.strcharpart(text, index, 1)
+    local char_width = display_width(char)
+    if width + char_width > max_width then
+      return fitted
+    end
+    fitted = fitted .. char
+    width = width + char_width
+  end
+  return fitted
+end
+
+local function truncate_segments(segments, max_width, ellipsis)
   if max_width <= 0 then
     return {}
   end
@@ -66,14 +81,15 @@ local function truncate_segments(segments, max_width)
     return segments
   end
 
-  local ellipsis = string.rep(".", math.min(3, max_width))
-  local prefix_width = max_width - #ellipsis
+  ellipsis = fit_text(ellipsis, max_width)
+  local prefix_width = max_width - display_width(ellipsis)
   local truncated = {}
   local width = 0
   local ellipsis_hl = segments[1] and segments[1].hl or "Normal"
 
   for _, segment in ipairs(segments) do
-    for char in vim.gsplit(segment.text, "") do
+    for index = 0, vim.fn.strchars(segment.text) - 1 do
+      local char = vim.fn.strcharpart(segment.text, index, 1)
       local char_width = display_width(char)
       if width + char_width > prefix_width then
         append_text(truncated, ellipsis, ellipsis_hl)
@@ -96,12 +112,12 @@ local function layout_width(left, right, min_gap)
   return left_width + gap + right_width
 end
 
-local function shrink_region(region, overflow)
+local function shrink_region(region, overflow, ellipsis)
   local width = segments_width(region.segments)
-  region.segments = truncate_segments(region.segments, math.max(0, width - overflow))
+  region.segments = truncate_segments(region.segments, math.max(0, width - overflow), ellipsis)
 end
 
-local function shrink_priorities(left, right, max_width, min_gap)
+local function shrink_priorities(left, right, max_width, min_gap, ellipsis)
   local candidates = {}
   for _, regions in ipairs({ left, right }) do
     for _, region in ipairs(regions) do
@@ -119,27 +135,27 @@ local function shrink_priorities(left, right, max_width, min_gap)
     if overflow <= 0 then
       return
     end
-    shrink_region(region, overflow)
+    shrink_region(region, overflow, ellipsis)
   end
 end
 
-local function shrink_fixed_left(left, right, max_width, min_gap)
+local function shrink_fixed_left(left, right, max_width, min_gap, ellipsis)
   for index = #left, 1, -1 do
     local overflow = layout_width(left, right, min_gap) - max_width
     if overflow <= 0 then
       return
     end
-    shrink_region(left[index], overflow)
+    shrink_region(left[index], overflow, ellipsis)
   end
 end
 
-local function shrink_fixed_right(left, right, max_width, min_gap)
+local function shrink_fixed_right(left, right, max_width, min_gap, ellipsis)
   for index = 1, #right do
     local overflow = layout_width(left, right, min_gap) - max_width
     if overflow <= 0 then
       return
     end
-    shrink_region(right[index], overflow)
+    shrink_region(right[index], overflow, ellipsis)
   end
 end
 
@@ -151,21 +167,25 @@ local function append_regions(line, regions, selected_bg)
   end
 end
 
-function M.render(layout, max_width, selected_bg)
+function M.render(layout, max_width, selected_bg, ellipsis)
   if type(layout) ~= "table" then
     error("Explorer formatters must return a line layout")
+  end
+  ellipsis = ellipsis == nil and "…" or ellipsis
+  if type(ellipsis) ~= "string" then
+    error("Explorer ellipsis must be a string")
   end
   local left = copy_regions(layout.left)
   local right = copy_regions(layout.right)
   local min_gap = math.max(0, layout.min_gap or 2)
   max_width = math.max(0, max_width)
 
-  shrink_priorities(left, right, max_width, min_gap)
+  shrink_priorities(left, right, max_width, min_gap, ellipsis)
   if layout_width(left, right, min_gap) > max_width then
     min_gap = math.max(0, min_gap - (layout_width(left, right, min_gap) - max_width))
   end
-  shrink_fixed_left(left, right, max_width, min_gap)
-  shrink_fixed_right(left, right, max_width, min_gap)
+  shrink_fixed_left(left, right, max_width, min_gap, ellipsis)
+  shrink_fixed_right(left, right, max_width, min_gap, ellipsis)
 
   local line = Line()
   local left_width = regions_width(left)

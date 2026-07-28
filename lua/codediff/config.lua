@@ -74,6 +74,7 @@ M.defaults = {
     auto_open_on_cursor = false, -- Rebind j/k/Down/Up in the explorer to also open the file under the cursor
     flatten_dirs = true, -- Flatten single-child directory chains in tree view (e.g., src/components/ui/)
     status_right_margin = 1, -- Trailing cells between the status symbol (M/A/D) and the right edge; increase if Nerd Font icons clip it
+    ellipsis = "…", -- Text appended to truncated Explorer regions
     formatters = {
       file = explorer_formatters.file,
       folder = explorer_formatters.folder,

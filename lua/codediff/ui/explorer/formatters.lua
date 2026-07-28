@@ -4,7 +4,7 @@ local function region(segments, options)
   return vim.tbl_extend("force", { segments = segments }, options or {})
 end
 
-local function file_prefix(ctx)
+local function prefix(ctx)
   local segments = { { text = ctx.indent, hl = ctx.indent_hl } }
   if ctx.icon ~= "" then
     segments[#segments + 1] = { text = ctx.icon, hl = ctx.icon_hl }
@@ -15,7 +15,7 @@ end
 
 function M.file(ctx)
   local left = {
-    region(file_prefix(ctx)),
+    region(prefix(ctx)),
     region({ { text = ctx.filename, hl = "Normal" } }, { truncate_priority = 2 }),
   }
   if ctx.directory ~= "" then
@@ -38,14 +38,9 @@ function M.file(ctx)
 end
 
 function M.folder(ctx)
-  local prefix = { { text = ctx.indent, hl = ctx.indent_hl } }
-  if ctx.icon ~= "" then
-    prefix[#prefix + 1] = { text = ctx.icon, hl = ctx.icon_hl }
-    prefix[#prefix + 1] = { text = " ", hl = "Normal" }
-  end
   return {
     left = {
-      region(prefix),
+      region(prefix(ctx)),
       region({ { text = ctx.name, hl = "Directory" } }, { truncate_priority = 1 }),
     },
     right = {},

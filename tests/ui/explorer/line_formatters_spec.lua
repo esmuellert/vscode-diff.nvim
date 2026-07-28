@@ -27,6 +27,7 @@ describe("Explorer line formatters", function()
     assert.is_function(config.options.explorer.formatters.file)
     assert.is_function(config.options.explorer.formatters.folder)
     assert.is_function(config.options.explorer.formatters.group)
+    assert.equals("…", config.options.explorer.ellipsis)
   end)
 
   it("replaces complete file, folder, and group rows with formatter output", function()
@@ -80,9 +81,7 @@ describe("Explorer line formatters", function()
     assert.equals("", contexts.file.directory)
     assert.equals("src/old.lua", contexts.file.old_path)
     assert.equals("unstaged", contexts.file.group)
-    assert.equals(1, contexts.file.file_count)
     assert.equals("M", contexts.file.status)
-    assert.equals("M", contexts.file.status_code)
     assert.equals("CodeDiffStatusModified", contexts.file.status_hl)
     assert.equals(1, contexts.file.status_right_margin)
     assert.equals("  ├ ", contexts.file.indent)
@@ -102,8 +101,11 @@ describe("Explorer line formatters", function()
     }
 
     local content = line_layout.render(layout, 8):content()
-    assert.equals(".name  M", content)
+    assert.equals("…name  M", content)
     assert.equals(8, vim.fn.strdisplaywidth(content))
+
+    local custom = line_layout.render(layout, 10, nil, "..."):content()
+    assert.equals("...name  M", custom)
 
     local narrow = line_layout.render(layout, 1):content()
     assert.equals("M", narrow)
@@ -134,6 +136,7 @@ describe("Explorer line formatters", function()
   end)
 
   it("keeps built-in status visible when a filename must be truncated", function()
+    config.options.explorer.ellipsis = ".."
     local file = {
       path = "界界界-a-very-long-filename-that-needs-truncation.lua",
       status = "??",
@@ -141,7 +144,7 @@ describe("Explorer line formatters", function()
     local node = nodes.create_file_nodes({ file }, "/repo", "unstaged")[1]
     local content = nodes.prepare_node(node, 24, nil, nil):content()
 
-    assert.matches("%.%.%.%s+%?%? %s*$", content)
+    assert.matches("%.%.%s+%?%? %s*$", content)
     assert.equals(24, vim.fn.strdisplaywidth(content))
   end)
 end)

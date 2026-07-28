@@ -319,9 +319,7 @@ local function file_context(node, data, explorer_config)
     directory = directory,
     old_path = data.old_path,
     group = data.group,
-    file_count = 1,
     status = data.status_symbol or "",
-    status_code = data.status,
     status_hl = data.status_color,
     status_right_margin = math.max(0, explorer_config.status_right_margin or 1),
     indent = indent,
@@ -344,14 +342,14 @@ function M.prepare_node(node, max_width, selected_path, selected_group)
   local explorer_config = config.options.explorer
   local formatters = explorer_config.formatters
   if data.type == "group" then
-    return line_layout.render(formatters.group(group_context(node, data)), max_width)
+    return line_layout.render(formatters.group(group_context(node, data)), max_width, nil, explorer_config.ellipsis)
   end
   if data.type == "directory" then
-    return line_layout.render(formatters.folder(folder_context(node, data, explorer_config)), max_width)
+    return line_layout.render(formatters.folder(folder_context(node, data, explorer_config)), max_width, nil, explorer_config.ellipsis)
   end
 
   local is_selected = data.path == selected_path and data.group == selected_group
-  return line_layout.render(formatters.file(file_context(node, data, explorer_config)), max_width, selected_background(is_selected))
+  return line_layout.render(formatters.file(file_context(node, data, explorer_config)), max_width, selected_background(is_selected), explorer_config.ellipsis)
 end
 
 return M
