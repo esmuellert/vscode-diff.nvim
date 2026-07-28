@@ -4,7 +4,7 @@
 local Matches = {}
 Matches.__index = Matches
 
--- opts = { values, globals, subcommand = { name, matches }, bang, range }
+-- opts = { values, globals, subcommand = { name, matches }, bang, range, trailing }
 function Matches.new(opts)
   return setmetatable({
     _values = opts.values or {},
@@ -12,6 +12,7 @@ function Matches.new(opts)
     _subcommand = opts.subcommand,
     _bang = opts.bang or false,
     _range = opts.range,
+    _trailing = opts.trailing or {},
   }, Matches)
 end
 
@@ -74,6 +75,11 @@ end
 
 function Matches:range()
   return self._range
+end
+
+-- git-style operands: the tokens after `--`. Always a list (possibly empty).
+function Matches:trailing()
+  return self._trailing
 end
 
 return Matches

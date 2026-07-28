@@ -14,6 +14,7 @@ function Command.new(name)
     _subcommands = {},
     _subcommand_order = {},
     _handler = nil,
+    _trailing = nil,
   }, Command)
 end
 
@@ -43,6 +44,15 @@ end
 -- Handler invoked for this command when it is the matched leaf (cobra-style).
 function Command:handler(fn)
   self._handler = fn
+  return self
+end
+
+-- Arg describing operands after `--` (git-style trailing values). Used for help
+-- and completion only; the parser already routes post-`--` tokens into
+-- ArgMatches:trailing(). Give it a :completor() to complete those operands
+-- (e.g. file paths for a git pathspec).
+function Command:trailing(arg)
+  self._trailing = arg
   return self
 end
 

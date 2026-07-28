@@ -333,9 +333,10 @@ end
 --   staged = { { path = "file.txt", status = "M"|"A"|"D" } },
 --   conflicts = { { path = "file.txt", status = "!" } }
 -- }
-function M.get_status(git_root, callback)
+function M.get_status(git_root, callback, pathspec)
+  -- Trailing `-- <paths>` scopes the status to a pathspec (nil/empty = all files).
   run_git_async(
-    { "status", "--porcelain", "-uall", "-M" }, -- -M to detect renames
+    vim.list_extend({ "status", "--porcelain", "-uall", "-M", "--" }, pathspec or {}), -- -M to detect renames
     { cwd = git_root },
     function(err, output)
       if err then
@@ -398,9 +399,9 @@ end
 -- revision: git revision (e.g., "HEAD", "HEAD~1", commit hash, branch name)
 -- git_root: absolute path to git repository root
 -- callback: function(err, status_result) where status_result has same format as get_status
-function M.get_diff_revision(revision, git_root, callback)
-  -- First get tracked file changes
-  run_git_async({ "diff", "--name-status", "-M", revision }, { cwd = git_root }, function(err, output)
+function M.get_diff_revision(revision, git_root, callback, pathspec)
+  -- First get tracked file changes (trailing `-- <paths>` scopes to a pathspec)
+  run_git_async(vim.list_extend({ "diff", "--name-status", "-M", revision, "--" }, pathspec or {}), { cwd = git_root }, function(err, output)
     if err then
       callback(err, nil)
       return
@@ -435,7 +436,7 @@ function M.get_diff_revision(revision, git_root, callback)
     end
 
     -- Now get untracked files (they don't exist in the revision, so they're "new")
-    run_git_async({ "ls-files", "--others", "--exclude-standard" }, { cwd = git_root }, function(err_untracked, output_untracked)
+    run_git_async(vim.list_extend({ "ls-files", "--others", "--exclude-standard", "--" }, pathspec or {}), { cwd = git_root }, function(err_untracked, output_untracked)
       if err_untracked then
         -- If getting untracked files fails, just return what we have
         callback(nil, result)
@@ -463,8 +464,8 @@ end
 -- rev2: modified revision (e.g., commit hash)
 -- git_root: absolute path to git repository root
 -- callback: function(err, status_result)
-function M.get_diff_revisions(rev1, rev2, git_root, callback)
-  run_git_async({ "diff", "--name-status", "-M", rev1, rev2 }, { cwd = git_root }, function(err, output)
+function M.get_diff_revisions(rev1, rev2, git_root, callback, pathspec)
+  run_git_async(vim.list_extend({ "diff", "--name-status", "-M", rev1, rev2, "--" }, pathspec or {}), { cwd = git_root }, function(err, output)
     if err then
       callback(err, nil)
       return

@@ -348,6 +348,27 @@ Show only changes introduced since branching from a base branch—exactly like a
 
 This uses `git merge-base` semantics (equivalent to `git diff main...HEAD`), showing only the changes introduced on your branch, not changes that happened on the base branch since you branched.
 
+#### Scope to a subdirectory or path
+
+Append `-- <path>` to narrow the explorer to a specific subtree — exactly like
+`git diff <rev> <rev> -- <path>`. Useful in large or monorepo-style repositories
+to review just one component instead of hundreds of files:
+
+```vim
+" Only files under modules/network that changed between the two tags
+:CodeDiff v1.0.1 v1.0.2 -- modules/network
+
+" Only working-tree changes under a path
+:CodeDiff -- src/api
+
+" Composes with merge-base and --repo
+:CodeDiff main... -- packages/ui
+:CodeDiff --repo ~/code/other-repo v1 v2 -- lib
+```
+
+Paths are git pathspecs (relative to the repository root; multiple paths and
+git's glob syntax are supported).
+
 ### Git Diff Mode
 
 Compare the current buffer with a git revision:

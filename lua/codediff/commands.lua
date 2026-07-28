@@ -352,7 +352,7 @@ local function handle_history(range, file_path, flags, line_range, global_opts)
   resolve_working_root(global_opts, open_history)
 end
 
-local function handle_explorer(revision, revision2, global_opts)
+local function handle_explorer(revision, revision2, global_opts, pathspec)
   local current_file = vim.api.nvim_buf_get_name(0)
 
   local function open_explorer(git_root, is_override)
@@ -392,6 +392,7 @@ local function handle_explorer(revision, revision2, global_opts)
           explorer_data = {
             status_result = status_result,
             focus_file = focus_file, -- Focus on current file if changed
+            pathspec = pathspec, -- Scope (#74): preserved so refresh re-applies it
           },
         }
 
@@ -421,7 +422,7 @@ local function handle_explorer(revision, revision2, global_opts)
 
           git.get_diff_revisions(commit_hash, commit_hash2, git_root, function(err_status, status_result)
             process_status(err_status, status_result, commit_hash, commit_hash2)
-          end)
+          end, pathspec)
         end)
       end)
     elseif revision then
@@ -437,14 +438,14 @@ local function handle_explorer(revision, revision2, global_opts)
         -- Get diff between revision and working tree
         git.get_diff_revision(commit_hash, git_root, function(err_status, status_result)
           process_status(err_status, status_result, commit_hash, "WORKING")
-        end)
+        end, pathspec)
       end)
     else
       -- Get git status (current changes)
       git.get_status(git_root, function(err_status, status_result)
         -- Pass nil for revisions to enable "Status Mode" in explorer (separate Staged/Unstaged groups)
         process_status(err_status, status_result, nil, nil)
-      end)
+      end, pathspec)
     end
   end
 
@@ -453,7 +454,7 @@ local function handle_explorer(revision, revision2, global_opts)
 end
 
 -- Wrapper for merge-base explorer mode: computes merge-base first, then opens explorer
-local function handle_explorer_merge_base(base_rev, target_rev, global_opts)
+local function handle_explorer_merge_base(base_rev, target_rev, global_opts, pathspec)
   local current_buf = vim.api.nvim_get_current_buf()
   local current_file = vim.api.nvim_buf_get_name(current_buf)
   local cwd = vim.fn.getcwd()
@@ -482,9 +483,9 @@ local function handle_explorer_merge_base(base_rev, target_rev, global_opts)
       -- Schedule the explorer call to run in main context (handle_explorer uses nvim_get_current_buf)
       vim.schedule(function()
         if target_rev then
-          handle_explorer(merge_base_hash, target_rev, global_opts)
+          handle_explorer(merge_base_hash, target_rev, global_opts, pathspec)
         else
-          handle_explorer(merge_base_hash, nil, global_opts)
+          handle_explorer(merge_base_hash, nil, global_opts, pathspec)
         end
       end)
     end)
@@ -698,14 +699,19 @@ local function build_app()
     -- Default action: explorer for the working tree, a revision, or two revisions.
     :arg(Arg.new("rev1"):completor(complete_revisions))
     :arg(Arg.new("rev2"):completor(complete_revisions))
+    -- Operands after `--` are git pathspecs (#74); complete them as file paths.
+    :trailing(Arg.new("pathspec"):completor(complete_files))
     :handler(function(m)
       local go = to_global_opts(m)
+      -- Tokens after `--` are git pathspecs that scope the file list (issue #74).
+      local trailing = m:trailing()
+      local pathspec = #trailing > 0 and trailing or nil
       local a, b = m:get_one("rev1"), m:get_one("rev2")
       if not a then
-        handle_explorer(nil, nil, go)
+        handle_explorer(nil, nil, go, pathspec)
         return
       end
-      if b then
+      if b and not pathspec then
         local e1, e2 = vim.fn.expand(a), vim.fn.expand(b)
         if vim.fn.isdirectory(e1) == 1 and vim.fn.isdirectory(e2) == 1 then
           handle_dir_diff(e1, e2, go)
@@ -714,11 +720,11 @@ local function build_app()
       end
       local base, target = parse_triple_dot(a)
       if base then
-        handle_explorer_merge_base(base, target, go)
+        handle_explorer_merge_base(base, target, go, pathspec)
       elseif b then
-        handle_explorer(a, b, go)
+        handle_explorer(a, b, go, pathspec)
       else
-        handle_explorer(a, nil, go)
+        handle_explorer(a, nil, go, pathspec)
       end
     end)
 

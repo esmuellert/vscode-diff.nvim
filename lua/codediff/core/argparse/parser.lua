@@ -172,6 +172,7 @@ function M.parse(command, tokens, opts)
 
   local local_values = {}
   local pos_tokens = {}
+  local trailing = {}
   local seen = {}
   local sub_result = nil
   local end_of_opts = false
@@ -180,7 +181,9 @@ function M.parse(command, tokens, opts)
   while i <= n do
     local tok = tokens[i]
     if end_of_opts then
-      table.insert(pos_tokens, tok)
+      -- git-style: everything after `--` is an operand (e.g. a pathspec), not a
+      -- positional or flag. Kept separate so callers can split revisions/paths.
+      table.insert(trailing, tok)
       i = i + 1
     else
       local kind, name, inline = classify(tok)
@@ -260,7 +263,9 @@ function M.parse(command, tokens, opts)
     subcommand = sub_result,
     bang = opts.bang,
     range = opts.range,
-  }), nil
+    trailing = trailing,
+  }),
+    nil
 end
 
 return M

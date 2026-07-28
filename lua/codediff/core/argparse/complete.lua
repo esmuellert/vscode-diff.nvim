@@ -123,6 +123,7 @@ local function resolve_context(command, prior)
     used = used,
     positional_count = positional_count,
     pending = pending,
+    end_of_opts = end_of_opts,
   }
 end
 
@@ -176,6 +177,17 @@ function M.complete(command, prior, arg_lead)
   if ctx.pending then
     for _, ch in ipairs(value_candidates(ctx.pending, arg_lead, cmd)) do
       add(ch)
+    end
+    return out
+  end
+
+  -- After `--`: complete trailing operands (e.g. git pathspecs) via the
+  -- command's trailing completor. Never offer flags/subcommands/positionals here.
+  if ctx.end_of_opts then
+    if cmd._trailing then
+      for _, ch in ipairs(value_candidates(cmd._trailing, arg_lead, cmd)) do
+        add(ch)
+      end
     end
     return out
   end

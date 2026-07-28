@@ -37,6 +37,17 @@ describe("Command E2E (real dispatch + render)", function()
     end
   end
 
+  local function find_explorer_tab()
+    for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
+      for _, win in ipairs(vim.api.nvim_tabpage_list_wins(tp)) do
+        local buf = vim.api.nvim_win_get_buf(win)
+        if vim.api.nvim_buf_is_valid(buf) and vim.bo[buf].filetype == "codediff-explorer" then
+          return tp
+        end
+      end
+    end
+  end
+
   local function explorer_text(timeout)
     vim.wait(timeout or 10000, function()
       return find_explorer_buf() ~= nil
@@ -254,6 +265,91 @@ describe("Command E2E (real dispatch + render)", function()
     h.assert_contains(notified, "Not a git repository", "notifies a clear error")
   end)
 
+  -- ── Pathspec filtering (-- <path>, issue #74) ─────────────────────────────
+
+  it(":CodeDiff <rev1> <rev2> -- <subdir> — filters the file list to that subtree", function()
+    -- Two subtrees both change between v1 and v2; the pathspec keeps only one.
+    repo.write_file("modules/net/n.txt", { "n" })
+    repo.write_file("modules/store/s.txt", { "s" })
+    repo.git("add -A")
+    repo.git("commit -m v1")
+    repo.git("tag v1")
+    repo.write_file("modules/net/n.txt", { "n changed" })
+    repo.write_file("modules/store/s.txt", { "s changed" })
+    repo.git("add -A")
+    repo.git("commit -m v2")
+    repo.git("tag v2")
+    vim.cmd("CodeDiff v1 v2 -- modules/net")
+    local text = explorer_text()
+    h.assert_contains(text, "n.txt", "shows files under modules/net")
+    assert.is_nil(text:find("s.txt", 1, true), "hides files outside the pathspec")
+  end)
+
+  it(":CodeDiff -- <subdir> — filters working-tree status to that subtree", function()
+    repo.write_file("modules/net/n.txt", { "n" })
+    repo.write_file("modules/store/s.txt", { "s" })
+    repo.git("add -A")
+    repo.git("commit -m base")
+    repo.write_file("modules/net/n.txt", { "n changed" }) -- working change under net
+    repo.write_file("modules/store/s.txt", { "s changed" }) -- working change under store
+    vim.cmd("CodeDiff -- modules/net")
+    local text = explorer_text()
+    h.assert_contains(text, "n.txt", "shows working changes under modules/net")
+    assert.is_nil(text:find("s.txt", 1, true), "hides working changes outside the pathspec")
+  end)
+
+  it(":CodeDiff --repo <other> -- <subdir> — pathspec composes with --repo", function()
+    local repo2 = h.create_temp_git_repo()
+    repo2.write_file("app/a.txt", { "a" })
+    repo2.write_file("lib/b.txt", { "b" })
+    repo2.git("add -A")
+    repo2.git("commit -m base2")
+    repo2.write_file("app/a.txt", { "a changed" })
+    repo2.write_file("lib/b.txt", { "b changed" })
+    local text = ""
+    pcall(function()
+      vim.cmd("CodeDiff --repo " .. repo2.dir .. " -- app")
+      text = explorer_text()
+    end)
+    repo2.cleanup()
+    h.assert_contains(text, "a.txt", "shows the other repo's files under app/")
+    assert.is_nil(text:find("b.txt", 1, true), "hides files outside the pathspec in the other repo")
+  end)
+
+  it(":CodeDiff -- <subdir> — auto-refresh keeps the pathspec scope (#74 regression)", function()
+    -- Regression: an auto-refresh (BufEnter / .git watcher) used to re-run git
+    -- WITHOUT the pathspec, silently widening the file list back to the whole repo.
+    repo.write_file("modules/net/n.txt", { "n" })
+    repo.write_file("modules/store/s.txt", { "s" })
+    repo.git("add -A")
+    repo.git("commit -m base")
+    repo.write_file("modules/net/n.txt", { "n changed" }) -- change under net (in scope)
+    repo.write_file("modules/store/s.txt", { "s changed" }) -- change under store (out of scope)
+
+    vim.cmd("CodeDiff -- modules/net")
+    local text = explorer_text()
+    h.assert_contains(text, "n.txt", "initial open shows files under modules/net")
+    assert.is_nil(text:find("s.txt", 1, true), "initial open hides files outside the pathspec")
+
+    -- Add a fresh out-of-scope change AND an in-scope one, then force a refresh
+    -- through the real code path. Waiting on the in-scope marker guarantees the
+    -- async refresh actually completed before we assert on scope.
+    repo.write_file("modules/store/s2.txt", { "s2" })
+    repo.write_file("modules/net/n2.txt", { "n2" })
+    local explorer = lifecycle.get_explorer(find_explorer_tab())
+    require("codediff.ui.explorer.refresh").refresh(explorer)
+
+    local refreshed = vim.wait(10000, function()
+      local buf = find_explorer_buf()
+      return buf ~= nil and table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n"):find("n2.txt", 1, true) ~= nil
+    end, 50)
+    assert.is_true(refreshed, "refresh picks up the new in-scope file (n2.txt)")
+
+    local after = table.concat(vim.api.nvim_buf_get_lines(find_explorer_buf(), 0, -1, false), "\n")
+    assert.is_nil(after:find("s.txt", 1, true), "refresh still hides the out-of-scope file (s.txt)")
+    assert.is_nil(after:find("s2.txt", 1, true), "refresh does not surface a new out-of-scope file (s2.txt)")
+  end)
+
   -- ── Completion ────────────────────────────────────────────────────────────
 
   it("completion offers subcommands and git refs", function()
@@ -264,5 +360,14 @@ describe("Command E2E (real dispatch + render)", function()
     end
     assert.is_true(vim.tbl_contains(cands, "HEAD"), "offers HEAD ref")
     assert.is_true(vim.tbl_contains(commands.complete("--r", "CodeDiff --r"), "--repo"), "offers --repo flag")
+  end)
+
+  it("completion after -- offers file paths, not subcommands or refs (#74)", function()
+    vim.cmd("lcd " .. repo.dir)
+    repo.write_file("modules/net/n.txt", { "n" })
+    local cands = commands.complete("modules/", "CodeDiff -- modules/")
+    assert.is_true(table.concat(cands, "\n"):find("modules/net", 1, true) ~= nil, "offers a path under modules/")
+    assert.is_false(vim.tbl_contains(cands, "file"), "does not offer subcommands after --")
+    assert.is_false(vim.tbl_contains(cands, "HEAD"), "does not offer git refs after --")
   end)
 end)

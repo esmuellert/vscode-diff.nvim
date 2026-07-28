@@ -182,6 +182,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
     dir2 = opts.dir2,
     base_revision = base_revision,
     target_revision = target_revision,
+    pathspec = opts.pathspec, -- Scope (#74): re-applied on every auto-refresh
     status_result = status_result, -- Store initial status result
     on_file_select = nil, -- Will be set below
     current_file_path = nil, -- Track currently selected file

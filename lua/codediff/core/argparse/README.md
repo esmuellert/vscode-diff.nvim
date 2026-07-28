@@ -51,6 +51,7 @@ m:get_one("n")     --> 3
 | `:arg(arg)` / `:args({...})` | Add argument(s). |
 | `:subcommand(cmd)` | Add a nested command. |
 | `:handler(fn)` | Handler invoked for this command when it is the matched leaf. Receives `ArgMatches`. |
+| `:trailing(arg)` | Describe operands after `--` (help/completion only). Give the `arg` a `:completor()` to complete them; parsed values arrive via `ArgMatches:trailing()`. |
 | `:parse(tokens, ctx)` | Parse only. Returns `matches` or `nil, err`. |
 | `:execute(tokens, ctx)` | Parse **and** dispatch to the matched leaf's handler. Returns `matches` or `nil, err`. |
 
@@ -139,7 +140,9 @@ end, {
 ## Parsing semantics
 
 - **Value forms:** `--opt value`, `--opt=value`, `-o value`, `-o=value`, `-ovalue`.
-- **`--`** ends option parsing; everything after is positional.
+- **`--`** ends option parsing; everything after is a git-style trailing operand,
+  collected in `ArgMatches:trailing()` (kept separate from positionals, so it
+  never triggers too-many-arguments). Completed via `Command:trailing(arg)`.
 - **Subcommand routing:** the first non-flag token equal to a subcommand name
   descends into that subcommand; otherwise tokens are the current command's
   positionals.
