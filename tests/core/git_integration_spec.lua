@@ -2,6 +2,8 @@
 -- Validates git operations, error handling, and async callbacks
 
 local git = require('codediff.core.git')
+local h = dofile('tests/helpers.lua')
+local config = require('codediff.config')
 
 describe("Git Integration", function()
   -- Test 1: Detect non-git directory (async)
@@ -303,5 +305,105 @@ describe("Git Integration", function()
     
     vim.wait(3000, function() return test_passed end)
     assert.is_true(test_passed, "Test should complete")
+  end)
+end)
+
+-- Untracked-files policy (#389): config.options.explorer.untracked controls the
+-- -u<mode> scan, applied centrally in run_git_async for both `git status`
+-- (get_status) and the untracked `ls-files` scan (get_diff_revision).
+describe("Git untracked policy (#389)", function()
+  local prev
+  before_each(function()
+    prev = config.options.explorer.untracked
+  end)
+  after_each(function()
+    config.options.explorer.untracked = prev
+  end)
+
+  -- Repo with a tracked change + a top-level untracked file + a nested untracked dir.
+  local function make_repo()
+    local repo = h.create_temp_git_repo()
+    repo.write_file("tracked.txt", { "base" })
+    repo.git("add tracked.txt")
+    repo.git("commit -m initial")
+    repo.write_file("tracked.txt", { "changed" })
+    repo.write_file("newfile.txt", { "u" })
+    repo.write_file("untracked_dir/nested.txt", { "n" })
+    return repo
+  end
+
+  -- path -> status map from the unstaged group of an async git call.
+  local function unstaged_set(fn)
+    local done, res = false, nil
+    fn(function(_, r)
+      res = r
+      done = true
+    end)
+    vim.wait(3000, function() return done end)
+    assert.is_not_nil(res, "callback should fire")
+    local set = {}
+    for _, f in ipairs(res.unstaged or {}) do
+      set[f.path] = f.status
+    end
+    return set
+  end
+
+  local function status_set(repo, mode)
+    config.options.explorer.untracked = mode
+    return unstaged_set(function(cb) git.get_status(repo.dir, cb) end)
+  end
+
+  local function diffrev_set(repo, mode)
+    config.options.explorer.untracked = mode
+    return unstaged_set(function(cb) git.get_diff_revision("HEAD", repo.dir, cb) end)
+  end
+
+  it("all lists every untracked file individually (get_status)", function()
+    local repo = make_repo()
+    local s = status_set(repo, "all")
+    assert.is_not_nil(s["newfile.txt"], "top-level untracked shown")
+    assert.is_not_nil(s["untracked_dir/nested.txt"], "nested untracked file shown")
+    repo.cleanup()
+  end)
+
+  it("normal collapses untracked directories (get_status)", function()
+    local repo = make_repo()
+    local s = status_set(repo, "normal")
+    assert.is_not_nil(s["newfile.txt"], "top-level untracked still shown")
+    assert.is_nil(s["untracked_dir/nested.txt"], "nested file not listed individually")
+    assert.is_not_nil(s["untracked_dir/"], "directory collapsed to one entry")
+    repo.cleanup()
+  end)
+
+  it("no skips untracked files entirely — the hang fix (get_status)", function()
+    local repo = make_repo()
+    local s = status_set(repo, "no")
+    assert.is_nil(s["newfile.txt"], "untracked hidden")
+    assert.is_nil(s["untracked_dir/nested.txt"], "untracked hidden")
+    assert.is_not_nil(s["tracked.txt"], "tracked change still present")
+    repo.cleanup()
+  end)
+
+  it("no skips the ls-files untracked scan (get_diff_revision)", function()
+    local repo = make_repo()
+    local s = diffrev_set(repo, "no")
+    assert.is_nil(s["newfile.txt"], "untracked skipped in revision mode too")
+    assert.is_not_nil(s["tracked.txt"], "tracked change still present")
+    repo.cleanup()
+  end)
+
+  it("normal collapses untracked directories (get_diff_revision)", function()
+    local repo = make_repo()
+    local s = diffrev_set(repo, "normal")
+    assert.is_not_nil(s["untracked_dir/"], "directory collapsed via --directory")
+    assert.is_nil(s["untracked_dir/nested.txt"], "nested file not listed individually")
+    repo.cleanup()
+  end)
+
+  it("defaults to all when the config value is invalid", function()
+    local repo = make_repo()
+    local s = status_set(repo, "bogus")
+    assert.is_not_nil(s["untracked_dir/nested.txt"], "invalid mode falls back to all")
+    repo.cleanup()
   end)
 end)

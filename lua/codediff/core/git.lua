@@ -2,6 +2,8 @@
 -- All operations are async and atomic
 local M = {}
 
+local config = require("codediff.config")
+
 -- Unquote git C-quoted paths (e.g., "my file.md" -> my file.md)
 local function unquote_path(path)
   if path:sub(1, 1) == '"' and path:sub(-1) == '"' then
@@ -91,6 +93,15 @@ end
 
 -- Run a git command asynchronously
 -- Uses vim.system if available (Neovim 0.10+), falls back to vim.loop.spawn
+-- Read `explorer.untracked` from config, validated. Owned by the domain
+-- functions that need it (get_status, get_diff_revision) — see #389 for the
+-- semantics of each mode; run_git_async stays a dumb transport.
+local UNTRACKED_MODES = { all = true, normal = true, no = true }
+local function untracked_mode()
+  local mode = config.options.explorer and config.options.explorer.untracked
+  return UNTRACKED_MODES[mode] and mode or "all"
+end
+
 local function run_git_async(args, opts, callback)
   opts = opts or {}
 
@@ -335,8 +346,9 @@ end
 -- }
 function M.get_status(git_root, callback, pathspec)
   -- Trailing `-- <paths>` scopes the status to a pathspec (nil/empty = all files).
+  -- `-u<mode>` (untracked-files scan; #389) is read from explorer.untracked config.
   run_git_async(
-    vim.list_extend({ "status", "--porcelain", "-uall", "-M", "--" }, pathspec or {}), -- -M to detect renames
+    vim.list_extend({ "status", "--porcelain", "-u" .. untracked_mode(), "-M", "--" }, pathspec or {}), -- -M to detect renames
     { cwd = git_root },
     function(err, output)
       if err then
@@ -435,8 +447,22 @@ function M.get_diff_revision(revision, git_root, callback, pathspec)
       end
     end
 
-    -- Now get untracked files (they don't exist in the revision, so they're "new")
-    run_git_async(vim.list_extend({ "ls-files", "--others", "--exclude-standard", "--" }, pathspec or {}), { cwd = git_root }, function(err_untracked, output_untracked)
+    -- Untracked files (#389): they don't exist in the revision, so they're "new".
+    -- `no`   -> skip the recursive ls-files scan entirely (the hang fix for huge
+    --          work trees like GIT_WORK_TREE=$HOME).
+    -- `normal` -> collapse untracked directories to one entry via --directory.
+    -- `all`  -> list every untracked file individually (current default).
+    local mode = untracked_mode()
+    if mode == "no" then
+      callback(nil, result)
+      return
+    end
+    local ls_args = { "ls-files", "--others", "--exclude-standard" }
+    if mode == "normal" then
+      table.insert(ls_args, "--directory")
+    end
+    table.insert(ls_args, "--")
+    run_git_async(vim.list_extend(ls_args, pathspec or {}), { cwd = git_root }, function(err_untracked, output_untracked)
       if err_untracked then
         -- If getting untracked files fails, just return what we have
         callback(nil, result)

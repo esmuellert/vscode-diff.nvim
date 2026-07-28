@@ -260,6 +260,7 @@ Setup entry point:
       file_filter = {
         ignore = { ".git/**", ".jj/**" },
       },
+      untracked = "all",  -- "all", "normal" (collapse dirs), or "no" (skip untracked; use for huge work trees like GIT_WORK_TREE=$HOME, #389)
       status_right_margin = 1,
       visible_groups = {
         staged = true,
