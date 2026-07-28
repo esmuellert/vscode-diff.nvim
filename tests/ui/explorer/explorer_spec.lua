@@ -654,3 +654,163 @@ describe("Explorer Mode", function()
     end
   end)
 end)
+
+
+-- Two independent explorer regressions, both fixed in the file-refresh path.
+--
+-- 1. Idle refresh loop: the explorer watches .git to notice external changes,
+--    but its own `git status` momentarily writes .git/index.lock, which woke
+--    the watcher and triggered another status, indefinitely (~2 refreshes/sec
+--    while completely idle). The watcher now ignores *.lock events.
+--
+-- 2. Single-file resize reset: untracked/added/deleted files render in a single
+--    pane via show_single_file. A refresh re-selects the open file; real
+--    two-pane diffs short-circuit that, but the single-file statuses rebuilt
+--    the window every time and the layout pass discarded any manual sizing.
+--    show_single_file now skips the rebuild when nothing changed.
+describe("Explorer refresh and single-file stability", function()
+  local temp_dir
+  local original_cwd
+
+  local function open(focus_file)
+    local lifecycle = require("codediff.ui.lifecycle")
+    lifecycle.cleanup_all()
+    vim.cmd("edit " .. temp_dir .. "/" .. focus_file)
+    vim.cmd("CodeDiff")
+    local tabpage, explorer
+    local ready = vim.wait(10000, function()
+      for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
+        local e = lifecycle.get_explorer(tp)
+        if e and e.winid and vim.api.nvim_win_is_valid(e.winid) then
+          tabpage, explorer = tp, e
+          return true
+        end
+      end
+      return false
+    end, 50)
+    assert.is_true(ready, "explorer should open")
+    return tabpage, explorer
+  end
+
+  local function select_and_settle(explorer, path, status, group, opts)
+    explorer.on_file_select({ path = path, status = status, group = group, git_root = temp_dir }, opts or {})
+    vim.wait(2500, function()
+      return false
+    end)
+  end
+
+  local function single_win(tabpage)
+    local lifecycle = require("codediff.ui.lifecycle")
+    local s = lifecycle.get_session(tabpage)
+    if s.original_win and vim.api.nvim_win_is_valid(s.original_win) then
+      return s.original_win
+    end
+    if s.modified_win and vim.api.nvim_win_is_valid(s.modified_win) then
+      return s.modified_win
+    end
+  end
+
+  before_each(function()
+    config.options = vim.deepcopy(config.defaults)
+    require("codediff").setup({ diff = { layout = "side-by-side" } })
+    setup_command()
+    original_cwd = vim.fn.getcwd()
+    temp_dir = vim.fn.tempname()
+    vim.fn.mkdir(temp_dir, "p")
+    vim.fn.chdir(temp_dir)
+    h.git_cmd(temp_dir, "init")
+    h.git_cmd(temp_dir, "branch -m main")
+    h.git_cmd(temp_dir, 'config user.email "test@example.com"')
+    h.git_cmd(temp_dir, 'config user.name "Test User"')
+    vim.fn.writefile({ "line 1", "line 2" }, temp_dir .. "/file1.txt")
+    h.git_cmd(temp_dir, "add file1.txt")
+    h.git_cmd(temp_dir, 'commit -m "initial"')
+    -- file1.txt modified (unstaged), file3.txt untracked
+    vim.fn.writefile({ "line 1", "line 2 modified" }, temp_dir .. "/file1.txt")
+    vim.fn.writefile({ "untracked" }, temp_dir .. "/file3.txt")
+  end)
+
+  after_each(function()
+    require("codediff.ui.lifecycle").cleanup_all()
+    vim.cmd("tabnew")
+    vim.cmd("tabonly")
+    vim.fn.chdir(original_cwd)
+    vim.wait(200)
+    if temp_dir and vim.fn.isdirectory(temp_dir) == 1 then
+      vim.fn.delete(temp_dir, "rf")
+    end
+  end)
+
+  it("does not refresh in a loop while idle", function()
+    local refresh_module = require("codediff.ui.explorer.refresh")
+    local _, explorer = open("file1.txt")
+    select_and_settle(explorer, "file1.txt", "M", "unstaged", { force = true })
+    -- Let the initial status settle so any watcher activity has drained.
+    vim.wait(1500, function()
+      return false
+    end)
+
+    local count = 0
+    local orig = refresh_module.refresh
+    refresh_module.refresh = function(e)
+      count = count + 1
+      return orig(e)
+    end
+    vim.wait(4000, function()
+      return false
+    end)
+    refresh_module.refresh = orig
+
+    -- Pre-fix this looped at roughly two refreshes per second off the explorer's
+    -- own index.lock writes.
+    assert.are.equal(0, count, "explorer must stay quiescent while idle, got " .. count)
+  end)
+
+  it("keeps a manually resized single-file pane across a refresh", function()
+    local tabpage, explorer = open("file1.txt")
+    select_and_settle(explorer, "file3.txt", "??", "unstaged", { force = true })
+
+    local win = single_win(tabpage)
+    assert.is_not_nil(win, "untracked file should be shown in a single pane")
+    local width = vim.api.nvim_win_get_width(win) - 10
+    vim.api.nvim_win_call(win, function()
+      vim.cmd("vertical resize " .. width)
+    end)
+    assert.are.equal(width, vim.api.nvim_win_get_width(win), "resize should apply")
+
+    -- A refresh re-selects the file that is already open.
+    select_and_settle(explorer, "file3.txt", "??", "unstaged")
+
+    assert.are.equal(width, vim.api.nvim_win_get_width(single_win(tabpage)), "manual pane size must survive a refresh")
+  end)
+
+  it("still re-renders a single-file view when the file's status changes", function()
+    local tabpage, explorer = open("file1.txt")
+    select_and_settle(explorer, "file3.txt", "??", "unstaged", { force = true })
+    local before = vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(single_win(tabpage)))
+
+    -- Staging turns ?? into A, shown from the index (:0) rather than the working
+    -- tree, so the view must rebuild rather than be skipped.
+    h.git_cmd(temp_dir, "add file3.txt")
+    select_and_settle(explorer, "file3.txt", "A", "staged")
+
+    local after = vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(single_win(tabpage)))
+    assert.are_not.equal(before, after, "staged view must come from a different buffer than the working-tree view")
+  end)
+
+  it("still restores both panes when returning to a real diff", function()
+    local tabpage, explorer = open("file1.txt")
+    select_and_settle(explorer, "file3.txt", "??", "unstaged", { force = true })
+    assert.is_not_nil(single_win(tabpage), "should be in single-pane mode")
+
+    select_and_settle(explorer, "file1.txt", "M", "unstaged", { force = true })
+
+    local lifecycle = require("codediff.ui.lifecycle")
+    local s = lifecycle.get_session(tabpage)
+    assert.is_true(
+      s.original_win ~= nil and vim.api.nvim_win_is_valid(s.original_win) and s.modified_win ~= nil and vim.api.nvim_win_is_valid(s.modified_win),
+      "returning to a modified file must restore both diff panes"
+    )
+  end)
+end)
+
