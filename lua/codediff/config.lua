@@ -69,6 +69,7 @@ M.defaults = {
     file_filter = {
       ignore = { ".git/**", ".jj/**" }, -- Glob patterns to hide (e.g., {"*.lock", "dist/*"})
     },
+    untracked = "all", -- Untracked file scan: "all" (-uall), "normal" (-unormal, collapse dirs), or "no" (-uno, skip; use for huge work trees like GIT_WORK_TREE=$HOME that hang, #389)
     focus_on_select = false, -- Jump to modified pane after selecting a file (default: stay in explorer)
     auto_open_on_cursor = false, -- Rebind j/k/Down/Up in the explorer to also open the file under the cursor
     flatten_dirs = true, -- Flatten single-child directory chains in tree view (e.g., src/components/ui/)

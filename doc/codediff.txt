@@ -36,6 +36,27 @@ File explorer mode (git status by default):
   :CodeDiff main HEAD
 <
 
+Target another repository (explorer and history modes):   *codediff-repo*
+>vim
+  :CodeDiff --repo ~/code/other-repo
+  :CodeDiff --repo ~/code/other-repo main
+  :CodeDiff -C ~/code/other-repo history
+<
+Operate on the repository containing the given path (its root or any
+subdirectory) instead of the current buffer/cwd. `-C` is a git-style alias.
+
+Scope to a subdirectory or path:                          *codediff-pathspec*
+>vim
+  :CodeDiff v1.0.1 v1.0.2 -- modules/network
+  :CodeDiff -- src/api
+  :CodeDiff main... -- packages/ui
+<
+Append `-- <path>` to narrow the explorer file list to a subtree, like
+`git diff <rev> <rev> -- <path>`. Paths are git pathspecs relative to the
+repository root; multiple paths and git glob syntax are supported. Composes
+with merge-base (`...`) and --repo/-C.
+
+
 Git diff mode (current buffer vs revision):
 >vim
   :CodeDiff file HEAD
@@ -239,6 +260,7 @@ Setup entry point:
       file_filter = {
         ignore = { ".git/**", ".jj/**" },
       },
+      untracked = "all",  -- "all", "normal" (collapse dirs), or "no" (skip untracked; use for huge work trees like GIT_WORK_TREE=$HOME, #389)
       status_right_margin = 1,
       visible_groups = {
         staged = true,
