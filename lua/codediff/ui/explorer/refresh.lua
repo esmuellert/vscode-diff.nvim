@@ -4,8 +4,19 @@ local M = {}
 local config = require("codediff.config")
 local tree_module = require("codediff.ui.explorer.tree")
 local welcome = require("codediff.ui.welcome")
--- Setup auto-refresh triggers for explorer
--- Returns a cleanup function that should be called when the explorer is destroyed
+-- Setup auto-refresh triggers for explorer.
+-- Returns a cleanup function that should be called when the explorer is destroyed.
+--
+-- Runs an explicit 500ms poll while the explorer is visible. This replaces the
+-- earlier `.git/` fs_event watcher, which had a self-triggering loop: our own
+-- `git status` briefly created `.git/index.lock`, waking the watcher and
+-- firing another refresh. That loop delivered ~2 refreshes/second by
+-- accident; #480 killed it by filtering `*.lock` events, but the filter also
+-- suppressed the events that signal external working-tree changes (e.g. a
+-- terminal `touch new_file.txt`), so those stopped showing up until the user
+-- focused the explorer. The formal poll restores instant detection with the
+-- same worst-case CPU profile as the old bug, minus the self-triggering
+-- mechanics, and lets us drop the whole watcher plumbing.
 function M.setup_auto_refresh(explorer, tabpage)
   local explorer_config = config.options.explorer or {}
   if explorer_config.auto_refresh == false then
@@ -13,142 +24,47 @@ function M.setup_auto_refresh(explorer, tabpage)
     return
   end
 
-  local refresh_timer = nil
-  local debounce_ms = 500 -- Wait 500ms after last event
-  local git_watcher = nil
+  local poll_interval_ms = 500
+
+  local uv = vim.uv or vim.loop
+  local poll_timer = uv.new_timer()
   local group = vim.api.nvim_create_augroup("CodeDiffExplorerRefresh_" .. tabpage, { clear = true })
 
   local function cleanup()
-    if refresh_timer then
-      vim.fn.timer_stop(refresh_timer)
-      refresh_timer = nil
-    end
-    if git_watcher then
+    if poll_timer then
       pcall(function()
-        git_watcher:stop()
+        poll_timer:stop()
       end)
-      -- On Windows, we must close the handle to release file locks
       pcall(function()
-        git_watcher:close()
+        poll_timer:close()
       end)
-      git_watcher = nil
+      poll_timer = nil
     end
     pcall(vim.api.nvim_del_augroup_by_id, group)
   end
 
-  -- Store cleanup function on explorer so it can be called from lifecycle cleanup
   explorer._cleanup_auto_refresh = cleanup
 
-  local function debounced_refresh()
-    -- Cancel pending refresh
-    if refresh_timer then
-      vim.fn.timer_stop(refresh_timer)
+  local function tick()
+    if not vim.api.nvim_tabpage_is_valid(tabpage) then
+      return
     end
-
-    -- Schedule new refresh
-    refresh_timer = vim.fn.timer_start(debounce_ms, function()
-      -- Only refresh if tabpage still exists and explorer is visible
-      if vim.api.nvim_tabpage_is_valid(tabpage) and not explorer.is_hidden then
-        M.refresh(explorer)
-        local auto_refresh = require("codediff.ui.auto_refresh")
-        auto_refresh.sync_mutable_buffers(tabpage)
-      end
-      refresh_timer = nil
-    end)
+    if explorer.is_hidden then
+      return
+    end
+    M.refresh(explorer)
+    local auto_refresh = require("codediff.ui.auto_refresh")
+    auto_refresh.sync_mutable_buffers(tabpage)
   end
 
-  -- Auto-refresh when explorer buffer is entered (user focuses explorer window)
-  vim.api.nvim_create_autocmd("BufEnter", {
-    group = group,
-    buffer = explorer.bufnr,
-    callback = function()
-      if vim.api.nvim_tabpage_is_valid(tabpage) then
-        debounced_refresh()
-      end
-    end,
-  })
-
-  -- Watch .git directory for changes (git mode only)
-  -- Dir mode skips this - relies on BufEnter refresh only
-  if explorer.git_root then
-    local git = require("codediff.core.git")
-    git.get_git_dir(explorer.git_root, function(err, git_dir)
-      if err or not git_dir then
-        return
-      end
-
-      -- Schedule to main thread to safely call Neovim APIs
-      vim.schedule(function()
-        -- Check if directory still exists (may be deleted in tests)
-        if vim.fn.isdirectory(git_dir) ~= 1 then
-          return
-        end
-
-        -- Check if tabpage is still valid (may be closed before async callback)
-        if not vim.api.nvim_tabpage_is_valid(tabpage) then
-          return
-        end
-
-        local uv = vim.uv or vim.loop
-        git_watcher = uv.new_fs_event()
-        if git_watcher then
-          local ok = pcall(function()
-            git_watcher:start(
-              git_dir,
-              {},
-              vim.schedule_wrap(function(watch_err, filename, events)
-                if watch_err then
-                  return
-                end
-                -- Ignore lock files (index.lock, HEAD.lock, ...). A lock only
-                -- signals that a git operation is in flight, never that state
-                -- changed; the real change always arrives as a later write to
-                -- the target file. This also breaks a feedback loop: the
-                -- explorer's own `git status` momentarily creates index.lock,
-                -- which would otherwise wake this watcher and trigger another
-                -- status, indefinitely.
-                if filename and tostring(filename):match("%.lock$") then
-                  return
-                end
-                if not vim.api.nvim_tabpage_is_valid(tabpage) or explorer.is_hidden then
-                  return
-                end
-                if vim.api.nvim_get_current_tabpage() == tabpage then
-                  debounced_refresh()
-                else
-                  explorer._pending_refresh = true
-                end
-              end)
-            )
-          end)
-          if not ok then
-            -- Failed to start watcher, clean it up
-            pcall(function()
-              git_watcher:close()
-            end)
-            git_watcher = nil
-          end
-        end
-      end)
-    end)
+  if poll_timer then
+    poll_timer:start(poll_interval_ms, poll_interval_ms, vim.schedule_wrap(tick))
   end
 
-  -- Clean up on tab close
   vim.api.nvim_create_autocmd("TabClosed", {
     group = group,
     pattern = tostring(tabpage),
     callback = cleanup,
-  })
-
-  -- Flush pending refresh when returning to the codediff tab
-  vim.api.nvim_create_autocmd("TabEnter", {
-    group = group,
-    callback = function()
-      if explorer._pending_refresh and vim.api.nvim_get_current_tabpage() == tabpage then
-        explorer._pending_refresh = nil
-        debounced_refresh()
-      end
-    end,
   })
 
   return cleanup

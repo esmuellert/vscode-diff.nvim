@@ -741,11 +741,20 @@ describe("Explorer refresh and single-file stability", function()
     end
   end)
 
-  it("does not refresh in a loop while idle", function()
+  it("polls at a bounded, deterministic cadence while idle", function()
+    -- The old .git/ watcher self-triggered off its own index.lock writes at
+    -- roughly 2 refreshes/second — an accidental loop, not a designed cadence.
+    -- #480 killed that loop with a `*.lock` filter, but the filter also
+    -- suppressed events for external working-tree changes (e.g. `touch`
+    -- from another terminal), so those stopped surfacing until the user
+    -- refocused the explorer. The current design is an explicit 500ms poll:
+    -- same detection latency, deterministic idle cost, no self-triggering.
+    -- This test guards the *polling contract*: the tick fires steadily and
+    -- doesn't drift wildly (either much faster, i.e. a self-trigger loop
+    -- returning, or much slower, i.e. the timer stopping).
     local refresh_module = require("codediff.ui.explorer.refresh")
     local _, explorer = open("file1.txt")
     select_and_settle(explorer, "file1.txt", "M", "unstaged", { force = true })
-    -- Let the initial status settle so any watcher activity has drained.
     vim.wait(1500, function()
       return false
     end)
@@ -761,9 +770,37 @@ describe("Explorer refresh and single-file stability", function()
     end)
     refresh_module.refresh = orig
 
-    -- Pre-fix this looped at roughly two refreshes per second off the explorer's
-    -- own index.lock writes.
-    assert.are.equal(0, count, "explorer must stay quiescent while idle, got " .. count)
+    -- Expected ~8 refreshes at 500ms cadence over 4s; allow a generous window
+    -- for scheduler jitter and coalesced ticks.
+    assert.is_true(count >= 5, "poll must actually tick, got " .. count)
+    assert.is_true(count <= 12, "poll must not exceed the 500ms cadence, got " .. count)
+  end)
+
+  it("picks up an externally-created untracked file automatically", function()
+    -- Regression guard for the post-#480 behavior: after #480 killed the
+    -- .git/ watcher's self-triggering loop with a `*.lock` filter, external
+    -- working-tree changes (a `touch` from another terminal) stopped surfacing
+    -- until the user refocused the explorer. The polling replacement restores
+    -- automatic detection.
+    local _, explorer = open("file1.txt")
+    select_and_settle(explorer, "file1.txt", "M", "unstaged", { force = true })
+    vim.wait(800, function()
+      return false
+    end)
+
+    -- External change: brand-new untracked file, no nvim buffer, no BufEnter.
+    vim.fn.writefile({ "hello from outside" }, temp_dir .. "/brand_new.txt")
+
+    -- Wait for the poll to notice.
+    local picked_up = vim.wait(3000, function()
+      for _, f in ipairs((explorer.status_result or {}).unstaged or {}) do
+        if f.path == "brand_new.txt" then
+          return true
+        end
+      end
+      return false
+    end, 100)
+    assert.is_true(picked_up, "external file must appear in the explorer without focus")
   end)
 
   it("keeps a manually resized single-file pane across a refresh", function()
