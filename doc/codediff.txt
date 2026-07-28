@@ -36,6 +36,16 @@ File explorer mode (git status by default):
   :CodeDiff main HEAD
 <
 
+Target another repository (explorer and history modes):   *codediff-repo*
+>vim
+  :CodeDiff --repo ~/code/other-repo
+  :CodeDiff --repo ~/code/other-repo main
+  :CodeDiff -C ~/code/other-repo history
+<
+Operate on the repository containing the given path (its root or any
+subdirectory) instead of the current buffer/cwd. `-C` is a git-style alias.
+
+
 Git diff mode (current buffer vs revision):
 >vim
   :CodeDiff file HEAD

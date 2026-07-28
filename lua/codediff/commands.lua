@@ -25,6 +25,57 @@ local function parse_triple_dot(arg)
   return nil, nil
 end
 
+-- Resolve the git root for "working repo" modes (explorer, history) and call
+-- on_ok(git_root, is_override). Resolution order: the --repo/-C override, else
+-- the current buffer's file, else cwd. This is the single place the --repo/-C
+-- override is applied for these modes.
+local function resolve_working_root(global_opts, on_ok)
+  local override = global_opts and global_opts.repo
+  if override then
+    git.get_git_root(override, function(err, git_root)
+      if err then
+        vim.schedule(function()
+          vim.notify("Not a git repository: " .. override, vim.log.levels.ERROR)
+        end)
+        return
+      end
+      on_ok(git_root, true)
+    end)
+    return
+  end
+
+  local current_file = vim.api.nvim_buf_get_name(0)
+  local cwd = vim.fn.getcwd()
+  if current_file ~= "" then
+    git.get_git_root(current_file, function(err_file, git_root_file)
+      if not err_file then
+        on_ok(git_root_file, false)
+        return
+      end
+      -- Buffer path failed, fall back to cwd
+      git.get_git_root(cwd, function(err_cwd, git_root_cwd)
+        if not err_cwd then
+          on_ok(git_root_cwd, false)
+          return
+        end
+        vim.schedule(function()
+          vim.notify("Not in a git repository", vim.log.levels.ERROR)
+        end)
+      end)
+    end)
+  else
+    git.get_git_root(cwd, function(err_cwd, git_root)
+      if err_cwd then
+        vim.schedule(function()
+          vim.notify(err_cwd, vim.log.levels.ERROR)
+        end)
+        return
+      end
+      on_ok(git_root, false)
+    end)
+  end
+end
+
 --- Handles diffing the current buffer against a given git revision.
 -- @param revision string: The git revision (e.g., "HEAD", commit hash, branch name) to compare the current file against.
 -- @param revision2 string?: Optional second revision. If provided, compares revision vs revision2.
@@ -221,9 +272,6 @@ end
 -- line_range: optional {start, end} for line-range history (git log -L)
 local function handle_history(range, file_path, flags, line_range, global_opts)
   flags = flags or {} -- Default to empty table for backward compat
-  local current_buf = vim.api.nvim_get_current_buf()
-  local current_file = vim.api.nvim_buf_get_name(current_buf)
-  local cwd = vim.fn.getcwd()
 
   -- Expand file_path before async context (vim.fn.expand can't be called in fast event)
   local expanded_file_path = nil
@@ -300,47 +348,18 @@ local function handle_history(range, file_path, flags, line_range, global_opts)
     end)
   end
 
-  -- Try buffer path first if available
-  if current_file ~= "" then
-    git.get_git_root(current_file, function(err_file, git_root_file)
-      if not err_file then
-        open_history(git_root_file)
-        return
-      end
-
-      git.get_git_root(cwd, function(err_cwd, git_root_cwd)
-        if not err_cwd then
-          open_history(git_root_cwd)
-          return
-        end
-        vim.schedule(function()
-          vim.notify("Not in a git repository", vim.log.levels.ERROR)
-        end)
-      end)
-    end)
-  else
-    git.get_git_root(cwd, function(err_cwd, git_root)
-      if err_cwd then
-        vim.schedule(function()
-          vim.notify(err_cwd, vim.log.levels.ERROR)
-        end)
-        return
-      end
-      open_history(git_root)
-    end)
-  end
+  -- Resolve the working repo (honors --repo/-C) and open the history view.
+  resolve_working_root(global_opts, open_history)
 end
 
 local function handle_explorer(revision, revision2, global_opts)
-  -- Try buffer path first (consistent with original behavior), fallback to cwd
-  local current_buf = vim.api.nvim_get_current_buf()
-  local current_file = vim.api.nvim_buf_get_name(current_buf)
-  local cwd = vim.fn.getcwd()
+  local current_file = vim.api.nvim_buf_get_name(0)
 
-  local function open_explorer(git_root)
-    -- Compute focus_file (relative path to current buffer) for focusing in explorer
+  local function open_explorer(git_root, is_override)
+    -- Compute focus_file (relative path to current buffer) for focusing in explorer.
+    -- Skip when --repo/-C targets a different repo: the current buffer isn't in it.
     local focus_file = nil
-    if current_file ~= "" then
+    if current_file ~= "" and not is_override then
       focus_file = git.get_relative_path(current_file, git_root)
     end
 
@@ -429,38 +448,8 @@ local function handle_explorer(revision, revision2, global_opts)
     end
   end
 
-  -- Try buffer path first if available
-  if current_file ~= "" then
-    git.get_git_root(current_file, function(err_file, git_root_file)
-      if not err_file then
-        open_explorer(git_root_file)
-        return
-      end
-
-      -- Buffer path failed, try cwd as fallback
-      git.get_git_root(cwd, function(err_cwd, git_root_cwd)
-        if not err_cwd then
-          open_explorer(git_root_cwd)
-          return
-        end
-        -- Both failed
-        vim.schedule(function()
-          vim.notify("Not in a git repository", vim.log.levels.ERROR)
-        end)
-      end)
-    end)
-  else
-    -- No buffer, try cwd directly
-    git.get_git_root(cwd, function(err_cwd, git_root)
-      if err_cwd then
-        vim.schedule(function()
-          vim.notify(err_cwd, vim.log.levels.ERROR)
-        end)
-        return
-      end
-      open_explorer(git_root)
-    end)
-  end
+  -- Resolve the working repo (honors --repo/-C) and open the explorer.
+  resolve_working_root(global_opts, open_explorer)
 end
 
 -- Wrapper for merge-base explorer mode: computes merge-base first, then opens explorer
@@ -469,8 +458,9 @@ local function handle_explorer_merge_base(base_rev, target_rev, global_opts)
   local current_file = vim.api.nvim_buf_get_name(current_buf)
   local cwd = vim.fn.getcwd()
   local buftype = vim.api.nvim_get_option_value("buftype", { buf = current_buf })
-  -- A file usually has a buftype of "" so filter out `nofile` or dashboards etc
-  local path_for_root = buftype == "" and current_file ~= "" and current_file or cwd
+  -- A file usually has a buftype of "" so filter out `nofile` or dashboards etc.
+  -- --repo/-C overrides the seed so the merge base is computed in that repo.
+  local path_for_root = (global_opts and global_opts.repo) or (buftype == "" and current_file ~= "" and current_file or cwd)
 
   git.get_git_root(path_for_root, function(err_root, git_root)
     if err_root then
@@ -635,7 +625,11 @@ local function to_global_opts(m)
   elseif m:get_flag("side_by_side") then
     layout = "side-by-side"
   end
-  return { layout = layout, exit_on_close = m:get_flag("exit_on_close") or nil }
+  -- Expand ~ and env vars in the --repo/-C path once, here at the boundary, so
+  -- every consumer gets a filesystem-ready seed for git-root resolution.
+  local repo = m:get_one("repo")
+  repo = repo and repo ~= "" and vim.fn.expand(repo) or nil
+  return { layout = layout, exit_on_close = m:get_flag("exit_on_close") or nil, repo = repo }
 end
 
 -- Expand % (current file) and ~/env in a path argument.
@@ -680,6 +674,11 @@ local function complete_files(ctx)
   return vim.fn.getcompletion(ctx.arg_lead or "", "file")
 end
 
+-- Completor: directory paths (for --repo/-C).
+local function complete_dirs(ctx)
+  return vim.fn.getcompletion(ctx.arg_lead or "", "dir")
+end
+
 -- Build the :CodeDiff command tree.
 local function build_app()
   local Arg = ap.Arg
@@ -691,6 +690,11 @@ local function build_app()
     :arg(Arg.flag("inline"):long("--inline"):global(true))
     :arg(Arg.flag("side_by_side"):long("--side-by-side"):global(true))
     :arg(Arg.flag("exit_on_close"):long("--exit-on-close"):global(true))
+    -- --repo/-C <path>: operate on the repo containing <path> (root or any subdir)
+    -- instead of the current buffer/cwd. Applies to explorer and history modes.
+    :arg(
+      Arg.new("repo"):long("--repo"):short("-C"):global(true):completor(complete_dirs)
+    )
     -- Default action: explorer for the working tree, a revision, or two revisions.
     :arg(Arg.new("rev1"):completor(complete_revisions))
     :arg(Arg.new("rev2"):completor(complete_revisions))

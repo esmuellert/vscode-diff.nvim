@@ -413,7 +413,7 @@ describe("argparse: CodeDiff grammar (use cases)", function()
       -- global flags, valid for every mode
       :arg(Arg.flag("inline"):long("--inline"):global(true))
       :arg(Arg.flag("side_by_side"):long("--side-by-side"):global(true))
-      :arg(Arg.new("cwd"):long("--cwd"):global(true))
+      :arg(Arg.new("repo"):long("--repo"):short("-C"):global(true))
       -- default (explorer): up to two revisions/dirs
       :arg(Arg.new("rev1"))
       :arg(Arg.new("rev2"))
@@ -511,10 +511,16 @@ describe("argparse: CodeDiff grammar (use cases)", function()
     assert.is_true(last.m:bang())
   end)
 
-  it(":CodeDiff --cwd=/repo history -> global --cwd reaches the subcommand", function()
-    assert(build():execute({ "--cwd=/repo", "history" }))
+  it(":CodeDiff --repo=/repo history -> global --repo reaches the subcommand", function()
+    assert(build():execute({ "--repo=/repo", "history" }))
     assert.equals("history", last.where)
-    assert.equals("/repo", last.m:get_one("cwd"))
+    assert.equals("/repo", last.m:get_one("repo"))
+  end)
+
+  it(":CodeDiff -C /repo history -> git-style short alias reaches the subcommand", function()
+    assert(build():execute({ "-C", "/repo", "history" }))
+    assert.equals("history", last.where)
+    assert.equals("/repo", last.m:get_one("repo"))
   end)
 
   it(":'<,'>CodeDiff history -> visual range reaches the handler", function()

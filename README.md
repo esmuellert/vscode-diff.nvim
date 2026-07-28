@@ -321,6 +321,13 @@ Open an interactive file explorer showing changed files:
 " Override layout for this invocation (works with all subcommands)
 :CodeDiff --inline
 :CodeDiff main --side-by-side
+
+" Operate on another repository without leaving the current one.
+" Accepts the repo root or any path inside it; -C is a git-style alias.
+" Works with explorer and history modes.
+:CodeDiff --repo ~/code/other-repo
+:CodeDiff --repo ~/code/other-repo main
+:CodeDiff -C ~/code/other-repo history
 ```
 
 #### PR-like Diff (Merge-base)

@@ -206,6 +206,54 @@ describe("Command E2E (real dispatch + render)", function()
     assert.equals("side-by-side", lifecycle.get_session(tab).layout)
   end)
 
+  -- ── --repo / -C (operate on another repository) ──────────────────────────
+
+  it(":CodeDiff --repo <path> — explorer targets another repository", function()
+    local repo2 = h.create_temp_git_repo()
+    repo2.write_file("only-in-2.txt", { "x" })
+    repo2.git("add only-in-2.txt")
+    repo2.git("commit -m base2")
+    repo2.write_file("only-in-2.txt", { "x changed" })
+    local text = ""
+    local ok = pcall(function()
+      vim.cmd("CodeDiff --repo " .. repo2.dir)
+      text = explorer_text()
+    end)
+    repo2.cleanup()
+    assert.is_true(ok)
+    h.assert_contains(text, "only-in-2.txt", "explorer shows the other repo's file")
+    assert.is_nil(text:find("file.txt", 1, true), "does not show the current repo's file")
+  end)
+
+  it(":CodeDiff -C <path> history — history for another repository", function()
+    local repo2 = h.create_temp_git_repo()
+    repo2.write_file("r2.txt", { "y" })
+    repo2.git("add r2.txt")
+    repo2.git("commit -m only-repo2-commit")
+    local shown
+    pcall(function()
+      vim.cmd("CodeDiff -C " .. repo2.dir .. " history")
+      shown = wait_for_visible("only-repo2-commit")
+    end)
+    repo2.cleanup()
+    assert.is_true(shown, "history shows the other repo's commit")
+  end)
+
+  it(":CodeDiff --repo <non-repo> — reports a clear error", function()
+    local notified
+    local orig = vim.notify
+    vim.notify = function(msg)
+      notified = tostring(msg)
+    end
+    vim.cmd("CodeDiff --repo /tmp/codediff-not-a-repo-" .. tostring(vim.loop.now()))
+    vim.wait(3000, function()
+      return notified ~= nil
+    end)
+    vim.notify = orig
+    assert.is_not_nil(notified)
+    h.assert_contains(notified, "Not a git repository", "notifies a clear error")
+  end)
+
   -- ── Completion ────────────────────────────────────────────────────────────
 
   it("completion offers subcommands and git refs", function()
@@ -215,5 +263,6 @@ describe("Command E2E (real dispatch + render)", function()
       assert.is_true(vim.tbl_contains(cands, name), "offers subcommand " .. name)
     end
     assert.is_true(vim.tbl_contains(cands, "HEAD"), "offers HEAD ref")
+    assert.is_true(vim.tbl_contains(commands.complete("--r", "CodeDiff --r"), "--repo"), "offers --repo flag")
   end)
 end)
