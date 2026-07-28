@@ -19,6 +19,7 @@ local commands = require("codediff.commands")
 describe("Command E2E (real dispatch + render)", function()
   local repo
   local hash1, hash2
+  local original_cwd = vim.fn.getcwd() -- restored in after_each so temp-repo cleanup can't strand cwd (E739)
 
   local function setup_command()
     vim.api.nvim_create_user_command("CodeDiff", function(opts)
@@ -131,6 +132,9 @@ describe("Command E2E (real dispatch + render)", function()
     vim.cmd("silent! tabonly")
     vim.cmd("silent! enew")
     vim.wait(100)
+    -- Some tests do `:lcd <repo>`; leave that directory BEFORE deleting it so
+    -- the next before_each's mkdir/getcwd doesn't fail on Linux (E739).
+    pcall(vim.cmd, "silent! cd " .. vim.fn.fnameescape(original_cwd))
     if repo then
       repo.cleanup()
     end
