@@ -94,6 +94,7 @@ M.defaults = {
     height = 15, -- Height when position is "bottom" (lines)
     initial_focus = "history", -- Initial focus: "history", "original", or "modified"
     view_mode = "list", -- "list" or "tree" for files under commits
+    date_format = "%ar", -- Commit date rendering: "%ar" (default, git's relative like "3 days ago"), "%ai" (ISO), "%ad" (git's default), or any strftime string (e.g. "%Y/%m/%d %H:%M:%S")
   },
 
   -- Keymaps
