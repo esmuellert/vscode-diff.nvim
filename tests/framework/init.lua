@@ -25,7 +25,13 @@ function M.setup()
   -- Assertion library replaces `_G.assert`. It is a callable table so the
   -- stdlib form `assert(cond[, msg, ...])` continues to work with full
   -- passthrough of extra return values.
-  _G.assert = require("tests.framework.assert")
+  local a = require("tests.framework.assert")
+  _G.assert = a
+
+  -- Some legacy spec files explicitly do `local assert = require("luassert")`.
+  -- Route those requires to our in-tree assert module so those specs work
+  -- unchanged.
+  package.preload["luassert"] = function() return a end
 
   -- describe/it/before_each/after_each/pending globals
   require("tests.framework.busted").install()

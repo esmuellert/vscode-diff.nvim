@@ -36,12 +36,21 @@ local function deep_equal(a, b)
   return vim.deep_equal(a, b)
 end
 
+-- Strict equality follows luassert's `assert.equal`: for tables this is
+-- reference identity, for primitives it degenerates to `==`. This distinction
+-- matters: several specs rely on `assert.are_not.equal` to check that two
+-- table results are separate copies even when their content is identical
+-- (e.g. LRU cache tests).
+local function strict_equal(a, b)
+  return a == b
+end
+
 -- ---------------------------------------------------------------------------
 -- Core assertion helpers
 -- ---------------------------------------------------------------------------
 
 function M.equals(expected, actual, msg)
-  if not deep_equal(expected, actual) then
+  if not strict_equal(expected, actual) then
     fail(string.format(
       "%s\nExpected: %s\nActual:   %s",
       msg or "Values are not equal",
@@ -51,13 +60,33 @@ function M.equals(expected, actual, msg)
   end
 end
 M.equal = M.equals
-M.same = M.equals
+
+function M.same(expected, actual, msg)
+  if not deep_equal(expected, actual) then
+    fail(string.format(
+      "%s\nExpected: %s\nActual:   %s",
+      msg or "Values are not the same",
+      fmt(expected),
+      fmt(actual)
+    ), 2)
+  end
+end
 
 function M.not_equal(a, b, msg)
-  if deep_equal(a, b) then
+  if strict_equal(a, b) then
     fail(string.format(
       "%s\nExpected values to differ, both were:\n  %s",
       msg or "Values are equal but should differ",
+      fmt(a)
+    ), 2)
+  end
+end
+
+function M.not_same(a, b, msg)
+  if deep_equal(a, b) then
+    fail(string.format(
+      "%s\nExpected values to differ, both were:\n  %s",
+      msg or "Values are the same but should differ",
       fmt(a)
     ), 2)
   end
@@ -185,26 +214,26 @@ end
 M.are = {
   equal = M.equals,
   equals = M.equals,
-  same = M.equals,
+  same = M.same,
 }
 
 M.are_not = {
   equal = M.not_equal,
   equals = M.not_equal,
-  same = M.not_equal,
+  same = M.not_same,
 }
 
 M.is_not = {
   equal = M.not_equal,
   equals = M.not_equal,
-  same = M.not_equal,
+  same = M.not_same,
   ["nil"] = M.is_not_nil,
 }
 
 M.is = {
   equal = M.equals,
   equals = M.equals,
-  same = M.equals,
+  same = M.same,
   truthy = M.is_truthy,
   falsy = M.is_falsy,
   ["true"] = M.is_true,
