@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Test runner for codediff.nvim using plenary.nvim
+# Test runner for codediff.nvim using the in-tree test framework
+# (tests/framework/), which replaces plenary.nvim.
 
 set -e
 
@@ -14,7 +15,7 @@ NC='\033[0m'
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║          codediff.nvim Test Suite (Plenary)                  ║"
+echo "║          codediff.nvim Test Suite                            ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
 
@@ -32,7 +33,7 @@ done < <(find tests -name '*_spec.lua' -type f | sort)
 for spec_file in "${SPEC_FILES[@]}"; do
   echo -e "${CYAN}Running: $spec_file${NC}"
   if nvim --headless --noplugin -u tests/init.lua \
-    -c "lua require('plenary.test_harness').test_file('$spec_file', { minimal_init = '$PROJECT_ROOT/tests/init.lua' })" 2>&1; then
+    -c "lua require('tests.framework').run_and_exit('$spec_file')" 2>&1; then
     echo ""
   else
     echo -e "${RED}✗ $spec_file failed${NC}"

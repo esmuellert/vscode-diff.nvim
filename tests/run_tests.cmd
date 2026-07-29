@@ -1,18 +1,19 @@
 @echo off
-REM Test runner for codediff.nvim using plenary.nvim (Windows)
+REM Test runner for codediff.nvim using the in-tree test framework
+REM (tests/framework/), which replaces plenary.nvim. (Windows)
 setlocal enabledelayedexpansion
 
 set FAILED=0
 
 echo.
 echo ================================================================
-echo           codediff.nvim Test Suite (Plenary)
+echo           codediff.nvim Test Suite
 echo ================================================================
 echo.
 
 for /r tests %%f in (*_spec.lua) do (
     echo Running: %%f
-    nvim --headless --noplugin -u tests/init.lua -c "lua require('plenary.test_harness').test_file('%%f', { minimal_init = vim.fn.getcwd() .. '/tests/init.lua' })"
+    nvim --headless --noplugin -u tests/init.lua -c "lua require('tests.framework').run_and_exit('%%f')"
     if errorlevel 1 (
         echo FAILED: %%f
         set /a FAILED+=1

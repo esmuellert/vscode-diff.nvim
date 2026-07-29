@@ -36,8 +36,8 @@ jobs:
       - name: Setup Neovim
         uses: ./.github/actions/setup-neovim
 
-      # Note: plenary.nvim and nui.nvim are installed on-demand by tests/init.lua
-      # This keeps behavior consistent with the main CI pipeline
+      # Note: nui.nvim is installed on-demand by tests/init.lua.
+      # The test framework is in-tree at tests/framework/ — no external clone needed.
 
       - name: Build native library
         run: make build
@@ -47,4 +47,4 @@ jobs:
           nvim --headless -u tests/init.lua -c "lua print('codediff version: ' .. require('codediff.version').VERSION)" -c "qa!"
 
       - name: Run tests to verify environment
-        run: ./tests/run_plenary_tests.sh
+        run: ./tests/run_tests.sh

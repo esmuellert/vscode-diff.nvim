@@ -83,10 +83,10 @@ jobs:
         if: matrix.os != 'windows-latest'
         run: |
           nvim --headless --noplugin -u tests/init.lua \
-            -c "lua require('plenary.test_harness').test_file('tests/full_integration_spec.lua', { minimal_init = vim.fn.getcwd() .. '/tests/init.lua' })"
+            -c "lua require('tests.framework').run_and_exit('tests/full_integration_spec.lua')"
 
       - name: Run integration test (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          nvim --headless --noplugin -u tests/init.lua -c "lua require('plenary.test_harness').test_file('tests/full_integration_spec.lua', { minimal_init = vim.fn.getcwd() .. '/tests/init.lua' })"
+          nvim --headless --noplugin -u tests/init.lua -c "lua require('tests.framework').run_and_exit('tests/full_integration_spec.lua')"
