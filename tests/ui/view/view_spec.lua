@@ -429,10 +429,10 @@ describe("Render View", function()
   end)
 
   -- Test 16: Re-opening a diff whose file was deleted behind our back must stay
-  -- quiet. The views run `:checktime {buf}` when they reuse an already-loaded
-  -- real-file buffer; for a buffer that is displayed in a window, `:checktime`
-  -- *reports* `E211: File ... no longer available` instead of raising it, so a
-  -- bare `pcall` does not stop it reaching the user (and, in headless CI, stderr).
+  -- quiet. Neovim timestamp-checks a buffer whenever it becomes visible, and
+  -- both `:edit` and displaying an already-loaded buffer surface that as
+  -- `E211: File ... no longer available` — a bare `pcall` does not suppress it,
+  -- and on some platforms it aborts view construction outright.
   it("Does not report E211 when a diffed file is deleted behind the view", function()
     local original = { "line 1", "line 2" }
     local modified = { "line 1", "changed" }
@@ -450,12 +450,46 @@ describe("Render View", function()
     vim.fn.delete(left_path)
     vim.fn.delete(right_path)
 
-    -- Second create reuses those buffers, so it takes the `:checktime` path.
+    -- Second create finds those buffers by name and re-displays them.
     vim.cmd("messages clear")
     create_test_diff_view(original, modified, left_path, right_path)
     vim.wait(200)
 
     local messages = vim.fn.execute("messages")
-    assert.is_nil(messages:find("E211", 1, true), "Re-opening a diff for a deleted file should not report E211, got: " .. messages)
+    assert.is_nil(messages:find("E211", 1, true), "Re-displaying a loaded buffer for a deleted file should not report E211, got: " .. messages)
+  end)
+
+  -- Test 17: Same situation, but reached through the "no buffer found, load it"
+  -- branch. A path that is spelled differently from the buffer's name (here an
+  -- extra "." segment; on macOS the real trigger is /tmp being a symlink to
+  -- /private/tmp) misses the by-name lookup, yet still resolves to the very
+  -- same buffer once loaded.
+  it("Does not report E211 when loading a deleted file whose buffer is already open", function()
+    local original = { "line 1", "line 2" }
+    local modified = { "line 1", "changed" }
+
+    local left_path = get_temp_path("test_view_left_17.txt")
+    local right_path = get_temp_path("test_view_right_17.txt")
+    vim.fn.writefile(original, left_path)
+    vim.fn.writefile(modified, right_path)
+
+    create_test_diff_view(original, modified, left_path, right_path)
+    vim.wait(200)
+
+    vim.fn.delete(left_path)
+    vim.fn.delete(right_path)
+
+    local sep = package.config:sub(1, 1)
+    local function indirect(p)
+      local dir, name = p:match("^(.*)[/\\]([^/\\]+)$")
+      return dir .. sep .. "." .. sep .. name
+    end
+
+    vim.cmd("messages clear")
+    create_test_diff_view(original, modified, indirect(left_path), indirect(right_path))
+    vim.wait(200)
+
+    local messages = vim.fn.execute("messages")
+    assert.is_nil(messages:find("E211", 1, true), "Loading a deleted file that is already open should not report E211, got: " .. messages)
   end)
 end)

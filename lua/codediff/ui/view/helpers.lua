@@ -102,4 +102,30 @@ function M.show_real_file_buffer(win, bufnr)
   vim.api.nvim_win_set_buf(win, bufnr)
 end
 
+--- Load a real file into a buffer and display it in `win`.
+---
+--- Uses `:edit` rather than `bufload()` for a not-yet-loaded buffer on purpose:
+--- a buffer loaded outside of any window and then displayed comes back marked
+--- `'modified'`, which makes Neovim refuse to ever reload it from disk (W12).
+---
+--- When the buffer already exists it is reused as-is: `bufadd` resolves
+--- `target` to the exact buffer Neovim would pick even when the path is spelled
+--- differently (a symlinked directory such as macOS `/tmp`, a `./` segment),
+--- which is precisely the case where `:edit` would fail with `E211` for a file
+--- that has since been deleted.
+---@param win number Window handle
+---@param target string Absolute path of the file to load
+---@return number bufnr
+function M.open_real_file(win, target)
+  local bufnr = vim.fn.bufadd(target)
+  if vim.api.nvim_buf_is_loaded(bufnr) then
+    M.show_real_file_buffer(win, bufnr)
+    return bufnr
+  end
+
+  vim.api.nvim_set_current_win(win)
+  vim.cmd("edit " .. vim.fn.fnameescape(target))
+  return vim.api.nvim_get_current_buf()
+end
+
 return M
