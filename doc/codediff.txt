@@ -319,6 +319,7 @@ Setup entry point:
         restore = "X",
         toggle_changes = "gu",
         toggle_staged = "gs",
+        custom = {},
         fold_open = "zo",
         fold_open_recursive = "zO",
         fold_close = "zc",
@@ -442,6 +443,45 @@ Example: replace only group rows and right-align the file count:
     },
   })
 <
+
+EXPLORER CUSTOM KEYMAPS                        *codediff-explorer-custom-keymaps*
+
+`keymaps.explorer.custom` adds buffer-local mappings to the Explorer. Each
+mapping has `key`, `desc`, and `callback`:
+>lua
+  require("codediff").setup({
+    keymaps = {
+      explorer = {
+        custom = {
+          {
+            key = "gy",
+            desc = "Copy explorer path",
+            callback = function(ctx)
+              if ctx.entry.path then
+                vim.fn.setreg("+", ctx.entry.path)
+              end
+            end,
+          },
+        },
+      },
+    },
+  })
+<
+
+The callback receives the selected row as `ctx.entry`, in one of these shapes:
+>lua
+  { kind = "file", path, old_path, group, status, stats }
+  { kind = "directory", name, path, group, stats, files }
+  { kind = "group", name, group, stats, files }
+<
+
+Directory and group `files` use the normalized
+`{ path, old_path, group, status, stats }` shape. `stats` is nil when line
+statistics are disabled. `ctx.redraw()` renders the existing tree again without
+rebuilding nodes, changing selection or fold state, or running Git.
+`ctx.refresh()` starts the normal asynchronous Explorer refresh. Both functions
+become no-ops after the Explorer closes. Custom mappings are installed after
+built-in Explorer mappings, so matching keys intentionally override them.
 
 ==============================================================================
 HIGHLIGHT GROUPS                                     *codediff-highlight-groups*
