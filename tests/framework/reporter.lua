@@ -3,6 +3,10 @@
 -- Stdout reporter used by tests/framework/runner.lua. Prints one line per test
 -- (with color prefix), a failure block with traceback when tests fail, and a
 -- summary line per spec file.
+--
+-- It also owns the suite-level output used by tests/framework/supervisor.lua
+-- (banner, per-spec block emission, aggregate summary) so that every byte the
+-- test suite prints is formatted in exactly one place.
 
 local M = {}
 
@@ -119,6 +123,105 @@ function M.print_load_error(spec_file, err)
   write(red("┌─ LOAD ERROR ") .. spec_file)
   write(indent("  " .. red("│ "), err))
   write(red("└─ FAIL ") .. spec_file)
+end
+
+-- ---------------------------------------------------------------------------
+-- Suite-level output (used by tests/framework/supervisor.lua)
+-- ---------------------------------------------------------------------------
+
+local BOX_WIDTH = 62
+
+--- Draw one `║ ... ║` row, padded to BOX_WIDTH by *display* width so that ANSI
+--- color codes (which occupy zero columns) don't skew the border alignment.
+local function box_row(text, plain)
+  local pad = BOX_WIDTH - 1 - vim.fn.strdisplaywidth(plain or text)
+  if pad < 0 then pad = 0 end
+  return "║ " .. text .. string.rep(" ", pad) .. "║"
+end
+
+local function box_top() return "╔" .. string.rep("═", BOX_WIDTH) .. "╗" end
+local function box_bottom() return "╚" .. string.rep("═", BOX_WIDTH) .. "╝" end
+
+--- Banner printed once, before any spec runs.
+-- @param spec_count number
+-- @param mode "parallel"|"sequential"
+-- @param jobs number  concurrent workers (1 in sequential mode)
+-- @param reason string|nil  why sequential mode was chosen
+function M.print_suite_header(spec_count, mode, jobs, reason)
+  write("")
+  write(box_top())
+  write(box_row("codediff.nvim Test Suite", "codediff.nvim Test Suite"))
+  local detail
+  if mode == "parallel" then
+    detail = string.format("%d spec files, %d parallel workers", spec_count, jobs)
+  else
+    detail = string.format("%d spec files, sequential", spec_count)
+    if reason then detail = detail .. " (" .. reason .. ")" end
+  end
+  write(box_row(dim(detail), detail))
+  write(box_bottom())
+  write("")
+end
+
+--- Emit one spec's captured output as a single contiguous block.
+--
+-- This is the whole anti-interleaving mechanism: a child's stdout is buffered
+-- in full by the supervisor and handed here, so no other spec's output can
+-- land in the middle of it. Child processes must therefore never share this
+-- process's stdout.
+--
+-- Trailing newlines are normalized to exactly one: Neovim writes some messages
+-- (e.g. `E211: File ... no longer available`) without a trailing newline, which
+-- would otherwise glue the next block's header onto the last line.
+-- @param stdout string  captured child stdout (framework output)
+-- @param stderr string|nil  captured child stderr (incidental Neovim messages)
+function M.emit_block(stdout, stderr)
+  local chunk = stdout or ""
+  if stderr and stderr ~= "" then
+    chunk = chunk:gsub("\n*$", "\n") .. stderr
+  end
+  chunk = chunk:gsub("\n*$", "")
+  if chunk == "" then return end
+  write(chunk)
+end
+
+--- Aggregate summary printed once, after every spec has finished.
+-- @param results table  list of { spec, ok, timed_out }
+-- @param total_ms number  wall-clock time for the whole suite
+function M.print_suite_summary(results, total_ms)
+  local failures = {}
+  for _, r in ipairs(results) do
+    if not r.ok then table.insert(failures, r) end
+  end
+
+  -- Deterministic regardless of completion order, so CI logs stay diffable.
+  table.sort(failures, function(a, b) return a.spec < b.spec end)
+
+  write("")
+  if #failures > 0 then
+    write(red("Failed spec files:"))
+    for _, r in ipairs(failures) do
+      write(red("  ✗ ") .. r.spec .. (r.timed_out and dim(" (timed out)") or ""))
+    end
+    write("")
+  end
+
+  local seconds = string.format("%.1fs", total_ms / 1000)
+  write(box_top())
+  if #results == 0 then
+    -- An empty run is a failure, never a pass: it means discovery broke, which
+    -- would otherwise silently disable the whole suite in CI.
+    local plain = "✗ NO SPEC FILES FOUND"
+    write(box_row(red(plain), plain))
+  elseif #failures == 0 then
+    local plain = string.format("✓ ALL TESTS PASSED  (%d spec files, %s)", #results, seconds)
+    write(box_row(green(plain), plain))
+  else
+    local plain = string.format("✗ %d OF %d SPEC FILE(S) FAILED  (%s)", #failures, #results, seconds)
+    write(box_row(red(plain), plain))
+  end
+  write(box_bottom())
+  write("")
 end
 
 return M

@@ -43,9 +43,21 @@ function M.run_file(spec_file)
 end
 
 --- Run a single spec file and exit Neovim with the appropriate exit code.
---- Used by tests/run_tests.{sh,cmd}.
+--- Used by the child processes the supervisor spawns.
 function M.run_and_exit(spec_file)
   return require("tests.framework.runner").run_and_exit(spec_file)
+end
+
+--- Run every discovered spec file. Returns (ok, results).
+--- Concurrency and output grouping live in the supervisor; see its header.
+function M.run_all(opts)
+  return require("tests.framework.supervisor").run(opts)
+end
+
+--- Run every discovered spec file and exit with the appropriate exit code.
+--- This is the single entry point used by tests/run_tests.{sh,cmd}.
+function M.run_all_and_exit(opts)
+  return require("tests.framework.supervisor").run_and_exit(opts)
 end
 
 return M
