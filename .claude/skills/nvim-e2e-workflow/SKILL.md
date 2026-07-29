@@ -1,0 +1,1 @@
+../../.github/skills/nvim-e2e-workflow/SKILL.md
