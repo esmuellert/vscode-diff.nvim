@@ -23,10 +23,17 @@ describe("Explorer line formatters", function()
     reset_config()
   end)
 
-  it("provides built-in callbacks for every explorer row type", function()
-    assert.is_function(config.options.explorer.formatters.file)
-    assert.is_function(config.options.explorer.formatters.folder)
-    assert.is_function(config.options.explorer.formatters.group)
+  it("built-in callbacks are available for every explorer row type", function()
+    -- The config uses nil sentinels so that the config module stays a leaf
+    -- (no UI imports). Callers resolve nil to the built-ins in
+    -- codediff.ui.explorer.formatters.
+    assert.is_nil(config.options.explorer.formatters.file)
+    assert.is_nil(config.options.explorer.formatters.folder)
+    assert.is_nil(config.options.explorer.formatters.group)
+    local defaults = require("codediff.ui.explorer.formatters")
+    assert.is_function(defaults.file)
+    assert.is_function(defaults.folder)
+    assert.is_function(defaults.group)
     assert.equals("…", config.options.explorer.ellipsis)
   end)
 

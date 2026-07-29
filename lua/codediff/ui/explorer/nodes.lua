@@ -5,6 +5,7 @@ local M = {}
 local Tree = require("codediff.ui.lib.tree")
 local config = require("codediff.config")
 local line_layout = require("codediff.ui.explorer.line_layout")
+local default_formatters = require("codediff.ui.explorer.formatters")
 
 -- Merge artifact patterns (created by git mergetool)
 local MERGE_ARTIFACT_PATTERNS = {
@@ -340,16 +341,21 @@ end
 function M.prepare_node(node, max_width, selected_path, selected_group)
   local data = node.data or {}
   local explorer_config = config.options.explorer
-  local formatters = explorer_config.formatters
+  -- Formatters are pluggable per node type; nil in config means "use the
+  -- built-in default" (see `default_formatters` at the top of this file).
+  local user_formatters = explorer_config.formatters or {}
   if data.type == "group" then
-    return line_layout.render(formatters.group(group_context(node, data)), max_width, nil, explorer_config.ellipsis)
+    local fmt = user_formatters.group or default_formatters.group
+    return line_layout.render(fmt(group_context(node, data)), max_width, nil, explorer_config.ellipsis)
   end
   if data.type == "directory" then
-    return line_layout.render(formatters.folder(folder_context(node, data, explorer_config)), max_width, nil, explorer_config.ellipsis)
+    local fmt = user_formatters.folder or default_formatters.folder
+    return line_layout.render(fmt(folder_context(node, data, explorer_config)), max_width, nil, explorer_config.ellipsis)
   end
 
   local is_selected = data.path == selected_path and data.group == selected_group
-  return line_layout.render(formatters.file(file_context(node, data, explorer_config)), max_width, selected_background(is_selected), explorer_config.ellipsis)
+  local fmt = user_formatters.file or default_formatters.file
+  return line_layout.render(fmt(file_context(node, data, explorer_config)), max_width, selected_background(is_selected), explorer_config.ellipsis)
 end
 
 return M
