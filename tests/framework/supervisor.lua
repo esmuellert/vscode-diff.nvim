@@ -25,6 +25,10 @@ local reporter = require("tests.framework.reporter")
 
 local M = {}
 
+-- `vim.uv` is 0.10+; `vim.loop` is the pre-0.10 spelling. Resolved here so the
+-- sequential fallback below is actually reachable on the versions it targets.
+local uv = vim.uv or vim.loop
+
 -- ---------------------------------------------------------------------------
 -- Configuration
 -- ---------------------------------------------------------------------------
@@ -48,7 +52,7 @@ end
 -- so a many-core machine doesn't spawn dozens of Neovim processes.
 local function default_jobs()
   local ok, cpus = pcall(function()
-    return vim.uv.available_parallelism()
+    return uv.available_parallelism()
   end)
   if not ok or type(cpus) ~= "number" or cpus < 1 then cpus = 2 end
   return math.max(2, math.min(cpus * 2, 16))
@@ -64,19 +68,21 @@ end
 -- forward slashes so the ordering, the log, and the `%q`-quoted argument
 -- handed to the child are identical on every platform (a Windows path pasted
 -- raw into a Lua string would also mangle `\U`, `\t`, ... escapes).
+--
+-- `globpath()` rather than `vim.fs.find()`: it exists on every Neovim version,
+-- so discovery never becomes the reason an older Neovim can't run the suite.
+-- `nosuf = true` keeps a stray 'wildignore' from silently hiding spec files.
 function M.discover(dir)
   dir = dir or "tests"
   local root = vim.fn.getcwd():gsub("\\", "/")
 
-  local matches = vim.fs.find(function(name)
-    return name:match("_spec%.lua$") ~= nil
-  end, { path = dir, type = "file", limit = math.huge })
+  local matches = vim.fn.globpath(dir, "**/*_spec.lua", true, true)
 
   local specs = {}
   for _, path in ipairs(matches) do
     local norm = path:gsub("\\", "/")
-    -- vim.fs.find returns absolute paths; make them relative to the repo root
-    -- so the log is readable and the child's `dofile` resolves from cwd.
+    -- Make absolute paths relative to the repo root so the log is readable and
+    -- the child's loader resolves them from cwd.
     if norm:sub(1, #root + 1) == root .. "/" then
       norm = norm:sub(#root + 2)
     end
@@ -133,7 +139,7 @@ local function run_parallel(specs, opts)
       -- Emission is deferred to the main loop: the whole block is written by a
       -- single writer, so blocks cannot interleave with each other.
       vim.schedule(function()
-        reporter.emit_block(obj.stdout, obj.stderr)
+        reporter.emit_block(spec, obj.stdout, obj.stderr)
         table.insert(results, {
           spec = spec,
           ok = obj.code == 0,
@@ -167,7 +173,7 @@ local function run_sequential(specs)
   for _, spec in ipairs(specs) do
     local out = vim.fn.system(child_argv(spec))
     local code = vim.v.shell_error
-    reporter.emit_block(out, nil)
+    reporter.emit_block(spec, out, nil)
     table.insert(results, { spec = spec, ok = code == 0, timed_out = false })
   end
   return results
@@ -202,14 +208,15 @@ function M.run(opts)
     reporter.print_suite_summary({}, 0)
     return false, {}
   end
-  local started = vim.uv.hrtime()
+
+  local started = uv.hrtime()
   local results
   if parallel then
     results = run_parallel(specs, { jobs = jobs, timeout = timeout })
   else
     results = run_sequential(specs)
   end
-  local total_ms = math.floor((vim.uv.hrtime() - started) / 1e6)
+  local total_ms = math.floor((uv.hrtime() - started) / 1e6)
 
   -- A spec with no result never reported back (parent wait cap hit). Treat it
   -- as a failure rather than silently dropping it from the totals.

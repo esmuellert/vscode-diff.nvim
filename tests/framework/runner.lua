@@ -13,7 +13,8 @@ local M = {}
 -- ---------------------------------------------------------------------------
 
 local function hrtime_ms()
-  return math.floor(vim.uv.hrtime() / 1e6)
+  -- `vim.uv` is 0.10+; `vim.loop` is the pre-0.10 spelling.
+  return math.floor((vim.uv or vim.loop).hrtime() / 1e6)
 end
 
 local function traceback(e)

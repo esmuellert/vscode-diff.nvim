@@ -173,12 +173,19 @@ end
 -- Trailing newlines are normalized to exactly one: Neovim writes some messages
 -- (e.g. `E211: File ... no longer available`) without a trailing newline, which
 -- would otherwise glue the next block's header onto the last line.
+--
+-- stderr is appended after stdout because the two streams are captured
+-- separately, so it lands after the block's `└─` footer. It is labelled with
+-- the spec name, otherwise those incidental Neovim messages read as
+-- unattributed noise sitting between two blocks.
+-- @param spec string  spec path, used to label the stderr section
 -- @param stdout string  captured child stdout (framework output)
 -- @param stderr string|nil  captured child stderr (incidental Neovim messages)
-function M.emit_block(stdout, stderr)
+function M.emit_block(spec, stdout, stderr)
   local chunk = stdout or ""
   if stderr and stderr ~= "" then
-    chunk = chunk:gsub("\n*$", "\n") .. stderr
+    local label = "── stderr from " .. spec .. " ──"
+    chunk = chunk:gsub("\n*$", "\n") .. dim(label) .. "\n" .. stderr
   end
   chunk = chunk:gsub("\n*$", "")
   if chunk == "" then return end

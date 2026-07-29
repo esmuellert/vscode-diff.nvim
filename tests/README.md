@@ -55,14 +55,40 @@ LSP integration and rendering:
 
 ### All tests:
 ```bash
-./tests/run_tests.sh
+./tests/run_tests.sh          # or: make test-lua
 ```
+
+Spec files are auto-discovered under `tests/`, so a new `*_spec.lua` is picked
+up with no runner changes.
 
 ### Individual spec:
 ```bash
 nvim --headless --noplugin -u tests/init.lua \
-  -c "lua require('tests.framework').run_and_exit('tests/ffi_integration_spec.lua')"
+  -c "lua require('tests.framework').run_and_exit('tests/core/ffi_integration_spec.lua')"
 ```
+
+### How the suite runs
+
+Each spec file gets its own child `nvim --headless` process, so specs stay
+isolated from one another. `tests/framework/supervisor.lua` runs those children
+concurrently from a single parent Neovim, which cuts the suite from ~150s to
+~35s on a 4-core machine.
+
+Children never share the parent's stdout: their output is buffered in full and
+printed as one contiguous block when they exit. Letting concurrent processes
+write to the same stream interleaves their output, both block-wise (stdout is
+fully buffered when it isn't a tty) and line-wise (Neovim writes some messages
+without a trailing newline).
+
+Concurrency needs `vim.system()` (Neovim 0.10+). On older versions the suite
+automatically falls back to running the same children one at a time, producing
+the same output, just slower.
+
+| Env var | Default | Purpose |
+| --- | --- | --- |
+| `CODEDIFF_TEST_JOBS` | 2x CPUs, capped at 16 | Concurrent spec workers. `1` forces sequential. |
+| `CODEDIFF_TEST_TIMEOUT` | `300000` | Per-spec timeout in ms; guards against a hung spec stalling CI. |
+| `NO_COLOR` / `CODEDIFF_TEST_NO_COLOR` | unset | Disable ANSI colors. |
 
 ## Test Philosophy
 
@@ -71,8 +97,6 @@ Focus on **integration points** that C tests cannot validate:
 - Lua async operations
 - System integration (git)
 - UI behavior (scrolling, rendering)
-
-**Total: 46 tests** across 5 spec files using the in-tree `tests/framework/` runner.
 
 ## What's NOT Covered
 
