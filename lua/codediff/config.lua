@@ -74,6 +74,12 @@ M.defaults = {
     auto_open_on_cursor = false, -- Rebind j/k/Down/Up in the explorer to also open the file under the cursor
     flatten_dirs = true, -- Flatten single-child directory chains in tree view (e.g., src/components/ui/)
     status_right_margin = 1, -- Trailing cells between the status symbol (M/A/D) and the right edge; increase if Nerd Font icons clip it
+    ellipsis = "…", -- Text appended to truncated Explorer regions
+    formatters = { -- nil = use the built-in from lua/codediff/ui/explorer/formatters.lua
+      file = nil, -- File rows: function(ctx) -> layout
+      folder = nil, -- Directory rows in tree view: function(ctx) -> layout
+      group = nil, -- Section headers such as Changes and Staged: function(ctx) -> layout
+    },
     visible_groups = { -- Which groups to show in explorer (can be toggled at runtime)
       staged = true,
       unstaged = true,
