@@ -202,6 +202,17 @@ function M.refresh(explorer)
         return
       end
 
+      -- Skip the whole downstream refresh (tree rebuild, re-selection,
+      -- mutable-buffer sync) when the status is identical to the previous
+      -- tick. `git status` still runs every tick so coverage is unchanged;
+      -- this only avoids UI churn (tree re-render, re-selection re-running
+      -- layout.arrange, extmark rewrites) that would flicker the interface
+      -- and can interrupt the user (manual pane sizes reset, tree flatten
+      -- flake, cursor jumps) even though nothing actually changed.
+      if vim.deep_equal(status_result, explorer.status_result) then
+        return
+      end
+
       -- Rebuild tree nodes (honors group visibility) and re-render.
       rebuild_tree(explorer, status_result, collapsed_state)
 
