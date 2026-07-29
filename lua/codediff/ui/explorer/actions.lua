@@ -168,8 +168,11 @@ function M.toggle_view_mode(explorer)
   -- Update config
   config.options.explorer.view_mode = new_mode
 
-  -- Refresh to rebuild tree with new mode
-  refresh_module.refresh(explorer)
+  -- View-mode change is client-only: git status is unchanged, so the async
+  -- refresh() path would hit the deep_equal skip introduced in #486 and
+  -- silently no-op. Rebuild synchronously from the cached status instead
+  -- (same pattern as toggle_group) so the new mode takes effect immediately.
+  refresh_module.rebuild_from_cache(explorer)
 
   vim.notify("Explorer view: " .. new_mode, vim.log.levels.INFO)
 end
