@@ -1,8 +1,8 @@
 See AGENTS.md for project conventions.
 
-On first use, create symlinks so Claude Code discovers existing skills and agents:
+On first use, create user-level symlinks so Claude Code discovers existing skills and agents:
 ```
-mkdir -p .claude/skills/nvim-e2e-workflow .claude/skills/codediff-developer
-ln -sf ../../.github/skills/nvim-e2e-workflow/SKILL.md .claude/skills/nvim-e2e-workflow/SKILL.md
-ln -sf ../../.github/agents/codediff-developer.agent.md .claude/skills/codediff-developer/SKILL.md
+mkdir -p "$HOME/.claude/skills/nvim-e2e-workflow" "$HOME/.claude/skills/codediff-developer"
+ln -sf "$PWD/.github/skills/nvim-e2e-workflow/SKILL.md" "$HOME/.claude/skills/nvim-e2e-workflow/SKILL.md"
+ln -sf "$PWD/.github/agents/codediff-developer.agent.md" "$HOME/.claude/skills/codediff-developer/SKILL.md"
 ```
