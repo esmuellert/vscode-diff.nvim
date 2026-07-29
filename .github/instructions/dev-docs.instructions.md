@@ -1,5 +1,5 @@
-applyTo:
-  - docs/development/**
+---
+applyTo: "docs/development/**"
 ---
 
 # Development Documentation Guidelines
