@@ -607,9 +607,10 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
       if vim.api.nvim_buf_is_valid(original_info.bufnr) then
         vim.api.nvim_win_set_buf(original_win, original_info.bufnr)
         if not original_is_virtual then
-          vim.api.nvim_buf_call(original_info.bufnr, function()
-            vim.cmd("checktime")
-          end)
+          -- `:checktime {buf}` is scoped to this buffer. A bare `:checktime`
+          -- walks every loaded buffer instead, which reloads unrelated files and
+          -- reports `E211` for any whose file has since been deleted.
+          pcall(vim.cmd, "checktime " .. original_info.bufnr)
         end
       else
         if original_is_virtual then
@@ -647,9 +648,7 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
       if vim.api.nvim_buf_is_valid(modified_info.bufnr) then
         vim.api.nvim_win_set_buf(modified_win, modified_info.bufnr)
         if not modified_is_virtual then
-          vim.api.nvim_buf_call(modified_info.bufnr, function()
-            vim.cmd("checktime")
-          end)
+          pcall(vim.cmd, "checktime " .. modified_info.bufnr)
         end
       else
         if modified_is_virtual then

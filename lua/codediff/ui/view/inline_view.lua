@@ -387,9 +387,8 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
       mod_buf = bufnr
     else
       mod_buf = modified_info.bufnr
-      vim.api.nvim_buf_call(mod_buf, function()
-        vim.cmd("checktime")
-      end)
+      -- Scoped to this buffer; a bare `:checktime` walks every loaded buffer.
+      pcall(vim.cmd, "checktime " .. mod_buf)
     end
     vim.api.nvim_win_set_buf(modified_win, mod_buf)
   end
