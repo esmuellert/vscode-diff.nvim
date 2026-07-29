@@ -17,6 +17,19 @@ local function filter_files(files)
   return filter.apply(files, ignore_patterns)
 end
 
+local function create_group_node(label, name, files, children)
+  return Tree.Node({
+    text = string.format("%s (%d)", label, #files),
+    data = {
+      type = "group",
+      name = name,
+      label = label,
+      file_count = #files,
+      files = files,
+    },
+  }, children)
+end
+
 -- Create tree data structure from git status result
 function M.create_tree_data(status_result, git_root, base_revision, is_dir_mode, visible_groups)
   local explorer_config = config.options.explorer or {}
@@ -36,10 +49,7 @@ function M.create_tree_data(status_result, git_root, base_revision, is_dir_mode,
   if is_dir_mode or base_revision then
     -- Dir or revision mode: single group showing all changes
     return {
-      Tree.Node({
-        text = string.format("Changes (%d)", #unstaged),
-        data = { type = "group", name = "unstaged" },
-      }, unstaged_nodes),
+      create_group_node("Changes", "unstaged", unstaged, unstaged_nodes),
     }
   else
     -- Status mode: separate conflicts/staged/unstaged groups
@@ -47,35 +57,17 @@ function M.create_tree_data(status_result, git_root, base_revision, is_dir_mode,
 
     -- Conflicts first (most important)
     if #conflict_nodes > 0 and visible_groups.conflicts ~= false then
-      table.insert(
-        tree_nodes,
-        Tree.Node({
-          text = string.format("Merge Changes (%d)", #conflicts),
-          data = { type = "group", name = "conflicts" },
-        }, conflict_nodes)
-      )
+      table.insert(tree_nodes, create_group_node("Merge Changes", "conflicts", conflicts, conflict_nodes))
     end
 
     -- Unstaged changes
     if visible_groups.unstaged ~= false then
-      table.insert(
-        tree_nodes,
-        Tree.Node({
-          text = string.format("Changes (%d)", #unstaged),
-          data = { type = "group", name = "unstaged" },
-        }, unstaged_nodes)
-      )
+      table.insert(tree_nodes, create_group_node("Changes", "unstaged", unstaged, unstaged_nodes))
     end
 
     -- Staged changes
     if visible_groups.staged ~= false then
-      table.insert(
-        tree_nodes,
-        Tree.Node({
-          text = string.format("Staged Changes (%d)", #staged),
-          data = { type = "group", name = "staged" },
-        }, staged_nodes)
-      )
+      table.insert(tree_nodes, create_group_node("Staged Changes", "staged", staged, staged_nodes))
     end
 
     return tree_nodes

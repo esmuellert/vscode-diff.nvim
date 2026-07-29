@@ -1,5 +1,5 @@
-applyTo:
-  - tests/**
+---
+applyTo: "tests/**"
 ---
 
 # Test Directory Guidelines

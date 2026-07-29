@@ -130,6 +130,12 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
       focus_on_select = false,  -- Jump to modified pane after selecting a file (default: stay in explorer)
       auto_open_on_cursor = false, -- Rebind j/k/Down/Up in the explorer to also open the file under the cursor
       status_right_margin = 1,  -- Trailing cells between status symbol (M/A/D) and right edge; increase if Nerd Font icons clip it
+      ellipsis = "…",          -- Text appended to truncated Explorer regions
+      formatters = {  -- Optional function(ctx) -> line layout callbacks; omit to use the built-ins
+        file = nil,   -- File rows
+        folder = nil, -- Directory rows in tree view
+        group = nil,  -- Section headers such as Changes and Staged Changes
+      },
       visible_groups = {       -- Which groups to show (can be toggled at runtime)
         staged = true,
         unstaged = true,
@@ -144,6 +150,7 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
       height = 15,          -- Height when position is "bottom" (lines)
       initial_focus = "history",  -- Initial focus: "history", "original", or "modified"
       view_mode = "list",   -- "list" or "tree" for files under commits
+      date_format = "%ar",  -- Commit date rendering: "%ar" (default, relative), "%ai" (ISO), "%ad" (git default), or any strftime string (e.g. "%Y/%m/%d %H:%M:%S")
     },
 
     -- Keymaps in diff view
@@ -225,6 +232,55 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
 ```
 
 `diff.filler_text` accepts any non-empty text pattern and repeats it across filler rows. Set it to `""` to hide the decoration while preserving the rows that keep side-by-side and conflict panes aligned. Non-empty patterns use the `CodeDiffFiller` highlight group.
+
+#### Explorer line formatters
+
+`explorer.formatters.file`, `folder`, and `group` replace the complete corresponding explorer row. Each callback receives row metadata and returns a layout:
+
+```lua
+{
+  left = {
+    {
+      segments = { { text = "name.lua", hl = "Normal" } },
+      truncate_priority = 2,
+    },
+  },
+  right = {
+    {
+      segments = { { text = "M", hl = "CodeDiffStatusModified" } },
+    },
+  },
+  min_gap = 2,
+}
+```
+
+A region contains styled `segments`. A numeric `truncate_priority` makes it truncatable; lower priorities truncate first. Regions without a priority stay fixed unless all content cannot fit. The renderer measures display cells, truncates with `explorer.ellipsis` (default `…`), right-aligns `right`, and preserves `min_gap` when space permits. The ellipsis can contain multiple characters and is clipped display-width-aware when necessary.
+
+Each segment is `{ text = string, hl? = highlight }`. `hl` accepts a Neovim highlight group, a `#RGB`/`#RRGGBB` foreground color, or a highlight definition such as `{ fg = "#3fb950", bold = true }`. Omitted highlights use `Normal`; selected file rows retain their selection background.
+
+File contexts contain `path`, `filename`, `directory`, `old_path`, `group`, `status`, `status_hl`, `status_right_margin`, `indent`, `indent_hl`, `icon`, and `icon_hl`. Folder contexts contain `name`, `path`, `group`, `file_count`, `files`, `indent`, `indent_hl`, `icon`, `icon_hl`, and `expanded`. Group contexts contain `name`, `label`, `file_count`, `files`, and `expanded`.
+
+Folder and group `files` contain `{ path, old_path, group, status }` entries for every represented file. The built-in callbacks are exported by `codediff.ui.explorer.formatters` and return fresh layouts that can be assigned directly or wrapped.
+
+```lua
+require("codediff").setup({
+  explorer = {
+    formatters = {
+      group = function(ctx)
+        return {
+          left = {{
+            segments = {{ text = " " .. ctx.label, hl = "CodeDiffExplorerTreeGroup" }},
+            truncate_priority = 1,
+          }},
+          right = {{
+            segments = {{ text = ctx.file_count .. " files", hl = "Number" }},
+          }},
+        }
+      end,
+    },
+  },
+})
+```
 
 The C library will be downloaded automatically on first use. No `build` step needed!
 
