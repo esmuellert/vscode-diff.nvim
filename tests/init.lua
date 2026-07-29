@@ -10,6 +10,24 @@ vim.env.VSCODE_DIFF_NO_AUTO_INSTALL = "1"
 -- Disable ShaDa (fixes Windows permission issues in CI)
 vim.opt.shadafile = "NONE"
 
+-- Keep git line-ending-neutral for every throwaway repository the specs create.
+--
+-- GitHub's Windows runners ship `core.autocrlf=true` in the global git config, so
+-- git prints
+--   warning: in the working copy of '<file>', LF will be replaced by CRLF ...
+-- on stderr whenever it touches a file the specs wrote with LF endings.
+-- `vim.fn.system()` folds stderr into its return value ('shellredir' defaults to
+-- `>%s 2>&1`), so that warning lands inside strings specs compare against git's
+-- real output and turns green assertions red on Windows only.
+--
+-- `GIT_CONFIG_COUNT` (git 2.31+) injects the override into every git process this
+-- Neovim spawns, which covers the plugin's own calls as well as the several
+-- helpers that run `git init` themselves. Environment config outranks the system,
+-- global and repository config files.
+vim.env.GIT_CONFIG_COUNT = "1"
+vim.env.GIT_CONFIG_KEY_0 = "core.autocrlf"
+vim.env.GIT_CONFIG_VALUE_0 = "false"
+
 -- Add current directory to runtimepath
 local cwd = vim.fn.getcwd()
 vim.opt.rtp:prepend(cwd)

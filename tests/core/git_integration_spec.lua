@@ -484,3 +484,39 @@ end)
 
 
 
+
+-- GitHub's Windows runners set `core.autocrlf=true` globally. git then warns
+-- "LF will be replaced by CRLF the next time Git touches it" on stderr for every
+-- LF file the specs write, and `vim.fn.system()` folds stderr into its return
+-- value ('shellredir' is `>%s 2>&1`) — so the warning ends up inside strings the
+-- specs compare against git output. tests/init.lua pins `core.autocrlf=false`
+-- through GIT_CONFIG_COUNT for every git process instead.
+describe("Git output is free of line-ending warnings (#494)", function()
+  --- Repo configured exactly like a Windows CI runner: autocrlf on, LF content.
+  local function make_autocrlf_repo()
+    local repo = h.create_temp_git_repo()
+    repo.git("config core.autocrlf true")
+    repo.write_file("file1.txt", { "alpha", "beta", "gamma" })
+    repo.git("add file1.txt")
+    repo.git("commit -m initial")
+    repo.write_file("file1.txt", { "alpha", "BETA", "gamma" })
+    return repo
+  end
+
+  it("git_cmd output carries no CRLF conversion warning", function()
+    local repo = make_autocrlf_repo()
+
+    local output = repo.git("diff --name-only")
+
+    assert.is_nil(output:match("LF will be replaced by CRLF"), "line-ending warning must not pollute git output: " .. output)
+    assert.equals("file1.txt", vim.trim(output), "git diff --name-only should report exactly the modified file")
+    repo.cleanup()
+  end)
+
+  it("core.autocrlf is pinned off for every git process", function()
+    local repo = make_autocrlf_repo()
+
+    assert.equals("false", vim.trim(repo.git("config --get core.autocrlf")), "environment config must outrank the repository config")
+    repo.cleanup()
+  end)
+end)
