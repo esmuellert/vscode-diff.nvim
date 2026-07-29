@@ -168,6 +168,67 @@ describe("Command E2E (real dispatch + render)", function()
     h.assert_contains(explorer_text(), "feature.txt")
   end)
 
+  -- ── Staged-only mode (--staged / --cached, #352) ──────────────────────────
+
+  it(":CodeDiff --staged — shows only files with staged changes", function()
+    -- Stage a change to file.txt so it's the only entry with staged changes.
+    repo.write_file("file.txt", { "line 1", "line 2 STAGED", "line 3" })
+    repo.git("add file.txt")
+    -- Unstaged-only edit to a.txt: must NOT appear under --staged.
+    repo.write_file("a.txt", { "alpha WORKING", "shared" })
+    vim.cmd("edit! " .. repo.path("file.txt"))
+    vim.cmd("CodeDiff --staged")
+    local text = explorer_text()
+    h.assert_contains(text, "Staged Changes", "explorer group is labeled 'Staged Changes'")
+    h.assert_contains(text, "file.txt", "staged file is listed")
+    assert.is_nil(text:find("a.txt", 1, true), "unstaged-only file is hidden")
+  end)
+
+  it(":CodeDiff --cached — alias of --staged", function()
+    repo.write_file("file.txt", { "line 1", "line 2 STAGED", "line 3" })
+    repo.git("add file.txt")
+    vim.cmd("CodeDiff --cached")
+    h.assert_contains(explorer_text(), "Staged Changes")
+  end)
+
+  it(":CodeDiff --staged <rev> — compares index against the given revision", function()
+    -- Stage new content differing from BOTH HEAD and HEAD~1.
+    repo.write_file("file.txt", { "line 1", "line 2 STAGED", "line 3" })
+    repo.git("add file.txt")
+    vim.cmd("CodeDiff --staged HEAD~1")
+    local text = explorer_text()
+    h.assert_contains(text, "Staged Changes")
+    h.assert_contains(text, "file.txt")
+    -- Verify the explorer is in staged-only mode via its own state (session
+    -- revisions are set lazily on file click; the explorer object records
+    -- them at open time).
+    local tab = find_explorer_tab()
+    assert.is_not_nil(tab)
+    local session = lifecycle.get_session(tab)
+    assert.is_not_nil(session)
+    local explorer = session.explorer
+    assert.is_not_nil(explorer)
+    assert.equals(":0", explorer.target_revision, "explorer.target_revision is the index (:0)")
+    assert.is_not_nil(explorer.base_revision, "explorer.base_revision resolves to HEAD~1")
+  end)
+
+  it(":CodeDiff --staged with no staged changes — notifies gracefully", function()
+    local notified
+    local orig_notify = vim.notify
+    vim.notify = function(msg, level)
+      if level == vim.log.levels.INFO then
+        notified = tostring(msg)
+      end
+    end
+    vim.cmd("CodeDiff --staged")
+    vim.wait(2000, function()
+      return notified ~= nil
+    end)
+    vim.notify = orig_notify
+    assert.is_not_nil(notified)
+    h.assert_contains(notified, "No staged changes")
+  end)
+
   -- ── Single-file diff (two real files) ─────────────────────────────────────
 
   it(":CodeDiff file <a> <b> — renders both files in a diff", function()

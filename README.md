@@ -168,6 +168,7 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
         open_in_prev_tab = "gf", -- Open current buffer in previous tab (or create one before)
         close_on_open_in_prev_tab = false, -- Close codediff tab after gf opens file in previous tab
         toggle_stage = "-", -- Stage/unstage current file (works in explorer and diff buffers)
+        toggle_staged_view = "gS", -- Swap between staged/unstaged view of current file (#352)
         stage_hunk = "<leader>hs",   -- Stage hunk under cursor to git index
         unstage_hunk = "<leader>hu", -- Unstage hunk under cursor from git index
         discard_hunk = "<leader>hr", -- Discard hunk under cursor (working tree only)
@@ -425,6 +426,16 @@ to review just one component instead of hundreds of files:
 
 Paths are git pathspecs (relative to the repository root; multiple paths and
 git's glob syntax are supported).
+
+#### Show only staged changes
+
+```vim
+:CodeDiff --staged           " index vs HEAD (--cached is an alias)
+:CodeDiff --staged HEAD~3    " index vs another revision
+```
+
+Inside the default `:CodeDiff` explorer, `gS` on a file with both staged and
+unstaged changes jumps to its sibling in the other group (#352).
 
 ### Git Diff Mode
 

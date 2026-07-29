@@ -259,6 +259,18 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
     -- Case 3: Other buffers (history, etc.) - do nothing silently
   end
 
+  -- Helper: Swap between the staged and unstaged view of the current file (#352).
+  -- Works from: explorer buffer, diff buffers. Silently no-op elsewhere.
+  local function toggle_staged_view()
+    local explorer = lifecycle.get_explorer(tabpage)
+    if not is_explorer_mode or not explorer then
+      vim.notify("Toggle staged view only available in explorer mode", vim.log.levels.WARN)
+      return
+    end
+    local explorer_module = require("codediff.ui.explorer")
+    explorer_module.toggle_staged_view(explorer)
+  end
+
   -- Helper: Open the current real buffer in the previous tab (or create one before)
   local function open_in_prev_tab()
     local session = lifecycle.get_session(tabpage)
@@ -639,6 +651,10 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
 
     if toggle_stage_key then
       lifecycle.set_tab_keymap(tabpage, "n", toggle_stage_key, toggle_stage, { desc = "Toggle stage/unstage" })
+    end
+
+    if keymaps.toggle_staged_view then
+      lifecycle.set_tab_keymap(tabpage, "n", keymaps.toggle_staged_view, toggle_staged_view, { desc = "Toggle staged/unstaged view for current file" })
     end
   end
 
