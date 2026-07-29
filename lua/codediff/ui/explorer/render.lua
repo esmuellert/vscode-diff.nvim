@@ -234,6 +234,9 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
       end
 
       vim.schedule(function()
+        if explorer.current_file_path ~= file_path then
+          return
+        end
         ---@type SessionConfig
         local session_config = {
           mode = "explorer",
@@ -253,6 +256,9 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
     -- Handle untracked files: show file without diff
     if file_data.status == "??" then
       vim.schedule(function()
+        if explorer.current_file_path ~= file_data.path then
+          return
+        end
         local sess = lifecycle.get_session(tabpage)
         if sess and sess.layout == "inline" then
           require("codediff.ui.view.inline_view").show_single_file(tabpage, abs_path, {
@@ -268,6 +274,9 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
     -- Handle added files: only one side has the file
     if file_data.status == "A" then
       vim.schedule(function()
+        if explorer.current_file_path ~= file_data.path then
+          return
+        end
         local sess = lifecycle.get_session(tabpage)
         local is_inline = sess and sess.layout == "inline"
 
@@ -309,6 +318,9 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
     -- Handle deleted files: show old content without diff
     if file_data.status == "D" then
       vim.schedule(function()
+        if explorer.current_file_path ~= file_data.path then
+          return
+        end
         local sess = lifecycle.get_session(tabpage)
         local is_inline = sess and sess.layout == "inline"
 
@@ -396,6 +408,10 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
     if base_revision and target_revision and target_revision ~= "WORKING" then
       -- Two revision mode: Compare base vs target
       vim.schedule(function()
+        -- Ignore stale async: see comment on the base_revision branch below.
+        if explorer.current_file_path ~= file_path then
+          return
+        end
         ---@type SessionConfig
         local session_config = {
           mode = "explorer",
@@ -423,6 +439,13 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
       if base_revision then
         -- Revision mode: Simple comparison of working tree vs base_revision
         vim.schedule(function()
+          -- Ignore stale async: if a newer selection superseded us before this
+          -- scheduled callback ran, `view.update` on the old target would
+          -- clobber the newer selection (buffers get swapped, virtual buffers
+          -- with `bufhidden=wipe` get destroyed mid-load, single_pane resets).
+          if explorer.current_file_path ~= file_path then
+            return
+          end
           ---@type SessionConfig
           local session_config = {
             mode = "explorer",
@@ -438,6 +461,10 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
         -- Merge conflict: Show incoming (:3) vs current (:2), both diffed against base (:1)
         -- Position controlled by config.diff.conflict_ours_position (absolute screen position)
         vim.schedule(function()
+          -- Ignore stale async: see comment on the base_revision branch above.
+          if explorer.current_file_path ~= file_path then
+            return
+          end
           -- Determine conflict buffer positions based on config
           -- conflict_ours_position controls where :2 (OURS) appears on screen
           local ours_position = config.options.diff.conflict_ours_position or "right"
@@ -471,6 +498,10 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
         -- For renames: old_path in HEAD, new path in staging
         -- No pre-fetching needed, virtual files will load via BufReadCmd
         vim.schedule(function()
+          -- Ignore stale async: see comment on the base_revision branch above.
+          if explorer.current_file_path ~= file_path then
+            return
+          end
           ---@type SessionConfig
           local session_config = {
             mode = "explorer",
@@ -499,6 +530,12 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
 
         -- No pre-fetching needed, buffers will load content
         vim.schedule(function()
+          -- Ignore stale async: if a newer selection superseded us before this
+          -- scheduled callback ran, `view.update` on the old target would
+          -- clobber the newer one (resetting single_pane, layout.arrange).
+          if explorer.current_file_path ~= file_path then
+            return
+          end
           ---@type SessionConfig
           local session_config = {
             mode = "explorer",
