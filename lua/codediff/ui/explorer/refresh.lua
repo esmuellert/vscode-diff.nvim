@@ -328,6 +328,10 @@ function M.refresh(explorer)
     local dir_mod = require("codediff.core.dir")
     local diff = dir_mod.diff_directories(explorer.dir1, explorer.dir2)
     process_result(nil, diff.status_result)
+  elseif explorer.target_revision == ":0" then
+    -- Staged-only mode (--staged): index vs base_revision. `git diff base :0`
+    -- isn't a valid rev-pair; use `git diff --cached base` instead.
+    git.get_diff_staged(explorer.base_revision, explorer.git_root, process_result, explorer.pathspec)
   elseif explorer.base_revision and explorer.target_revision and explorer.target_revision ~= "WORKING" then
     git.get_diff_revisions(explorer.base_revision, explorer.target_revision, explorer.git_root, process_result, explorer.pathspec)
   elseif explorer.base_revision then
