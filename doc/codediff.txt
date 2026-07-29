@@ -262,6 +262,11 @@ Setup entry point:
       },
       untracked = "all",  -- "all", "normal" (collapse dirs), or "no" (skip untracked; use for huge work trees like GIT_WORK_TREE=$HOME, #389)
       status_right_margin = 1,
+      line_stats = {
+        enabled = false,
+        count_untracked = false,
+        max_untracked_bytes = 1024 * 1024,
+      },
       ellipsis = "…",
       formatters = {
         file = nil,
@@ -339,6 +344,19 @@ Setup entry point:
   })
 <
 
+EXPLORER LINE STATISTICS                  *codediff-explorer-line-statistics*
+
+Explorer line statistics are disabled by default because they require extra Git
+queries and consume space in the default 40-column Explorer. With `enabled =
+true`, tracked files show Git numstat counts and group headings show totals in
+status, one-revision, and two-revision modes. Untracked files have no stats
+unless `count_untracked = true`; files larger than `max_untracked_bytes` are not
+read (1 MiB by default).
+
+Files use `+12 -4` (`bin` for binary files); group headings use `Changes (3 ·
++42 -8)`. Aggregate folder and group stats contain `files_changed`,
+`insertions`, `deletions`, `binary_files`, and `unavailable_files`.
+
 EXPLORER LINE FORMATTERS                    *codediff-explorer-line-formatters*
 
 `explorer.formatters.file`, `folder`, and `group` replace the complete
@@ -365,8 +383,9 @@ A region contains styled `segments`. A numeric `truncate_priority` makes it
 truncatable; lower priorities truncate first. Regions without one stay fixed
 unless all content cannot fit. The renderer measures display cells, truncates
 with `explorer.ellipsis` (default `…`), right-aligns `right`, and preserves
-`min_gap` when space permits. The ellipsis can contain multiple characters and
-is clipped display-width-aware when necessary.
+`min_gap` when space permits. The built-in file formatter truncates the
+directory, filename, then stats while keeping status fixed. The ellipsis can
+contain multiple characters and is clipped display-width-aware when necessary.
 
 Each segment is `{ text = string, hl? = highlight }`. `hl` accepts a Neovim
 highlight group, a `#RGB`/`#RRGGBB` foreground color, or a highlight definition
@@ -374,15 +393,16 @@ such as `{ fg = "#3fb950", bold = true }`. Omitted highlights use `Normal`;
 selected file rows retain their selection background.
 
 File contexts contain `path`, `filename`, `directory`, `old_path`, `group`,
-`status`, `status_hl`, `status_right_margin`, `indent`, `indent_hl`, `icon`, and
-`icon_hl`.
+`stats`, `status`, `status_hl`, `status_right_margin`, `indent`, `indent_hl`,
+`icon`, and `icon_hl`.
 
-Folder contexts contain `name`, `path`, `group`, `file_count`, `files`,
+Folder contexts contain `name`, `path`, `group`, `file_count`, `stats`, `files`,
 `indent`, `indent_hl`, `icon`, `icon_hl`, and `expanded`. Group contexts contain
-`name`, `label`, `file_count`, `files`, and `expanded`.
+`name`, `label`, `file_count`, `stats`, `files`, and `expanded`. `stats` is nil
+when line statistics are disabled.
 
-Folder and group `files` contain `{ path, old_path, group, status }` entries for
-every represented file. Built-in callbacks are exported by
+Folder and group `files` contain `{ path, old_path, group, status, stats }`
+entries for every represented file. Built-in callbacks are exported by
 `codediff.ui.explorer.formatters` and return fresh layouts that can be assigned
 directly or wrapped.
 
@@ -464,6 +484,10 @@ Explorer & history git status highlights (customizable):
 - CodeDiffStatusUntracked   Untracked files (links to DiagnosticInfo)
 - CodeDiffStatusConflict    Conflicting files (links to DiagnosticError)
 - CodeDiffExplorerSelected  Selected file background (links to Visual)
+- CodeDiffExplorerStatFiles File counts (links to Number)
+- CodeDiffExplorerStatInsertions Insertions (links to Added or DiagnosticOk)
+- CodeDiffExplorerStatDeletions Deletions (links to Removed or DiagnosticError)
+- CodeDiffExplorerStatBinary Binary labels (links to NonText)
 
 Override in your config or colorscheme:
 >lua

@@ -420,7 +420,7 @@ local function handle_explorer(revision, revision2, global_opts, pathspec)
             return
           end
 
-          git.get_diff_revisions(commit_hash, commit_hash2, git_root, function(err_status, status_result)
+          git.get_diff_revisions_with_line_stats(commit_hash, commit_hash2, git_root, function(err_status, status_result)
             process_status(err_status, status_result, commit_hash, commit_hash2)
           end, pathspec)
         end)
@@ -436,13 +436,13 @@ local function handle_explorer(revision, revision2, global_opts, pathspec)
         end
 
         -- Get diff between revision and working tree
-        git.get_diff_revision(commit_hash, git_root, function(err_status, status_result)
+        git.get_diff_revision_with_line_stats(commit_hash, git_root, function(err_status, status_result)
           process_status(err_status, status_result, commit_hash, "WORKING")
         end, pathspec)
       end)
     else
       -- Get git status (current changes)
-      git.get_status(git_root, function(err_status, status_result)
+      git.get_status_with_line_stats(git_root, function(err_status, status_result)
         -- Pass nil for revisions to enable "Status Mode" in explorer (separate Staged/Unstaged groups)
         process_status(err_status, status_result, nil, nil)
       end, pathspec)

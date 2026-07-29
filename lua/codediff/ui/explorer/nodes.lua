@@ -5,6 +5,7 @@ local M = {}
 local Tree = require("codediff.ui.lib.tree")
 local config = require("codediff.config")
 local line_layout = require("codediff.ui.explorer.line_layout")
+local line_stats = require("codediff.ui.explorer.line_stats")
 local default_formatters = require("codediff.ui.explorer.formatters")
 
 -- Merge artifact patterns (created by git mergetool)
@@ -88,6 +89,13 @@ function M.get_folder_icon(is_open)
   end
 end
 
+local function context_stats(stats)
+  if not config.options.explorer.line_stats.enabled then
+    return nil
+  end
+  return vim.deepcopy(stats)
+end
+
 local function normalize_files(files, group)
   local normalized = {}
   for _, file in ipairs(files or {}) do
@@ -96,6 +104,7 @@ local function normalize_files(files, group)
       old_path = file.old_path,
       group = group or file.group,
       status = file.status,
+      stats = context_stats(file.line_stats),
     }
   end
   return normalized
@@ -120,6 +129,7 @@ function M.create_file_nodes(files, git_root, group)
         status_color = status_info.color,
         git_root = git_root,
         group = group,
+        line_stats = file.line_stats,
       },
     })
   end
@@ -225,6 +235,7 @@ function M.create_tree_file_nodes(files, git_root, group)
             group = group,
             indent_state = node_indent_state,
             file_count = #item._files,
+            stats = line_stats.sum(item._files),
             files = item._files,
           },
         }, children)
@@ -247,6 +258,7 @@ function M.create_tree_file_nodes(files, git_root, group)
             git_root = git_root,
             group = group,
             indent_state = node_indent_state,
+            line_stats = file.line_stats,
           },
         })
       end
@@ -287,6 +299,7 @@ local function group_context(node, data)
     name = data.name,
     label = data.label,
     file_count = data.file_count,
+    stats = context_stats(data.stats),
     files = normalize_files(data.files, data.name),
     expanded = node:is_expanded(),
   }
@@ -300,6 +313,7 @@ local function folder_context(node, data, explorer_config)
     path = data.dir_path,
     group = data.group,
     file_count = data.file_count,
+    stats = context_stats(data.stats),
     files = normalize_files(data.files, data.group),
     indent = indent,
     indent_hl = indent_hl,
@@ -320,6 +334,7 @@ local function file_context(node, data, explorer_config)
     directory = directory,
     old_path = data.old_path,
     group = data.group,
+    stats = context_stats(data.line_stats),
     status = data.status_symbol or "",
     status_hl = data.status_color,
     status_right_margin = math.max(0, explorer_config.status_right_margin or 1),
