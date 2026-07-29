@@ -4,7 +4,7 @@
 local M = {}
 
 -- Ensure the plugin is loaded
--- This is needed because PlenaryBustedFile spawns a subprocess that may not have loaded our plugin
+-- This is needed because the test runner may not have auto-loaded plugin/codediff.lua
 function M.ensure_plugin_loaded()
   if not vim.g.loaded_codediff then
     local plugin_file = vim.fn.getcwd() .. '/plugin/codediff.lua'
@@ -12,7 +12,7 @@ function M.ensure_plugin_loaded()
       dofile(plugin_file)
     end
   end
-  -- Also ensure virtual_file autocmds are set up (plenary may clear them between tests)
+  -- Also ensure virtual_file autocmds are set up (the test runner may clear them between tests)
   local virtual_file = require('codediff.core.virtual_file')
   virtual_file.setup()
 end

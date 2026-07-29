@@ -3,7 +3,7 @@
 -- (diff buffer contents, explorer file list, history commits, layout) — not just
 -- that dispatch routed correctly.
 --
--- Scope note: the plenary harness cannot drive the async codediff:// virtual-file
+-- Scope note: the headless test runner cannot drive the async codediff:// virtual-file
 -- load (git-show for a revision) — a diff whose original is a git *revision*
 -- opens a tab but never finishes registering its session under the test runner
 -- (it works fine interactively; see scripts/nvim-e2e.lua). So the git-revision

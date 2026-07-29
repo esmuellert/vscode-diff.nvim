@@ -4,7 +4,7 @@
 local h = dofile('tests/helpers.lua')
 local path = require("codediff.core.path")
 
--- Ensure plugin is loaded (needed for PlenaryBustedFile subprocess)
+-- Ensure plugin is loaded (needed when the test framework isolates specs)
 h.ensure_plugin_loaded()
 
 describe("Explorer Buffer Management", function()

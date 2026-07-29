@@ -1,6 +1,8 @@
 # Test Suite
 
-Integration tests for codediff.nvim using [plenary.nvim](https://github.com/nvim-lua/plenary.nvim).
+Integration tests for codediff.nvim using an in-tree, self-contained test framework
+(`tests/framework/`) that implements the familiar `describe/it/before_each/after_each/assert.*`
+API in pure Lua + Neovim built-ins. No external test dependencies are required.
 
 ## Test Coverage
 
@@ -53,13 +55,13 @@ LSP integration and rendering:
 
 ### All tests:
 ```bash
-./tests/run_plenary_tests.sh
+./tests/run_tests.sh
 ```
 
 ### Individual spec:
 ```bash
 nvim --headless --noplugin -u tests/init.lua \
-  -c "lua require('plenary.test_harness').test_directory('tests/ffi_integration_spec.lua')"
+  -c "lua require('tests.framework').run_and_exit('tests/ffi_integration_spec.lua')"
 ```
 
 ## Test Philosophy
@@ -70,7 +72,7 @@ Focus on **integration points** that C tests cannot validate:
 - System integration (git)
 - UI behavior (scrolling, rendering)
 
-**Total: 46 tests** across 5 spec files using industry-standard plenary.nvim framework.
+**Total: 46 tests** across 5 spec files using the in-tree `tests/framework/` runner.
 
 ## What's NOT Covered
 
