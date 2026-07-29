@@ -84,6 +84,19 @@ Concurrency needs `vim.system()` (Neovim 0.10+). On older versions the suite
 automatically falls back to running the same children one at a time, producing
 the same output, just slower.
 
+### Test environment
+
+`tests/init.lua` is the bootstrap every child loads. Besides putting the plugin
+on the runtimepath it disables a few pieces of Neovim that fight with throwaway
+temp repositories: ShaDa, swap files, and the filewatcher backing for
+`'autoread'` (via `g:loaded_autoread`, which must stay set before the
+`runtime! plugin/*.lua` line that sources Neovim's own runtime plugins).
+
+The `'autoread'` option itself stays on, so `:checktime` still reloads buffers
+silently. Only the per-buffer `uv_fs_event` goes away — specs delete the repos
+they opened files from, and a watcher left pointing at a deleted path prints
+`E211` on Linux and raises `EPERM` in an unbreakable loop on Windows.
+
 | Env var | Default | Purpose |
 | --- | --- | --- |
 | `CODEDIFF_TEST_JOBS` | 2x CPUs, capped at 16 | Concurrent spec workers. `1` forces sequential. |
