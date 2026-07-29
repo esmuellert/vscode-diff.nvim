@@ -42,7 +42,7 @@ jobs:
             openmp: true
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install OpenMP (Ubuntu)
         if: matrix.os == 'ubuntu-latest' && matrix.openmp

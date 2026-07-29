@@ -21,10 +21,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 'lts/*'
 
@@ -33,11 +33,49 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential cmake
 
-      - name: Setup Neovim
-        uses: ./.github/actions/setup-neovim
+      # Cache Neovim between coding-agent sessions to skip the ~10-15s download.
+      # We install inline into $HOME/nvim instead of using ./.github/actions/setup-neovim,
+      # which writes to root-owned /usr/local (not restorable by actions/cache without sudo).
+      # Other CI workflows continue to use the composite action unchanged.
+      # Bump the trailing key suffix (e.g. -v1 -> -v2) to force a fresh nightly.
+      - name: Cache Neovim
+        id: cache-neovim
+        uses: actions/cache@v5
+        with:
+          path: ~/nvim
+          key: neovim-nightly-${{ runner.os }}-${{ runner.arch }}-v1
 
-      # Note: plenary.nvim and nui.nvim are installed on-demand by tests/init.lua
-      # This keeps behavior consistent with the main CI pipeline
+      - name: Install Neovim
+        if: steps.cache-neovim.outputs.cache-hit != 'true'
+        run: |
+          NVIM_ARCH="linux-x86_64"
+          [ "$(uname -m)" = "aarch64" ] && NVIM_ARCH="linux-arm64"
+          mkdir -p "$HOME/nvim"
+          curl -fsSL "https://github.com/neovim/neovim/releases/download/nightly/nvim-${NVIM_ARCH}.tar.gz" \
+            | tar xz -C "$HOME/nvim" --strip-components=1
+
+      - name: Add Neovim to PATH
+        run: |
+          echo "$HOME/nvim/bin" >> "$GITHUB_PATH"
+          "$HOME/nvim/bin/nvim" --version | head -n 1
+
+      # Preinstall plenary.nvim so the coding agent doesn't need github.com at task time.
+      # tests/init.lua expects it under vim.fn.stdpath("data")/plenary.nvim, which on
+      # Linux resolves to $HOME/.local/share/nvim/plenary.nvim.
+      # nui.nvim is not a runtime or test dependency (verified: zero require("nui...") in lua/).
+      - name: Cache plenary.nvim
+        id: cache-plenary
+        uses: actions/cache@v5
+        with:
+          path: ~/.local/share/nvim/plenary.nvim
+          key: plenary-nvim-${{ runner.os }}-v1
+
+      - name: Install plenary.nvim
+        if: steps.cache-plenary.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/.local/share/nvim"
+          git clone --depth=1 https://github.com/nvim-lua/plenary.nvim \
+            "$HOME/.local/share/nvim/plenary.nvim"
 
       - name: Build native library
         run: make build
@@ -45,6 +83,3 @@ jobs:
       - name: Verify Neovim can load the plugin
         run: |
           nvim --headless -u tests/init.lua -c "lua print('codediff version: ' .. require('codediff.version').VERSION)" -c "qa!"
-
-      - name: Run tests to verify environment
-        run: ./tests/run_plenary_tests.sh
