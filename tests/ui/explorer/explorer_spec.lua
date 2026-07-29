@@ -433,6 +433,30 @@ describe("Explorer Mode", function()
     assert_first_visible_file_selected(explorer, session, "nested/deep.txt")
   end)
 
+  it("Re-renders the explorer buffer when toggle_view_mode flips the mode (regression #486)", function()
+    -- PR #486 added a "skip refresh when git status unchanged" optimization at
+    -- refresh.lua that made toggle_view_mode a no-op: view_mode is a client-only
+    -- config, so flipping it never changes git status, and the deep_equal skip
+    -- fired before the tree got rebuilt. Fix: toggle_view_mode now uses
+    -- rebuild_from_cache (like toggle_group) instead of the async refresh path.
+    local explorer = open_initial_explorer(temp_dir, "list")
+    local before_lines = vim.api.nvim_buf_get_lines(explorer.bufnr, 0, -1, false)
+    local before_mode = config.options.explorer.view_mode
+
+    require("codediff.ui.explorer.actions").toggle_view_mode(explorer)
+    vim.wait(200)
+
+    local after_lines = vim.api.nvim_buf_get_lines(explorer.bufnr, 0, -1, false)
+    local after_mode = config.options.explorer.view_mode
+
+    assert.equals("list", before_mode)
+    assert.equals("tree", after_mode)
+    assert.is_false(
+      vim.deep_equal(before_lines, after_lines),
+      "Explorer buffer must re-render when view_mode flips (bug: skip check swallowed the rebuild)"
+    )
+  end)
+
   it("Does not select files excluded from the explorer", function()
     local explorer, session = open_initial_explorer(temp_dir, "list", { "file1.txt", "file3.txt" })
     assert_first_visible_file_selected(explorer, session, "nested/deep.txt")
