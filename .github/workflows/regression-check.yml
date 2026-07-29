@@ -3,6 +3,9 @@ name: Diff Regression Check
 on:
   workflow_call:
 
+permissions:
+  contents: read
+
 jobs:
   regression-check:
     name: Diff Regression Check
