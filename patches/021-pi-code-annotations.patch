@@ -1,4 +1,4 @@
-From 60b1919af9a9f437e445f16c3c79b19baff6067a Mon Sep 17 00:00:00 2001
+From 1eb9edc1d54146af2f8b7d0aae439d93c3217c47 Mon Sep 17 00:00:00 2001
 From: Richard Gill <richard@rgill.co.uk>
 Date: Sat, 25 Jul 2026 15:10:56 +0100
 Subject: [PATCH] feat: add diff annotation integration API
@@ -15,10 +15,10 @@ Subject: [PATCH] feat: add diff annotation integration API
  8 files changed, 185 insertions(+), 2 deletions(-)
 
 diff --git a/README.md b/README.md
-index d626eef..702982c 100644
+index 5f0c0f3..baa2af9 100644
 --- a/README.md
 +++ b/README.md
-@@ -709,13 +709,20 @@ git.get_git_root("/path/to/file.lua", function(err, git_root)
+@@ -734,13 +734,20 @@ git.get_git_root("/path/to/file.lua", function(err, git_root)
  end)
  ```
  
@@ -141,7 +141,7 @@ index d7c02ff..0f3c249 100644
  --- @param left_bufnr number original buffer
  --- @param right_bufnr number modified buffer
 diff --git a/lua/codediff/ui/view/side_by_side.lua b/lua/codediff/ui/view/side_by_side.lua
-index 055c59b..176af96 100644
+index 324cb95..588ac17 100644
 --- a/lua/codediff/ui/view/side_by_side.lua
 +++ b/lua/codediff/ui/view/side_by_side.lua
 @@ -30,6 +30,14 @@ local setup_auto_refresh = render.setup_auto_refresh
@@ -191,7 +191,7 @@ index 055c59b..176af96 100644
        end
      end
    end
-@@ -788,6 +800,7 @@ local function show_single_file(tabpage, opts)
+@@ -833,6 +845,7 @@ local function show_single_file(tabpage, opts)
    if keep_win and vim.api.nvim_win_is_valid(keep_win) then
      welcome_window.sync_later(keep_win)
    end

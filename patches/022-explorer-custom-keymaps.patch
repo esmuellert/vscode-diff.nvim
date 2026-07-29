@@ -1,0 +1,496 @@
+From 55d8f74b0a992fcc6aa1ea766c9ff83844c6ca13 Mon Sep 17 00:00:00 2001
+From: Richard Gill <richard@rgill.co.uk>
+Date: Wed, 29 Jul 2026 06:43:18 +0100
+Subject: [PATCH] feat(explorer): custom keymaps
+
+---
+ README.md                                 |  35 ++++
+ doc/codediff.txt                          |  40 ++++
+ doc/tags                                  |   1 +
+ lua/codediff/config.lua                   |   1 +
+ lua/codediff/ui/explorer/keymaps.lua      |  42 +++++
+ lua/codediff/ui/explorer/nodes.lua        |  43 ++++-
+ tests/ui/explorer/custom_keymaps_spec.lua | 211 ++++++++++++++++++++++
+ 7 files changed, 366 insertions(+), 7 deletions(-)
+ create mode 100644 tests/ui/explorer/custom_keymaps_spec.lua
+
+diff --git a/README.md b/README.md
+index 2295ac9..5f0c0f3 100644
+--- a/README.md
++++ b/README.md
+@@ -197,6 +197,7 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
+         restore = "X",      -- Discard changes (restore file)
+         toggle_changes = "gu",  -- Toggle Changes (unstaged) group visibility
+         toggle_staged = "gs",   -- Toggle Staged Changes group visibility
++        custom = {}, -- Additional { key, desc, callback } explorer keymaps
+         -- Fold keymaps (Vim-style)
+         fold_open = "zo",           -- Open fold (expand current node)
+         fold_open_recursive = "zO", -- Open fold recursively (expand all descendants)
+@@ -345,6 +346,40 @@ Three strategies are available:
+ 
+ Custom Lua matcher callbacks are not supported.
+ 
++#### Custom explorer keymaps
++
++`keymaps.explorer.custom` adds buffer-local mappings to the Explorer. Each mapping has `key`, `desc`, and `callback`:
++
++```lua
++require("codediff").setup({
++  keymaps = {
++    explorer = {
++      custom = {
++        {
++          key = "gy",
++          desc = "Copy explorer path",
++          callback = function(ctx)
++            if ctx.entry.path then
++              vim.fn.setreg("+", ctx.entry.path)
++            end
++          end,
++        },
++      },
++    },
++  },
++})
++```
++
++The callback receives the selected Explorer row as `ctx.entry`:
++
++```lua
++{ kind = "file", path, old_path, group, status }
++{ kind = "directory", name, path, group, files }
++{ kind = "group", name, group, files }
++```
++
++Directory and group `files` use the normalized `{ path, old_path, group, status }` shape. `ctx.redraw()` renders the existing tree again without rebuilding nodes, changing selection or fold state, or running Git. `ctx.refresh()` starts the normal asynchronous Explorer refresh. Both functions become no-ops after the Explorer closes. Custom mappings are installed after built-in Explorer mappings, so matching keys intentionally override them.
++
+ The C library will be downloaded automatically on first use. No `build` step needed!
+ 
+ ### Native gutter signs
+diff --git a/doc/codediff.txt b/doc/codediff.txt
+index 1c4ef24..b02dd57 100644
+--- a/doc/codediff.txt
++++ b/doc/codediff.txt
+@@ -373,6 +373,7 @@ Setup entry point:
+         restore = "X",
+         toggle_changes = "gu",
+         toggle_staged = "gs",
++        custom = {},
+         fold_open = "zo",
+         fold_open_recursive = "zO",
+         fold_close = "zc",
+@@ -497,6 +498,45 @@ Example: replace only group rows and right-align the file count:
+   })
+ <
+ 
++EXPLORER CUSTOM KEYMAPS                        *codediff-explorer-custom-keymaps*
++
++`keymaps.explorer.custom` adds buffer-local mappings to the Explorer. Each
++mapping has `key`, `desc`, and `callback`:
++>lua
++  require("codediff").setup({
++    keymaps = {
++      explorer = {
++        custom = {
++          {
++            key = "gy",
++            desc = "Copy explorer path",
++            callback = function(ctx)
++              if ctx.entry.path then
++                vim.fn.setreg("+", ctx.entry.path)
++              end
++            end,
++          },
++        },
++      },
++    },
++  })
++<
++
++The callback receives the selected row as `ctx.entry`, in one of these shapes:
++>lua
++  { kind = "file", path, old_path, group, status }
++  { kind = "directory", name, path, group, files }
++  { kind = "group", name, group, files }
++<
++
++Directory and group `files` use the normalized
++`{ path, old_path, group, status }` shape. `ctx.redraw()` renders the existing
++tree again without rebuilding nodes, changing selection or fold state, or
++running Git. `ctx.refresh()` starts the normal asynchronous Explorer refresh.
++Both functions become no-ops after the Explorer closes. Custom mappings are
++installed after built-in Explorer mappings, so matching keys intentionally
++override them.
++
+ ==============================================================================
+ NATIVE GUTTER SIGNS                                  *codediff-gutter-signs*
+ 
+diff --git a/doc/tags b/doc/tags
+index ef4e68f..c411dd8 100644
+--- a/doc/tags
++++ b/doc/tags
+@@ -5,6 +5,7 @@ codediff	codediff.txt	/*codediff*
+ codediff-commands	codediff.txt	/*codediff-commands*
+ codediff-configuration	codediff.txt	/*codediff-configuration*
+ codediff-events	codediff.txt	/*codediff-events*
++codediff-explorer-custom-keymaps	codediff.txt	/*codediff-explorer-custom-keymaps*
+ codediff-explorer-line-formatters	codediff.txt	/*codediff-explorer-line-formatters*
+ codediff-explorer-line-statistics	codediff.txt	/*codediff-explorer-line-statistics*
+ codediff-filler-text	codediff.txt	/*codediff-filler-text*
+diff --git a/lua/codediff/config.lua b/lua/codediff/config.lua
+index 0984eee..ff8cf9b 100644
+--- a/lua/codediff/config.lua
++++ b/lua/codediff/config.lua
+@@ -141,6 +141,7 @@ M.defaults = {
+       restore = "X", -- Discard changes to file (restore to index/HEAD)
+       toggle_changes = "gu", -- Toggle Changes (unstaged) group visibility
+       toggle_staged = "gs", -- Toggle Staged Changes group visibility
++      custom = {}, -- Additional { key, desc, callback } explorer keymaps
+       -- Fold keymaps (Vim-style)
+       fold_open = "zo", -- Open fold (expand current node)
+       fold_open_recursive = "zO", -- Open fold recursively (expand current node and all descendants)
+diff --git a/lua/codediff/ui/explorer/keymaps.lua b/lua/codediff/ui/explorer/keymaps.lua
+index 4256c02..1ce6745 100644
+--- a/lua/codediff/ui/explorer/keymaps.lua
++++ b/lua/codediff/ui/explorer/keymaps.lua
+@@ -2,10 +2,50 @@
+ local config = require("codediff.config")
+ local actions_module = require("codediff.ui.explorer.actions")
+ local refresh_module = require("codediff.ui.explorer.refresh")
++local nodes_module = require("codediff.ui.explorer.nodes")
+ local tree_utils = require("codediff.ui.lib.tree_utils")
+ 
+ local M = {}
+ 
++local function is_explorer_alive(explorer)
++  return vim.api.nvim_buf_is_valid(explorer.bufnr) and vim.api.nvim_tabpage_is_valid(explorer.tabpage)
++end
++
++local function custom_keymap_context(explorer, node)
++  return {
++    entry = nodes_module.get_entry(node),
++    redraw = function()
++      if is_explorer_alive(explorer) then
++        explorer.tree:render()
++      end
++    end,
++    refresh = function()
++      if is_explorer_alive(explorer) then
++        refresh_module.refresh(explorer)
++      end
++    end,
++  }
++end
++
++local function setup_custom_keymaps(explorer, custom_keymaps, map_options)
++  for _, keymap in ipairs(custom_keymaps or {}) do
++    vim.keymap.set(
++      "n",
++      keymap.key,
++      function()
++        local node = explorer.tree:get_node()
++        if node then
++          keymap.callback(custom_keymap_context(explorer, node))
++        end
++      end,
++      vim.tbl_extend("force", map_options, {
++        buffer = explorer.bufnr,
++        desc = keymap.desc,
++      })
++    )
++  end
++end
++
+ -- Setup keymaps for explorer panel
+ -- @param explorer: explorer object with tree, split, git_root, on_file_select, etc.
+ function M.setup(explorer)
+@@ -179,6 +219,8 @@ function M.setup(explorer)
+     bufnr = split.bufnr,
+   })
+ 
++  setup_custom_keymaps(explorer, explorer_keymaps.custom, map_options)
++
+   -- Note: next_file/prev_file keymaps are set via view/keymaps.lua:setup_all_keymaps()
+   -- which uses set_tab_keymap to set them on all buffers including explorer
+ end
+diff --git a/lua/codediff/ui/explorer/nodes.lua b/lua/codediff/ui/explorer/nodes.lua
+index dae0e57..1e030a3 100644
+--- a/lua/codediff/ui/explorer/nodes.lua
++++ b/lua/codediff/ui/explorer/nodes.lua
+@@ -96,16 +96,20 @@ local function context_stats(stats)
+   return vim.deepcopy(stats)
+ end
+ 
++local function normalize_file(file, group)
++  return {
++    path = file.path,
++    old_path = file.old_path,
++    group = group or file.group,
++    status = file.status,
++    stats = context_stats(file.line_stats or file.stats),
++  }
++end
++
+ local function normalize_files(files, group)
+   local normalized = {}
+   for _, file in ipairs(files or {}) do
+-    normalized[#normalized + 1] = {
+-      path = file.path,
+-      old_path = file.old_path,
+-      group = group or file.group,
+-      status = file.status,
+-      stats = context_stats(file.line_stats),
+-    }
++    normalized[#normalized + 1] = normalize_file(file, group)
+   end
+   return normalized
+ end
+@@ -352,6 +356,31 @@ local function selected_background(is_selected)
+   return vim.api.nvim_get_hl(0, { name = "CodeDiffExplorerSelected", link = false }).bg
+ end
+ 
++function M.get_entry(node)
++  local data = node.data or {}
++  if data.type == "group" then
++    return {
++      kind = "group",
++      name = data.name,
++      group = data.name,
++      files = normalize_files(data.files, data.name),
++    }
++  end
++  if data.type == "directory" then
++    return {
++      kind = "directory",
++      name = data.name,
++      path = data.dir_path,
++      group = data.group,
++      files = normalize_files(data.files, data.group),
++    }
++  end
++
++  local entry = normalize_file(data, data.group)
++  entry.kind = "file"
++  return entry
++end
++
+ -- Prepare node for rendering (format display)
+ function M.prepare_node(node, max_width, selected_path, selected_group)
+   local data = node.data or {}
+diff --git a/tests/ui/explorer/custom_keymaps_spec.lua b/tests/ui/explorer/custom_keymaps_spec.lua
+new file mode 100644
+index 0000000..cd6b59b
+--- /dev/null
++++ b/tests/ui/explorer/custom_keymaps_spec.lua
+@@ -0,0 +1,211 @@
++local Tree = require("codediff.ui.lib.tree")
++local Line = require("codediff.ui.lib.line")
++local config = require("codediff.config")
++local keymaps = require("codediff.ui.explorer.keymaps")
++local nodes = require("codediff.ui.explorer.nodes")
++local refresh = require("codediff.ui.explorer.refresh")
++local explorer_tree = require("codediff.ui.explorer.tree")
++
++local original_refresh = refresh.refresh
++
++local reset_config = function()
++  config.options = vim.deepcopy(config.defaults)
++  config.options.explorer.view_mode = "tree"
++  config.options.explorer.flatten_dirs = false
++end
++
++local create_explorer = function(prepare_node)
++  local previous_bufnr = vim.api.nvim_get_current_buf()
++  local bufnr = vim.api.nvim_create_buf(false, true)
++  vim.api.nvim_win_set_buf(0, bufnr)
++  local files = {
++    { path = "src/renamed.lua", old_path = "src/old.lua", status = "M", stats = { insertions = 5 } },
++    { path = "src/new.lua", status = "A", stats = { insertions = 3 } },
++  }
++  local roots = explorer_tree.create_tree_data({ unstaged = files, staged = {}, conflicts = {} }, "/repo", nil, false, {
++    unstaged = true,
++    staged = false,
++  })
++  local tree = Tree({
++    bufnr = bufnr,
++    nodes = roots,
++    prepare_node = prepare_node and function(node)
++      local line = Line()
++      line:append(prepare_node(node), "Normal")
++      return line
++    end,
++  })
++  roots[1]:expand()
++  roots[1]._children[1]:expand()
++  tree:render()
++  return {
++    previous_bufnr = previous_bufnr,
++    root = roots[1],
++    directory = roots[1]._children[1],
++    file = roots[1]._children[1]._children[2],
++    explorer = {
++      bufnr = bufnr,
++      winid = vim.api.nvim_get_current_win(),
++      tabpage = vim.api.nvim_get_current_tabpage(),
++      split = { bufnr = bufnr },
++      tree = tree,
++    },
++  }
++end
++
++local cleanup_explorer = function(fixture)
++  if vim.api.nvim_buf_is_valid(fixture.previous_bufnr) then
++    vim.api.nvim_win_set_buf(0, fixture.previous_bufnr)
++  end
++  if vim.api.nvim_buf_is_valid(fixture.explorer.bufnr) then
++    vim.api.nvim_buf_delete(fixture.explorer.bufnr, { force = true })
++  end
++end
++
++describe("Explorer custom keymaps", function()
++  before_each(function()
++    reset_config()
++    refresh.refresh = original_refresh
++  end)
++
++  after_each(function()
++    refresh.refresh = original_refresh
++    config.options = vim.deepcopy(config.defaults)
++  end)
++
++  it("exposes stable file, directory, and group entries", function()
++    local fixture = create_explorer()
++
++    assert.same({
++      kind = "file",
++      path = "src/renamed.lua",
++      old_path = "src/old.lua",
++      group = "unstaged",
++      status = "M",
++    }, nodes.get_entry(fixture.file))
++    assert.same({
++      kind = "directory",
++      name = "src",
++      path = "src",
++      group = "unstaged",
++      files = {
++        { path = "src/renamed.lua", old_path = "src/old.lua", group = "unstaged", status = "M" },
++        { path = "src/new.lua", group = "unstaged", status = "A" },
++      },
++    }, nodes.get_entry(fixture.directory))
++    assert.same({
++      kind = "group",
++      name = "unstaged",
++      group = "unstaged",
++      files = {
++        { path = "src/renamed.lua", old_path = "src/old.lua", group = "unstaged", status = "M" },
++        { path = "src/new.lua", group = "unstaged", status = "A" },
++      },
++    }, nodes.get_entry(fixture.root))
++
++    cleanup_explorer(fixture)
++  end)
++
++  it("uses custom descriptions and lets custom mappings override built-ins", function()
++    local fixture = create_explorer()
++    local calls = 0
++    local refresh_calls = 0
++    refresh.refresh = function()
++      refresh_calls = refresh_calls + 1
++    end
++    config.options.keymaps.explorer.custom = {
++      {
++        key = "R",
++        desc = "Custom refresh action",
++        callback = function()
++          calls = calls + 1
++        end,
++      },
++    }
++
++    keymaps.setup(fixture.explorer)
++    local mapping = vim.fn.maparg("R", "n", false, true)
++    mapping.callback()
++
++    assert.equals("Custom refresh action", mapping.desc)
++    assert.equals(1, mapping.buffer)
++    assert.equals(1, calls)
++    assert.equals(0, refresh_calls)
++    cleanup_explorer(fixture)
++  end)
++
++  it("redraws the existing tree without changing identity, folds, or selection", function()
++    local reviewed = false
++    local fixture = create_explorer(function(node)
++      return node.text .. (reviewed and " reviewed" or "")
++    end)
++    fixture.directory:collapse()
++    fixture.explorer.tree:render()
++    vim.api.nvim_win_set_cursor(0, { 2, 0 })
++    local root_id = fixture.root:get_id()
++    local directory_id = fixture.directory:get_id()
++    config.options.keymaps.explorer.custom = {
++      {
++        key = "m",
++        desc = "Mark reviewed",
++        callback = function(ctx)
++          reviewed = true
++          ctx.redraw()
++        end,
++      },
++    }
++
++    keymaps.setup(fixture.explorer)
++    vim.fn.maparg("m", "n", false, true).callback()
++
++    assert.equals(fixture.root, fixture.explorer.tree:get_nodes()[1])
++    assert.equals(fixture.root, fixture.explorer.tree:get_node(root_id))
++    assert.equals(fixture.directory, fixture.explorer.tree:get_node(directory_id))
++    assert.is_true(fixture.root:is_expanded())
++    assert.is_false(fixture.directory:is_expanded())
++    assert.same({ 2, 0 }, vim.api.nvim_win_get_cursor(0))
++    assert.equals("src reviewed", vim.api.nvim_buf_get_lines(fixture.explorer.bufnr, 1, 2, false)[1])
++    cleanup_explorer(fixture)
++  end)
++
++  it("forwards refresh and becomes safe after the explorer closes", function()
++    local fixture = create_explorer()
++    local context
++    local refresh_calls = 0
++    local render_calls = 0
++    config.options.keymaps.explorer.custom = {
++      {
++        key = "x",
++        desc = "Capture context",
++        callback = function(ctx)
++          context = ctx
++        end,
++      },
++    }
++    refresh.refresh = function(explorer)
++      assert.equals(fixture.explorer, explorer)
++      refresh_calls = refresh_calls + 1
++    end
++
++    keymaps.setup(fixture.explorer)
++    vim.fn.maparg("x", "n", false, true).callback()
++    context.refresh()
++    assert.equals(1, refresh_calls)
++
++    fixture.explorer.tree.render = function()
++      render_calls = render_calls + 1
++    end
++    fixture.explorer.tabpage = 999999
++    assert.has_no.errors(context.redraw)
++    assert.has_no.errors(context.refresh)
++    assert.equals(0, render_calls)
++    assert.equals(1, refresh_calls)
++
++    fixture.explorer.tabpage = vim.api.nvim_get_current_tabpage()
++    cleanup_explorer(fixture)
++    assert.has_no.errors(context.redraw)
++    assert.has_no.errors(context.refresh)
++    assert.equals(0, render_calls)
++    assert.equals(1, refresh_calls)
++  end)
++end)

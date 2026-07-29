@@ -1,10 +1,10 @@
-From 493807a5f186a6df1c444250214194a227fcf5cf Mon Sep 17 00:00:00 2001
+From bd58797c712b015588668af1da3dcaab3ae9604b Mon Sep 17 00:00:00 2001
 From: Richard Gill <richard@rgill.co.uk>
 Date: Sat, 18 Jul 2026 16:30:00 +0100
 Subject: [PATCH] fix: build fork native library locally
 
 ---
- README.md                           |  28 ++--
+ README.md                           |   2 +-
  build.cmd                           |  22 ++--
  build.sh                            |  63 ++++-----
  libvscode-diff/build.cmd.in         |  22 ++--
@@ -13,71 +13,23 @@ Subject: [PATCH] fix: build fork native library locally
  lua/codediff/core/diff.lua          |  16 +--
  lua/codediff/core/local_builder.lua | 191 ++++++++++++++++++++++++++++
  tests/core/local_builder_spec.lua   |  42 ++++++
- 9 files changed, 340 insertions(+), 109 deletions(-)
+ 9 files changed, 327 insertions(+), 96 deletions(-)
  create mode 100644 lua/codediff/core/local_builder.lua
  create mode 100644 tests/core/local_builder_spec.lua
 
 diff --git a/README.md b/README.md
-index 702982c..e0121d3 100644
+index baa2af9..47ebeb5 100644
 --- a/README.md
 +++ b/README.md
-@@ -38,8 +38,11 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
+@@ -380,7 +380,7 @@ The callback receives the selected Explorer row as `ctx.entry`:
  
- - Neovim >= 0.7.0 (for Lua FFI support; 0.10+ recommended for vim.system)
- - Git (for git diff features)
--- `curl` or `wget` (for automatic binary download)
--**No compiler required!** The plugin automatically downloads pre-built binaries from GitHub releases.
-+- A C compiler:
-+  - Linux/macOS: `cc`, GCC, or Clang
-+  - Windows: Visual Studio Build Tools (MSVC), Clang, or MinGW-w64
-+
-+This fork builds its C diff engine locally on first use. Build output is cached under Neovim's cache directory, so the plugin installation itself can remain read-only. Updating native sources automatically selects a new cache entry and triggers one rebuild.
- 
- ### Using lazy.nvim
- 
-@@ -383,7 +386,7 @@ require("codediff").setup({
- 
- `redraw()` only reruns the configured formatters against the existing tree. It does not replace nodes or change selection or fold state, and runs no Git commands. `refresh()` performs the normal asynchronous Git refresh and rebuilds the explorer. Both safely become no-ops after the explorer closes. Custom mappings are installed after built-in mappings, so the same key replaces the built-in mapping.
+ Directory and group `files` use the normalized `{ path, old_path, group, status }` shape. `ctx.redraw()` renders the existing tree again without rebuilding nodes, changing selection or fold state, or running Git. `ctx.refresh()` starts the normal asynchronous Explorer refresh. Both functions become no-ops after the Explorer closes. Custom mappings are installed after built-in Explorer mappings, so matching keys intentionally override them.
  
 -The C library will be downloaded automatically on first use. No `build` step needed!
 +The C library is built locally and cached automatically on first use.
  
  ### Native gutter signs
  
-@@ -420,25 +423,22 @@ vim.opt.statuscolumn = "%C%=%l %s"
- 
- ### Managing Library Installation
- 
--The plugin automatically manages the C library installation:
-+This fork automatically builds and caches the C library:
- 
--**Automatic Updates:**
--- The library is automatically downloaded on first use
--- When you update the plugin to a new version, the library is automatically updated to match
--- No manual intervention required!
-+- The first `:CodeDiff` invocation compiles the bundled native sources.
-+- The cache key includes the plugin version and native source contents, so native changes trigger a rebuild.
-+- The library is stored under `stdpath("cache")/codediff/native/`; the plugin directory is not modified.
-+- If no supported compiler is available, CodeDiff reports which toolchain to install.
- 
--**Manual Installation Commands:**
-+**Manual Build Commands:**
- ```vim
--" Install/update the library manually
-+" Build the library if it is not cached
- :CodeDiff install
- 
--" Force reinstall (useful for troubleshooting)
-+" Force a clean rebuild into the cache
- :CodeDiff install!
- ```
- 
--**Version Management:**
--The installer reads the `VERSION` file to download the matching library version from GitHub releases. This ensures compatibility between the Lua code and C library.
--
- ### Manual Installation
- 
- If you prefer to install manually without a plugin manager:
 diff --git a/build.cmd b/build.cmd
 index ffad2ff..71c243b 100644
 --- a/build.cmd
@@ -429,18 +381,18 @@ index fe0acb8..58d9ed0 100644
 +echo "✓ Build successful: $OUTPUT_PATH"
  cd ..
 diff --git a/lua/codediff/commands.lua b/lua/codediff/commands.lua
-index 15c87d0..3cf346a 100644
+index bf5f524..8fa2994 100644
 --- a/lua/codediff/commands.lua
 +++ b/lua/codediff/commands.lua
-@@ -784,7 +784,7 @@ function M.vscode_diff(opts)
-     -- :CodeDiff install or :CodeDiff install!
-     -- Handle both :CodeDiff! install and :CodeDiff install!
-     local force = opts.bang or subcommand == "install!"
+@@ -806,7 +806,7 @@ local function build_app()
+ 
+   app:subcommand(ap.Command.new("install"):handler(function(m)
+     local force = m:bang()
 -    local installer = require("codediff.core.installer")
 +    local installer = require("codediff.core.local_builder")
- 
      if force then
        vim.notify("Reinstalling libvscode-diff...", vim.log.levels.INFO)
+     end
 diff --git a/lua/codediff/core/diff.lua b/lua/codediff/core/diff.lua
 index a89289d..13277ec 100644
 --- a/lua/codediff/core/diff.lua

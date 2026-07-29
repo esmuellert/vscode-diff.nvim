@@ -1,43 +1,35 @@
-From ec3cfed688107afcc6c26027ec742aeccded2aca Mon Sep 17 00:00:00 2001
+From 512a9847483e2ff653af63297342df4063af8a2f Mon Sep 17 00:00:00 2001
 From: Richard Gill <richard@rgill.co.uk>
-Date: Sat, 18 Jul 2026 07:25:57 +0100
-Subject: [PATCH] feat(explorer): add optional line change statistics
+Date: Wed, 29 Jul 2026 06:42:14 +0100
+Subject: [PATCH] feat(explorer): add optional Git line statistics
 
 ---
- README.md                                    | 104 +++++++
- doc/codediff.txt                             | 144 +++++++++
- doc/tags                                     |   2 +
- lua/codediff/commands.lua                    |   6 +-
- lua/codediff/config.lua                      |  12 +
- lua/codediff/core/git.lua                    | 143 +++++++++
- lua/codediff/ui/explorer/formatters.lua      | 119 ++++++++
- lua/codediff/ui/explorer/keymaps.lua         |  45 +++
- lua/codediff/ui/explorer/line_highlights.lua |  66 ++++
- lua/codediff/ui/explorer/line_layout.lua     | 196 ++++++++++++
- lua/codediff/ui/explorer/line_stats.lua      |  25 ++
- lua/codediff/ui/explorer/nodes.lua           | 298 +++++++++----------
- lua/codediff/ui/explorer/refresh.lua         |   6 +-
- lua/codediff/ui/explorer/tree.lua            |  45 ++-
- lua/codediff/ui/highlights.lua               |  10 +
- tests/core/git_line_stats_spec.lua           | 200 +++++++++++++
- tests/ui/explorer/custom_keymaps_spec.lua    | 117 ++++++++
- tests/ui/explorer/explorer_modules_spec.lua  |  18 ++
- tests/ui/explorer/line_stats_spec.lua        | 184 ++++++++++++
- tests/ui/highlights_spec.lua                 |  29 +-
- 20 files changed, 1578 insertions(+), 191 deletions(-)
- create mode 100644 lua/codediff/ui/explorer/formatters.lua
- create mode 100644 lua/codediff/ui/explorer/line_highlights.lua
- create mode 100644 lua/codediff/ui/explorer/line_layout.lua
+ README.md                                   |  19 +-
+ doc/codediff.txt                            |  40 +++-
+ doc/tags                                    |   1 +
+ lua/codediff/commands.lua                   |   6 +-
+ lua/codediff/config.lua                     |   5 +
+ lua/codediff/core/git.lua                   | 166 +++++++++++++
+ lua/codediff/ui/explorer/formatters.lua     |  65 ++++-
+ lua/codediff/ui/explorer/line_stats.lua     |  25 ++
+ lua/codediff/ui/explorer/nodes.lua          |  15 ++
+ lua/codediff/ui/explorer/refresh.lua        |   6 +-
+ lua/codediff/ui/explorer/tree.lua           |   2 +
+ lua/codediff/ui/highlights.lua              |   7 +
+ tests/core/git_line_stats_spec.lua          | 251 ++++++++++++++++++++
+ tests/ui/explorer/explorer_modules_spec.lua |   7 +
+ tests/ui/explorer/line_stats_spec.lua       | 152 ++++++++++++
+ tests/ui/highlights_spec.lua                |  13 +
+ 16 files changed, 753 insertions(+), 27 deletions(-)
  create mode 100644 lua/codediff/ui/explorer/line_stats.lua
  create mode 100644 tests/core/git_line_stats_spec.lua
- create mode 100644 tests/ui/explorer/custom_keymaps_spec.lua
  create mode 100644 tests/ui/explorer/line_stats_spec.lua
 
 diff --git a/README.md b/README.md
-index f65f61c..d626eef 100644
+index 11e9eab..2295ac9 100644
 --- a/README.md
 +++ b/README.md
-@@ -134,6 +134,16 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
+@@ -135,6 +135,11 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
        focus_on_select = false,  -- Jump to modified pane after selecting a file (default: stay in explorer)
        auto_open_on_cursor = false, -- Rebind j/k/Down/Up in the explorer to also open the file under the cursor
        status_right_margin = 1,  -- Trailing cells between status symbol (M/A/D) and right edge; increase if Nerd Font icons clip it
@@ -46,401 +38,202 @@ index f65f61c..d626eef 100644
 +        count_untracked = false, -- Count untracked file lines as insertions
 +        max_untracked_bytes = 1024 * 1024, -- Skip larger untracked files
 +      },
-+      formatters = {
-+        file = nil,   -- Optional function(ctx) -> line layout; nil uses the built-in formatter
-+        folder = nil, -- Optional function(ctx) -> line layout; nil uses the built-in formatter
-+        group = nil,  -- Optional function(ctx) -> line layout; nil uses the built-in formatter
-+      },
-       visible_groups = {       -- Which groups to show (can be toggled at runtime)
-         staged = true,
-         unstaged = true,
-@@ -184,6 +194,7 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
-         restore = "X",      -- Discard changes (restore file)
-         toggle_changes = "gu",  -- Toggle Changes (unstaged) group visibility
-         toggle_staged = "gs",   -- Toggle Staged Changes group visibility
-+        custom = {}, -- Additional { key, desc, callback } explorer keymaps
-         -- Fold keymaps (Vim-style)
-         fold_open = "zo",           -- Open fold (expand current node)
-         fold_open_recursive = "zO", -- Open fold recursively (expand all descendants)
-@@ -279,6 +290,99 @@ Three strategies are available:
+       ellipsis = "…",          -- Text appended to truncated Explorer regions
+       formatters = {  -- Optional function(ctx) -> line layout callbacks; omit to use the built-ins
+         file = nil,   -- File rows
+@@ -238,6 +243,10 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
  
- Custom Lua matcher callbacks are not supported.
+ `diff.filler_text` accepts any non-empty text pattern and repeats it across filler rows. Set it to `""` to hide the decoration while preserving the rows that keep side-by-side and conflict panes aligned. Non-empty patterns use the `CodeDiffFiller` highlight group.
  
-+Explorer line statistics are disabled by default because they require extra Git queries and consume space in the default 40-column explorer. Set `explorer.line_stats.enabled = true` to show Git numstat counts. Untracked files have no stats unless `count_untracked = true`; files larger than `max_untracked_bytes` are not read (1 MiB by default).
++Explorer line statistics are disabled by default because they require extra Git queries and consume space in the default 40-column Explorer. Set `explorer.line_stats.enabled = true` to show per-file Git numstat counts and group totals in status, one-revision, and two-revision modes. Untracked files have no stats unless `count_untracked = true`; files larger than `max_untracked_bytes` are not read (1 MiB by default).
 +
-+Files use `+12 -4` (`bin` for binary files); group headings use `Changes (3 · +42 -8)`. Aggregate folder and group stats contain `files_changed`, `insertions`, `deletions`, `binary_files`, and `unavailable_files`. Binary and unavailable files count toward `files_changed` but not line totals.
++Files use `+12 -4` (`bin` for binary files), and group headings use `Changes (3 · +42 -8)`. Aggregate folder and group stats contain `files_changed`, `insertions`, `deletions`, `binary_files`, and `unavailable_files`.
 +
-+#### Explorer line formatters
-+
-+`explorer.formatters.file`, `folder`, and `group` can replace the complete corresponding explorer line. Each receives a context and returns a layout:
-+
-+```lua
-+{
-+  left = {
-+    {
-+      segments = { { text = "name.lua", hl = "Normal" } },
-+      truncate_priority = 2,
-+    },
-+  },
-+  right = {
-+    {
-+      segments = { { text = "M", hl = "CodeDiffStatusModified" } },
-+    },
-+  },
-+  min_gap = 2,
-+}
-+```
-+
-+A region contains styled `segments`. A numeric `truncate_priority` makes it truncatable; regions without one stay fixed unless the fixed content itself cannot fit. Lower priorities truncate first. The renderer measures display cells, truncates regions with `...`, right-aligns `right`, and preserves at least `min_gap` cells when space permits. The built-in file formatter truncates directory, filename, then stats; status remains fixed. Folder names and group summaries are also truncatable.
-+
-+Each segment is `{ text = string, hl? = highlight }`. `hl` accepts a Neovim highlight group, a `#RGB`/`#RRGGBB` foreground color, or a highlight definition such as `{ fg = "#3fb950", bold = true }`. Omitted `hl` uses `Normal`; selected file lines retain their selection background.
-+
-+All contexts include `file_count` and `stats`; `stats` is `nil` when line statistics are disabled. File contexts add `path`, `filename`, `directory`, `old_path`, `group`, `status`, `status_code`, `status_hl`, `status_right_margin`, `indent`, `indent_hl`, `icon`, and `icon_hl`. Folder contexts add `name`, `path`, `group`, `files`, `indent`, `indent_hl`, `icon`, `icon_hl`, and `expanded`. Group contexts add `name`, `label`, `files`, and `expanded`.
-+
-+Folder and group `files` contain one entry for each file, using the consistent `{ path, old_path, group, status, stats }` shape. This lets formatters derive external state across all files represented by the line without CodeDiff owning that state.
-+
-+See the [built-in formatter implementations](./lua/codediff/ui/explorer/formatters.lua) for complete file, folder, and group examples. The module intentionally exports `file`, `folder`, and `group`; each returns a fresh layout that users can assign directly or wrap:
-+
-+```lua
-+local defaults = require("codediff.ui.explorer.formatters")
-+local layout = defaults.folder(ctx)
-+```
-+
-+A formatter can replace only the line type it needs:
-+
-+```lua
-+require("codediff").setup({
-+  explorer = {
-+    line_stats = { enabled = true },
-+    formatters = {
-+      group = function(ctx)
-+        local stats = ctx.stats
-+        local summary = stats and string.format("%d · +%d -%d", ctx.file_count, stats.insertions, stats.deletions)
-+          or tostring(ctx.file_count)
-+        return {
-+          left = {
-+            {
-+              segments = { { text = " " .. ctx.label, hl = "CodeDiffExplorerTreeGroup" } },
-+              truncate_priority = 1,
-+            },
-+          },
-+          right = {
-+            {
-+              segments = { { text = summary, hl = "#6cb6ff" } },
-+            },
-+          },
-+          min_gap = 2,
-+        }
-+      end,
-+    },
-+  },
-+})
-+```
-+
-+#### Custom explorer keymaps
-+
-+`keymaps.explorer.custom` adds keymaps without requiring CodeDiff to understand their state or semantics. Each keymap has `key`, `desc`, and `callback`. The callback receives:
-+
-+```lua
-+{
-+  entry = {
-+    kind = "file", -- "file", "directory", or "group"
-+    path = "lua/codediff/init.lua",
-+    old_path = nil,
-+    group = "unstaged", -- "unstaged", "staged", or "conflicts"
-+    status = "M",
-+    stats = { insertions = 4, deletions = 2, binary = false },
-+    files = nil, -- normalized file entries for directories and groups
-+  },
-+  redraw = function() end,
-+  refresh = function() end,
-+}
-+```
-+
-+`redraw()` only reruns the configured formatters against the existing tree. It does not replace nodes or change selection or fold state, and runs no Git commands. `refresh()` performs the normal asynchronous Git refresh and rebuilds the explorer. Both safely become no-ops after the explorer closes. Custom mappings are installed after built-in mappings, so the same key replaces the built-in mapping.
-+
- The C library will be downloaded automatically on first use. No `build` step needed!
+ #### Explorer line formatters
  
- ### Native gutter signs
+ `explorer.formatters.file`, `folder`, and `group` replace the complete corresponding explorer row. Each callback receives row metadata and returns a layout:
+@@ -259,13 +268,13 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
+ }
+ ```
+ 
+-A region contains styled `segments`. A numeric `truncate_priority` makes it truncatable; lower priorities truncate first. Regions without a priority stay fixed unless all content cannot fit. The renderer measures display cells, truncates with `explorer.ellipsis` (default `…`), right-aligns `right`, and preserves `min_gap` when space permits. The ellipsis can contain multiple characters and is clipped display-width-aware when necessary.
++A region contains styled `segments`. A numeric `truncate_priority` makes it truncatable; lower priorities truncate first. Regions without a priority stay fixed unless all content cannot fit. The renderer measures display cells, truncates with `explorer.ellipsis` (default `…`), right-aligns `right`, and preserves `min_gap` when space permits. The built-in file formatter truncates the directory, filename, then stats while keeping status fixed. The ellipsis can contain multiple characters and is clipped display-width-aware when necessary.
+ 
+ Each segment is `{ text = string, hl? = highlight }`. `hl` accepts a Neovim highlight group, a `#RGB`/`#RRGGBB` foreground color, or a highlight definition such as `{ fg = "#3fb950", bold = true }`. Omitted highlights use `Normal`; selected file rows retain their selection background.
+ 
+-File contexts contain `path`, `filename`, `directory`, `old_path`, `group`, `status`, `status_hl`, `status_right_margin`, `indent`, `indent_hl`, `icon`, and `icon_hl`. Folder contexts contain `name`, `path`, `group`, `file_count`, `files`, `indent`, `indent_hl`, `icon`, `icon_hl`, and `expanded`. Group contexts contain `name`, `label`, `file_count`, `files`, and `expanded`.
++File contexts contain `path`, `filename`, `directory`, `old_path`, `group`, `stats`, `status`, `status_hl`, `status_right_margin`, `indent`, `indent_hl`, `icon`, and `icon_hl`. Folder contexts contain `name`, `path`, `group`, `file_count`, `stats`, `files`, `indent`, `indent_hl`, `icon`, `icon_hl`, and `expanded`. Group contexts contain `name`, `label`, `file_count`, `stats`, `files`, and `expanded`. `stats` is `nil` when line statistics are disabled.
+ 
+-Folder and group `files` contain `{ path, old_path, group, status }` entries for every represented file. The built-in callbacks are exported by `codediff.ui.explorer.formatters` and return fresh layouts that can be assigned directly or wrapped.
++Folder and group `files` contain `{ path, old_path, group, status, stats }` entries for every represented file. The built-in callbacks are exported by `codediff.ui.explorer.formatters` and return fresh layouts that can be assigned directly or wrapped.
+ 
+ ```lua
+ require("codediff").setup({
+@@ -788,6 +797,10 @@ The plugin defines highlight groups matching VSCode's diff colors:
+ - `CodeDiffFiller` - Gray foreground for non-empty filler line patterns
+ - `CodeDiffLineMove` - Background for moved code lines (derived from DiffChange)
+ - `CodeDiffMoveTo` - Sign column and annotation color for move indicators
++- `CodeDiffExplorerStatFiles` - Explorer file counts
++- `CodeDiffExplorerStatInsertions` - Explorer insertion counts
++- `CodeDiffExplorerStatDeletions` - Explorer deletion counts
++- `CodeDiffExplorerStatBinary` - Explorer binary-file labels
+ 
+ To customize gutter colors, define these four highlight groups in your colorscheme configuration:
+ 
 diff --git a/doc/codediff.txt b/doc/codediff.txt
-index 0a83bb7..813e01c 100644
+index ad59839..1c4ef24 100644
 --- a/doc/codediff.txt
 +++ b/doc/codediff.txt
-@@ -304,6 +304,16 @@ Setup entry point:
-         ignore = { ".git/**", ".jj/**" },
+@@ -326,6 +326,11 @@ Setup entry point:
        },
+       untracked = "all",  -- "all", "normal" (collapse dirs), or "no" (skip untracked; use for huge work trees like GIT_WORK_TREE=$HOME, #389)
        status_right_margin = 1,
 +      line_stats = {
 +        enabled = false,
 +        count_untracked = false,
 +        max_untracked_bytes = 1024 * 1024,
 +      },
-+      formatters = {
-+        file = nil,
-+        folder = nil,
-+        group = nil,
-+      },
-       visible_groups = {
-         staged = true,
-         unstaged = true,
-@@ -340,6 +350,7 @@ Setup entry point:
-         restore = "X",
-         toggle_changes = "gu",
-         toggle_staged = "gs",
-+        custom = {},
-         fold_open = "zo",
-         fold_open_recursive = "zO",
-         fold_close = "zc",
-@@ -375,6 +386,134 @@ Setup entry point:
+       ellipsis = "…",
+       formatters = {
+         file = nil,
+@@ -403,6 +408,19 @@ Setup entry point:
    })
  <
  
++EXPLORER LINE STATISTICS                  *codediff-explorer-line-statistics*
++
 +Explorer line statistics are disabled by default because they require extra Git
-+queries and consume space in the default 40-column explorer. With `enabled =
-+true`, tracked files show Git numstat counts and group headings show totals.
-+Untracked files have no stats unless `count_untracked = true`; files larger than
-+`max_untracked_bytes` are not read (1 MiB by default).
++queries and consume space in the default 40-column Explorer. With `enabled =
++true`, tracked files show Git numstat counts and group headings show totals in
++status, one-revision, and two-revision modes. Untracked files have no stats
++unless `count_untracked = true`; files larger than `max_untracked_bytes` are not
++read (1 MiB by default).
 +
 +Files use `+12 -4` (`bin` for binary files); group headings use `Changes (3 ·
 ++42 -8)`. Aggregate folder and group stats contain `files_changed`,
-+`insertions`, `deletions`, `binary_files`, and `unavailable_files`. Binary and
-+unavailable files count toward `files_changed` but not line totals.
++`insertions`, `deletions`, `binary_files`, and `unavailable_files`.
 +
-+EXPLORER LINE FORMATTERS                    *codediff-explorer-line-formatters*
-+
-+`explorer.formatters.file`, `folder`, and `group` replace the complete
-+corresponding explorer line. Each function receives a context and returns:
-+>lua
-+  {
-+    left = {
-+      {
-+        segments = { { text = "name.lua", hl = "Normal" } },
-+        truncate_priority = 2,
-+      },
-+    },
-+    right = {
-+      {
-+        segments = { { text = "M", hl = "CodeDiffStatusModified" } },
-+      },
-+    },
-+    min_gap = 2,
-+  }
-+<
-+
-+A region contains styled `segments`. A numeric `truncate_priority` makes it
-+truncatable; regions without one stay fixed unless the fixed content itself
-+cannot fit. Lower priorities truncate first. The renderer measures display
-+cells, truncates regions with `...`, right-aligns `right`, and preserves
-+`min_gap` cells when space permits. The defaults truncate directory, filename,
-+then stats while keeping status fixed. Folder names and group summaries are
-+also truncatable.
-+
-+A segment is `{ text = string, hl? = highlight }`. `hl` accepts a Neovim
-+highlight group, a `#RGB`/`#RRGGBB` foreground color, or a highlight definition
-+such as `{ fg = "#3fb950", bold = true }`. Omitted `hl` uses `Normal`; selected
-+file lines retain their selection background.
-+
-+All contexts include `file_count` and `stats`; `stats` is nil when line
-+statistics are disabled. File contexts add `path`, `filename`, `directory`,
-+`old_path`, `group`, `status`, `status_code`, `status_hl`,
-+`status_right_margin`, `indent`, `indent_hl`, `icon`, and `icon_hl`. Folder
-+contexts add `name`, `path`, `group`, `files`, `indent`, `indent_hl`, `icon`,
-+`icon_hl`, and `expanded`. Group contexts add `name`, `label`, `files`, and
-+`expanded`.
-+
-+Folder and group `files` contain one entry for each file, using the consistent
-+`{ path, old_path, group, status, stats }` shape. Formatters can use these
-+entries to derive external state across all files represented by the line
-+without CodeDiff owning that state.
-+
-+Complete defaults for all three line types are in
-+`lua/codediff/ui/explorer/formatters.lua`. The module intentionally exports
-+`file`, `folder`, and `group`; each returns a fresh layout that users can assign
-+directly or wrap:
-+>lua
-+  local defaults = require("codediff.ui.explorer.formatters")
-+  local layout = defaults.folder(ctx)
-+<
-+
-+A formatter can replace only the line type it needs:
-+>lua
-+  require("codediff").setup({
-+    explorer = {
-+      line_stats = { enabled = true },
-+      formatters = {
-+        group = function(ctx)
-+          local stats = ctx.stats
-+          local summary = stats
-+            and string.format("%d · +%d -%d", ctx.file_count, stats.insertions, stats.deletions)
-+            or tostring(ctx.file_count)
-+          return {
-+            left = {
-+              {
-+                segments = { { text = " " .. ctx.label, hl = "CodeDiffExplorerTreeGroup" } },
-+                truncate_priority = 1,
-+              },
-+            },
-+            right = {
-+              {
-+                segments = { { text = summary, hl = "#6cb6ff" } },
-+              },
-+            },
-+            min_gap = 2,
-+          }
-+        end,
-+      },
-+    },
-+  })
-+<
-+
-+EXPLORER CUSTOM KEYMAPS                        *codediff-explorer-custom-keymaps*
-+
-+`keymaps.explorer.custom` adds keymaps without requiring CodeDiff to understand
-+their state or semantics. Each keymap has `key`, `desc`, and `callback`. The
-+callback receives:
-+>lua
-+  {
-+    entry = {
-+      kind = "file", -- "file", "directory", or "group"
-+      path = "lua/codediff/init.lua",
-+      old_path = nil,
-+      group = "unstaged", -- "unstaged", "staged", or "conflicts"
-+      status = "M",
-+      stats = { insertions = 4, deletions = 2, binary = false },
-+      files = nil, -- normalized file entries for directories and groups
-+    },
-+    redraw = function() end,
-+    refresh = function() end,
-+  }
-+<
-+
-+`redraw()` only reruns the configured formatters against the existing tree. It
-+does not replace nodes or change selection or fold state, and runs no Git
-+commands.
-+`refresh()` performs the normal asynchronous Git refresh and rebuilds the
-+explorer. Both safely become no-ops after the explorer closes. Custom mappings
-+are installed after built-in mappings, so the same key replaces the built-in
-+mapping.
-+
-+
- ==============================================================================
- NATIVE GUTTER SIGNS                                  *codediff-gutter-signs*
+ EXPLORER LINE FORMATTERS                    *codediff-explorer-line-formatters*
  
-@@ -479,6 +618,11 @@ Explorer & history git status highlights (customizable):
+ `explorer.formatters.file`, `folder`, and `group` replace the complete
+@@ -429,8 +447,9 @@ A region contains styled `segments`. A numeric `truncate_priority` makes it
+ truncatable; lower priorities truncate first. Regions without one stay fixed
+ unless all content cannot fit. The renderer measures display cells, truncates
+ with `explorer.ellipsis` (default `…`), right-aligns `right`, and preserves
+-`min_gap` when space permits. The ellipsis can contain multiple characters and
+-is clipped display-width-aware when necessary.
++`min_gap` when space permits. The built-in file formatter truncates the
++directory, filename, then stats while keeping status fixed. The ellipsis can
++contain multiple characters and is clipped display-width-aware when necessary.
+ 
+ Each segment is `{ text = string, hl? = highlight }`. `hl` accepts a Neovim
+ highlight group, a `#RGB`/`#RRGGBB` foreground color, or a highlight definition
+@@ -438,15 +457,16 @@ such as `{ fg = "#3fb950", bold = true }`. Omitted highlights use `Normal`;
+ selected file rows retain their selection background.
+ 
+ File contexts contain `path`, `filename`, `directory`, `old_path`, `group`,
+-`status`, `status_hl`, `status_right_margin`, `indent`, `indent_hl`, `icon`, and
+-`icon_hl`.
++`stats`, `status`, `status_hl`, `status_right_margin`, `indent`, `indent_hl`,
++`icon`, and `icon_hl`.
+ 
+-Folder contexts contain `name`, `path`, `group`, `file_count`, `files`,
++Folder contexts contain `name`, `path`, `group`, `file_count`, `stats`, `files`,
+ `indent`, `indent_hl`, `icon`, `icon_hl`, and `expanded`. Group contexts contain
+-`name`, `label`, `file_count`, `files`, and `expanded`.
++`name`, `label`, `file_count`, `stats`, `files`, and `expanded`. `stats` is nil
++when line statistics are disabled.
+ 
+-Folder and group `files` contain `{ path, old_path, group, status }` entries for
+-every represented file. Built-in callbacks are exported by
++Folder and group `files` contain `{ path, old_path, group, status, stats }`
++entries for every represented file. Built-in callbacks are exported by
+ `codediff.ui.explorer.formatters` and return fresh layouts that can be assigned
+ directly or wrapped.
+ 
+@@ -581,6 +601,10 @@ Explorer & history git status highlights (customizable):
  - CodeDiffStatusUntracked   Untracked files (links to DiagnosticInfo)
  - CodeDiffStatusConflict    Conflicting files (links to DiagnosticError)
  - CodeDiffExplorerSelected  Selected file background (links to Visual)
-+- CodeDiffExplorerStat            General explorer stat text (links to NonText)
-+- CodeDiffExplorerStatFiles       File-count segments (links to Number)
-+- CodeDiffExplorerStatInsertions  Insertion segments (links to Added)
-+- CodeDiffExplorerStatDeletions   Deletion segments (links to Removed)
-+- CodeDiffExplorerStatBinary      Binary-file segments (links to NonText)
++- CodeDiffExplorerStatFiles File counts (links to Number)
++- CodeDiffExplorerStatInsertions Insertions (links to Added or DiagnosticOk)
++- CodeDiffExplorerStatDeletions Deletions (links to Removed or DiagnosticError)
++- CodeDiffExplorerStatBinary Binary labels (links to NonText)
  
  Override in your config or colorscheme:
  >lua
 diff --git a/doc/tags b/doc/tags
-index cba88ef..3f6874a 100644
+index 8d80ced..ef4e68f 100644
 --- a/doc/tags
 +++ b/doc/tags
-@@ -5,6 +5,8 @@ codediff	codediff.txt	/*codediff*
- codediff-commands	codediff.txt	/*codediff-commands*
+@@ -6,6 +6,7 @@ codediff-commands	codediff.txt	/*codediff-commands*
  codediff-configuration	codediff.txt	/*codediff-configuration*
  codediff-events	codediff.txt	/*codediff-events*
-+codediff-explorer-custom-keymaps	codediff.txt	/*codediff-explorer-custom-keymaps*
-+codediff-explorer-line-formatters	codediff.txt	/*codediff-explorer-line-formatters*
+ codediff-explorer-line-formatters	codediff.txt	/*codediff-explorer-line-formatters*
++codediff-explorer-line-statistics	codediff.txt	/*codediff-explorer-line-statistics*
  codediff-filler-text	codediff.txt	/*codediff-filler-text*
  codediff-gutter-signs	codediff.txt	/*codediff-gutter-signs*
  codediff-highlight-groups	codediff.txt	/*codediff-highlight-groups*
 diff --git a/lua/codediff/commands.lua b/lua/codediff/commands.lua
-index cdd33d5..15c87d0 100644
+index 7c7546f..bf5f524 100644
 --- a/lua/codediff/commands.lua
 +++ b/lua/codediff/commands.lua
-@@ -399,7 +399,7 @@ local function handle_explorer(revision, revision2, global_opts)
+@@ -420,7 +420,7 @@ local function handle_explorer(revision, revision2, global_opts, pathspec)
              return
            end
  
 -          git.get_diff_revisions(commit_hash, commit_hash2, git_root, function(err_status, status_result)
-+          git.get_diff_revisions_with_line_stats(commit_hash, commit_hash2, git_root, config.options.explorer.line_stats, function(err_status, status_result)
++          git.get_diff_revisions_with_line_stats(commit_hash, commit_hash2, git_root, function(err_status, status_result)
              process_status(err_status, status_result, commit_hash, commit_hash2)
-           end)
+           end, pathspec)
          end)
-@@ -415,13 +415,13 @@ local function handle_explorer(revision, revision2, global_opts)
+@@ -436,13 +436,13 @@ local function handle_explorer(revision, revision2, global_opts, pathspec)
          end
  
          -- Get diff between revision and working tree
 -        git.get_diff_revision(commit_hash, git_root, function(err_status, status_result)
-+        git.get_diff_revision_with_line_stats(commit_hash, git_root, config.options.explorer.line_stats, function(err_status, status_result)
++        git.get_diff_revision_with_line_stats(commit_hash, git_root, function(err_status, status_result)
            process_status(err_status, status_result, commit_hash, "WORKING")
-         end)
+         end, pathspec)
        end)
      else
        -- Get git status (current changes)
 -      git.get_status(git_root, function(err_status, status_result)
-+      git.get_status_with_line_stats(git_root, config.options.explorer.line_stats, function(err_status, status_result)
++      git.get_status_with_line_stats(git_root, function(err_status, status_result)
          -- Pass nil for revisions to enable "Status Mode" in explorer (separate Staged/Unstaged groups)
          process_status(err_status, status_result, nil, nil)
-       end)
+       end, pathspec)
 diff --git a/lua/codediff/config.lua b/lua/codediff/config.lua
-index bb47197..645297f 100644
+index 57adc5d..0984eee 100644
 --- a/lua/codediff/config.lua
 +++ b/lua/codediff/config.lua
-@@ -1,5 +1,6 @@
- -- Configuration module
- local M = {}
-+local explorer_formatters = require("codediff.ui.explorer.formatters")
- 
- M.defaults = {
-   -- Highlight configuration
-@@ -78,6 +79,16 @@ M.defaults = {
+@@ -79,6 +79,11 @@ M.defaults = {
      auto_open_on_cursor = false, -- Rebind j/k/Down/Up in the explorer to also open the file under the cursor
      flatten_dirs = true, -- Flatten single-child directory chains in tree view (e.g., src/components/ui/)
      status_right_margin = 1, -- Trailing cells between the status symbol (M/A/D) and the right edge; increase if Nerd Font icons clip it
 +    line_stats = {
-+      enabled = false, -- Show insertion/deletion counts from git numstat
-+      count_untracked = false, -- Show untracked file lines as insertions
-+      max_untracked_bytes = 1024 * 1024, -- Skip untracked files larger than this limit
++      enabled = false,
++      count_untracked = false,
++      max_untracked_bytes = 1024 * 1024,
 +    },
-+    formatters = {
-+      file = explorer_formatters.file,
-+      folder = explorer_formatters.folder,
-+      group = explorer_formatters.group,
-+    },
-     visible_groups = { -- Which groups to show in explorer (can be toggled at runtime)
-       staged = true,
-       unstaged = true,
-@@ -128,6 +139,7 @@ M.defaults = {
-       restore = "X", -- Discard changes to file (restore to index/HEAD)
-       toggle_changes = "gu", -- Toggle Changes (unstaged) group visibility
-       toggle_staged = "gs", -- Toggle Staged Changes group visibility
-+      custom = {}, -- Additional explorer keymaps
-       -- Fold keymaps (Vim-style)
-       fold_open = "zo", -- Open fold (expand current node)
-       fold_open_recursive = "zO", -- Open fold recursively (expand current node and all descendants)
+     ellipsis = "…", -- Text appended to truncated Explorer regions
+     formatters = { -- nil = use the built-in from lua/codediff/ui/explorer/formatters.lua
+       file = nil, -- File rows: function(ctx) -> layout
 diff --git a/lua/codediff/core/git.lua b/lua/codediff/core/git.lua
-index 0ae5fef..30c1c24 100644
+index 2bf4bb0..6c758fe 100644
 --- a/lua/codediff/core/git.lua
 +++ b/lua/codediff/core/git.lua
-@@ -180,6 +180,149 @@ local function run_git_async(args, opts, callback)
+@@ -191,6 +191,172 @@ local function run_git_async(args, opts, callback)
    end
  end
  
-+-- Parse `git diff --numstat -z` output into line stats keyed by each file's destination path.
 +local function parse_numstat(output)
 +  local stats = {}
 +  local records = vim.split(output or "", "\0", { plain = true })
-+  local index = 1
-+  while index <= #records do
-+    -- Parse "12\t4\tlua/file.lua"; renames have an empty path followed by old/new path records.
-+    local insertions, deletions, path = records[index]:match("^([^\t]+)\t([^\t]+)\t(.*)$")
-+    if not insertions then
-+      index = index + 1
-+    else
-+      if path == "" then
-+        path = records[index + 2]
-+        index = index + 3
-+      else
-+        index = index + 1
-+      end
++  for index, record in ipairs(records) do
++    local insertions, deletions, path = record:match("^([^\t]+)\t([^\t]+)\t(.*)$")
++    if insertions then
++      path = path ~= "" and path or records[index + 2]
 +      if path and path ~= "" then
 +        stats[path] = insertions == "-" and { insertions = 0, deletions = 0, binary = true }
 +          or { insertions = tonumber(insertions) or 0, deletions = tonumber(deletions) or 0, binary = false }
@@ -450,7 +243,6 @@ index 0ae5fef..30c1c24 100644
 +  return stats
 +end
 +
-+-- Return insertion-only stats for an untracked file, or nil when it is unreadable, non-regular, or over the size limit.
 +local function get_untracked_line_stats(path, max_bytes)
 +  local uv = vim.uv or vim.loop
 +  local stat = uv.fs_stat(path)
@@ -489,23 +281,32 @@ index 0ae5fef..30c1c24 100644
 +
 +local function collect_line_stats(git_root, requests, callback)
 +  local remaining = #requests
++  local first_error
 +  for _, request in ipairs(requests) do
 +    run_git_async(request.args, { cwd = git_root }, function(err, output)
-+      local stats = err and {} or parse_numstat(output)
-+      for _, entries in ipairs(request.entries) do
-+        attach_line_stats(entries, stats)
++      first_error = first_error or err
++      if not err then
++        local stats = parse_numstat(output)
++        for _, entries in ipairs(request.entries) do
++          attach_line_stats(entries, stats)
++        end
 +      end
 +      remaining = remaining - 1
 +      if remaining == 0 then
-+        callback()
++        callback(first_error)
 +      end
 +    end)
 +  end
 +end
 +
-+function M.get_status_with_line_stats(git_root, options, callback)
++local function line_stats_options()
++  return (config.options.explorer or {}).line_stats or {}
++end
++
++function M.get_status_with_line_stats(git_root, callback, pathspec)
++  local options = line_stats_options()
 +  if not options.enabled then
-+    M.get_status(git_root, callback)
++    M.get_status(git_root, callback, pathspec)
 +    return
 +  end
 +
@@ -515,20 +316,31 @@ index 0ae5fef..30c1c24 100644
 +      return
 +    end
 +    collect_line_stats(git_root, {
-+      { args = { "diff", "--numstat", "-z", "-M" }, entries = { result.unstaged, result.conflicts } },
-+      { args = { "diff", "--cached", "--numstat", "-z", "-M" }, entries = { result.staged } },
-+    }, function()
++      {
++        args = vim.list_extend({ "diff", "--numstat", "-z", "-M", "--" }, pathspec or {}),
++        entries = { result.unstaged, result.conflicts },
++      },
++      {
++        args = vim.list_extend({ "diff", "--cached", "--numstat", "-z", "-M", "--" }, pathspec or {}),
++        entries = { result.staged },
++      },
++    }, function(stats_err)
++      if stats_err then
++        callback(stats_err, nil)
++        return
++      end
 +      if options.count_untracked then
-+        attach_untracked_line_stats(result.unstaged, git_root, options.max_untracked_bytes)
++        attach_untracked_line_stats(result.unstaged, git_root, options.max_untracked_bytes or 1024 * 1024)
 +      end
 +      callback(nil, result)
 +    end)
-+  end)
++  end, pathspec)
 +end
 +
-+function M.get_diff_revision_with_line_stats(revision, git_root, options, callback)
++function M.get_diff_revision_with_line_stats(revision, git_root, callback, pathspec)
++  local options = line_stats_options()
 +  if not options.enabled then
-+    M.get_diff_revision(revision, git_root, callback)
++    M.get_diff_revision(revision, git_root, callback, pathspec)
 +    return
 +  end
 +
@@ -538,19 +350,26 @@ index 0ae5fef..30c1c24 100644
 +      return
 +    end
 +    collect_line_stats(git_root, {
-+      { args = { "diff", "--numstat", "-z", "-M", revision }, entries = { result.unstaged } },
-+    }, function()
++      {
++        args = vim.list_extend({ "diff", "--numstat", "-z", "-M", revision, "--" }, pathspec or {}),
++        entries = { result.unstaged },
++      },
++    }, function(stats_err)
++      if stats_err then
++        callback(stats_err, nil)
++        return
++      end
 +      if options.count_untracked then
-+        attach_untracked_line_stats(result.unstaged, git_root, options.max_untracked_bytes)
++        attach_untracked_line_stats(result.unstaged, git_root, options.max_untracked_bytes or 1024 * 1024)
 +      end
 +      callback(nil, result)
 +    end)
-+  end)
++  end, pathspec)
 +end
 +
-+function M.get_diff_revisions_with_line_stats(rev1, rev2, git_root, options, callback)
-+  if not options.enabled then
-+    M.get_diff_revisions(rev1, rev2, git_root, callback)
++function M.get_diff_revisions_with_line_stats(rev1, rev2, git_root, callback, pathspec)
++  if not line_stats_options().enabled then
++    M.get_diff_revisions(rev1, rev2, git_root, callback, pathspec)
 +    return
 +  end
 +
@@ -560,39 +379,32 @@ index 0ae5fef..30c1c24 100644
 +      return
 +    end
 +    collect_line_stats(git_root, {
-+      { args = { "diff", "--numstat", "-z", "-M", rev1, rev2 }, entries = { result.unstaged } },
-+    }, function()
++      {
++        args = vim.list_extend({ "diff", "--numstat", "-z", "-M", rev1, rev2, "--" }, pathspec or {}),
++        entries = { result.unstaged },
++      },
++    }, function(stats_err)
++      if stats_err then
++        callback(stats_err, nil)
++        return
++      end
 +      callback(nil, result)
 +    end)
-+  end)
++  end, pathspec)
 +end
 +
  -- ATOMIC ASYNC OPERATIONS
  -- All functions below are simple, atomic git operations
  
 diff --git a/lua/codediff/ui/explorer/formatters.lua b/lua/codediff/ui/explorer/formatters.lua
-new file mode 100644
-index 0000000..080980b
---- /dev/null
+index dfc57e2..269b418 100644
+--- a/lua/codediff/ui/explorer/formatters.lua
 +++ b/lua/codediff/ui/explorer/formatters.lua
-@@ -0,0 +1,119 @@
-+local M = {}
-+
-+-- Wraps styled segments in a fixed or priority-truncatable layout region.
-+local function region(segments, options)
-+  return vim.tbl_extend("force", { segments = segments }, options or {})
-+end
-+
-+-- Appends a highlighted stat with a separating space when needed.
-+local function append_stat(segments, text, hl)
-+  if #segments > 0 then
-+    segments[#segments + 1] = { text = " ", hl = "Normal" }
-+  end
-+  segments[#segments + 1] = { text = text, hl = hl }
-+end
-+
-+-- Formats Git stats as semantic segments, for example `+12 -4` or `3 files +12 -4`.
-+local function stat_segments(stats, include_files)
+@@ -9,6 +9,45 @@ local function prefix(ctx)
+   return segments
+ end
+ 
++local function stat_segments(stats)
 +  if not stats then
 +    return {}
 +  end
@@ -601,441 +413,87 @@ index 0000000..080980b
 +  end
 +
 +  local segments = {}
-+  if include_files then
-+    append_stat(segments, tostring(stats.files_changed) .. " files", "CodeDiffExplorerStatFiles")
-+  end
 +  if (stats.insertions or 0) > 0 then
-+    append_stat(segments, "+" .. stats.insertions, "CodeDiffExplorerStatInsertions")
++    segments[#segments + 1] = { text = "+" .. stats.insertions, hl = "CodeDiffExplorerStatInsertions" }
 +  end
 +  if (stats.deletions or 0) > 0 then
-+    append_stat(segments, "-" .. stats.deletions, "CodeDiffExplorerStatDeletions")
++    if #segments > 0 then
++      segments[#segments + 1] = { text = " ", hl = "Normal" }
++    end
++    segments[#segments + 1] = { text = "-" .. stats.deletions, hl = "CodeDiffExplorerStatDeletions" }
 +  end
 +  return segments
 +end
 +
-+-- Builds the fixed file-line prefix from its indentation and optional icon.
-+local function file_prefix(ctx)
-+  local segments = { { text = ctx.indent, hl = ctx.indent_hl } }
-+  if ctx.icon ~= "" then
-+    segments[#segments + 1] = { text = ctx.icon, hl = ctx.icon_hl }
-+    segments[#segments + 1] = { text = " ", hl = "Normal" }
-+  end
-+  return segments
-+end
-+
-+-- Formats a file line as truncatable path content followed by right-aligned stats and status.
-+function M.file(ctx)
-+  local left = {
-+    region(file_prefix(ctx)),
-+    region({ { text = ctx.filename, hl = "Normal" } }, { truncate_priority = 2 }),
-+  }
-+  if ctx.directory ~= "" then
-+    left[#left + 1] = region({
-+      { text = " ", hl = "Normal" },
-+      { text = ctx.directory, hl = "ExplorerDirectorySmall" },
-+    }, { truncate_priority = 1 })
-+  end
-+
-+  local right = {}
-+  local stats = stat_segments(ctx.stats, false)
-+  if #stats > 0 then
-+    stats[#stats + 1] = { text = " ", hl = "Normal" }
-+    right[#right + 1] = region(stats, { truncate_priority = 3 })
-+  end
-+  right[#right + 1] = region({
-+    { text = ctx.status, hl = ctx.status_hl },
-+    { text = string.rep(" ", ctx.status_right_margin), hl = "Normal" },
-+  })
-+
-+  return { left = left, right = right, min_gap = 2 }
-+end
-+
-+-- Formats a folder line from its fixed indentation/icon prefix and truncatable name.
-+function M.folder(ctx)
-+  local prefix = { { text = ctx.indent, hl = ctx.indent_hl } }
-+  if ctx.icon ~= "" then
-+    prefix[#prefix + 1] = { text = ctx.icon, hl = ctx.icon_hl }
-+    prefix[#prefix + 1] = { text = " ", hl = "Normal" }
-+  end
-+  return {
-+    left = {
-+      region(prefix),
-+      region({ { text = ctx.name, hl = "Directory" } }, { truncate_priority = 1 }),
-+    },
-+    right = {},
-+    min_gap = 2,
-+  }
-+end
-+
-+-- Formats a group heading with its file count and optional aggregate Git stats.
-+function M.group(ctx)
-+  local summary = {
-+    { text = " (", hl = "CodeDiffExplorerTreeGroup" },
-+    { text = tostring(ctx.file_count), hl = ctx.stats and "CodeDiffExplorerStatFiles" or "CodeDiffExplorerTreeGroup" },
++local function group_summary(ctx)
++  local count_hl = ctx.stats and "CodeDiffExplorerStatFiles" or "CodeDiffExplorerTreeGroup"
++  local segments = {
++    { text = " (",                     hl = "CodeDiffExplorerTreeGroup" },
++    { text = tostring(ctx.file_count), hl = count_hl },
 +  }
 +  if ctx.stats and ctx.stats.insertions > 0 then
-+    summary[#summary + 1] = { text = " · ", hl = "CodeDiffExplorerTreeGroup" }
-+    summary[#summary + 1] = { text = "+" .. ctx.stats.insertions, hl = "CodeDiffExplorerStatInsertions" }
++    segments[#segments + 1] = { text = " · ", hl = "CodeDiffExplorerTreeGroup" }
++    segments[#segments + 1] = { text = "+" .. ctx.stats.insertions, hl = "CodeDiffExplorerStatInsertions" }
 +  end
 +  if ctx.stats and ctx.stats.deletions > 0 then
-+    summary[#summary + 1] = { text = ctx.stats.insertions > 0 and " " or " · ", hl = "CodeDiffExplorerTreeGroup" }
-+    summary[#summary + 1] = { text = "-" .. ctx.stats.deletions, hl = "CodeDiffExplorerStatDeletions" }
++    segments[#segments + 1] = { text = ctx.stats.insertions > 0 and " " or " · ", hl = "CodeDiffExplorerTreeGroup" }
++    segments[#segments + 1] = { text = "-" .. ctx.stats.deletions, hl = "CodeDiffExplorerStatDeletions" }
 +  end
-+  summary[#summary + 1] = { text = ")", hl = "CodeDiffExplorerTreeGroup" }
++  segments[#segments + 1] = { text = ")", hl = "CodeDiffExplorerTreeGroup" }
++  return segments
++end
 +
-+  return {
-+    left = {
-+      region({ { text = " ", hl = "CodeDiffExplorerTreeGroup" } }),
-+      region({ { text = ctx.label, hl = "CodeDiffExplorerTreeGroup" } }, { truncate_priority = 2 }),
-+      region(summary, { truncate_priority = 1 }),
+ function M.file(ctx)
+   local left = {
+     { segments = prefix(ctx) },
+@@ -20,23 +59,29 @@ function M.file(ctx)
+   if ctx.directory ~= "" then
+     left[#left + 1] = {
+       segments = {
+-        { text = " ", hl = "Normal" },
++        { text = " ",           hl = "Normal" },
+         { text = ctx.directory, hl = "ExplorerDirectorySmall" },
+       },
+       truncate_priority = 1,
+     }
+   end
+ 
++  local right = {}
++  local stats = stat_segments(ctx.stats)
++  if #stats > 0 then
++    stats[#stats + 1] = { text = " ", hl = "Normal" }
++    right[#right + 1] = { segments = stats, truncate_priority = 3 }
++  end
++  right[#right + 1] = {
++    segments = {
++      { text = ctx.status,                               hl = ctx.status_hl },
++      { text = string.rep(" ", ctx.status_right_margin), hl = "Normal" },
 +    },
-+    right = {},
-+    min_gap = 2,
 +  }
-+end
 +
-+return M
-diff --git a/lua/codediff/ui/explorer/keymaps.lua b/lua/codediff/ui/explorer/keymaps.lua
-index 4256c02..2351046 100644
---- a/lua/codediff/ui/explorer/keymaps.lua
-+++ b/lua/codediff/ui/explorer/keymaps.lua
-@@ -2,10 +2,53 @@
- local config = require("codediff.config")
- local actions_module = require("codediff.ui.explorer.actions")
- local refresh_module = require("codediff.ui.explorer.refresh")
-+local nodes_module = require("codediff.ui.explorer.nodes")
- local tree_utils = require("codediff.ui.lib.tree_utils")
- 
- local M = {}
- 
-+local function is_explorer_alive(explorer)
-+  if not explorer or not explorer.bufnr or not vim.api.nvim_buf_is_valid(explorer.bufnr) then
-+    return false
-+  end
-+  return not explorer.tabpage or vim.api.nvim_tabpage_is_valid(explorer.tabpage)
-+end
-+
-+local function custom_keymap_context(explorer, node)
-+  return {
-+    entry = nodes_module.get_entry(node),
-+    redraw = function()
-+      if is_explorer_alive(explorer) then
-+        explorer.tree:render()
-+      end
-+    end,
-+    refresh = function()
-+      if is_explorer_alive(explorer) then
-+        refresh_module.refresh(explorer)
-+      end
-+    end,
-+  }
-+end
-+
-+local function setup_custom_keymaps(explorer, custom_keymaps, map_options)
-+  for _, keymap in ipairs(custom_keymaps or {}) do
-+    vim.keymap.set(
-+      "n",
-+      keymap.key,
-+      function()
-+        local node = explorer.tree:get_node()
-+        if node then
-+          keymap.callback(custom_keymap_context(explorer, node))
-+        end
-+      end,
-+      vim.tbl_extend("force", map_options, {
-+        buffer = explorer.bufnr,
-+        desc = keymap.desc,
-+      })
-+    )
-+  end
-+end
-+
- -- Setup keymaps for explorer panel
- -- @param explorer: explorer object with tree, split, git_root, on_file_select, etc.
- function M.setup(explorer)
-@@ -179,6 +222,8 @@ function M.setup(explorer)
-     bufnr = split.bufnr,
-   })
- 
-+  setup_custom_keymaps(explorer, explorer_keymaps.custom, map_options)
-+
-   -- Note: next_file/prev_file keymaps are set via view/keymaps.lua:setup_all_keymaps()
-   -- which uses set_tab_keymap to set them on all buffers including explorer
+   return {
+     left = left,
+-    right = {
+-      {
+-        segments = {
+-          { text = ctx.status, hl = ctx.status_hl },
+-          { text = string.rep(" ", ctx.status_right_margin), hl = "Normal" },
+-        },
+-      },
+-    },
++    right = right,
+     min_gap = 2,
+   }
  end
-diff --git a/lua/codediff/ui/explorer/line_highlights.lua b/lua/codediff/ui/explorer/line_highlights.lua
-new file mode 100644
-index 0000000..2069396
---- /dev/null
-+++ b/lua/codediff/ui/explorer/line_highlights.lua
-@@ -0,0 +1,66 @@
-+local M = {}
-+local style_groups = {}
-+local selected_groups = {}
-+local next_group = 0
-+
-+-- Expands shorthand hex colors, for example `#f00` to `#ff0000`.
-+local function expand_short_hex(value)
-+  if type(value) ~= "string" or not value:match("^#%x%x%x$") then
-+    return value
-+  end
-+  return "#" .. value:sub(2, 2):rep(2) .. value:sub(3, 3):rep(2) .. value:sub(4, 4):rep(2)
-+end
-+
-+-- Normalizes a hex shorthand or highlight table into an `nvim_set_hl` definition.
-+local function normalize_style(value)
-+  if type(value) == "string" then
-+    return { fg = expand_short_hex(value) }
-+  end
-+  local style = vim.deepcopy(value)
-+  for _, key in ipairs({ "fg", "bg", "sp" }) do
-+    style[key] = expand_short_hex(style[key])
-+  end
-+  return style
-+end
-+
-+-- Creates or refreshes a cached generated highlight group for a style definition.
-+local function generated_group(prefix, key, definition, cache)
-+  local name = cache[key]
-+  if not name then
-+    next_group = next_group + 1
-+    name = prefix .. next_group
-+    cache[key] = name
-+  end
-+  vim.api.nvim_set_hl(0, name, definition)
-+  return name
-+end
-+
-+-- Resolves a group name, hex color, or style table to a Neovim highlight group.
-+local function resolve_base(value)
-+  if value == nil then
-+    return "Normal"
-+  end
-+  if type(value) == "string" and not value:match("^#%x%x%x$") and not value:match("^#%x%x%x%x%x%x$") then
-+    return value
-+  end
-+  if type(value) ~= "string" and type(value) ~= "table" then
-+    error("Explorer formatter segment hl must be a highlight group, hex color, or highlight table")
-+  end
-+
-+  local style = normalize_style(value)
-+  return generated_group("CodeDiffExplorerFormat_", vim.inspect(style), style, style_groups)
-+end
-+
-+-- Resolves a segment highlight and overlays the selected-line background when provided.
-+function M.resolve(value, selected_bg)
-+  local base = resolve_base(value)
-+  if not selected_bg then
-+    return base
-+  end
-+  local definition = vim.api.nvim_get_hl(0, { name = base, link = false })
-+  definition.bg = selected_bg
-+  local key = base .. ":" .. selected_bg
-+  return generated_group("CodeDiffExplorerSelectedFormat_", key, definition, selected_groups)
-+end
-+
-+return M
-diff --git a/lua/codediff/ui/explorer/line_layout.lua b/lua/codediff/ui/explorer/line_layout.lua
-new file mode 100644
-index 0000000..f26ae47
---- /dev/null
-+++ b/lua/codediff/ui/explorer/line_layout.lua
-@@ -0,0 +1,196 @@
-+local Line = require("codediff.ui.lib.line")
-+local line_highlights = require("codediff.ui.explorer.line_highlights")
-+
-+local M = {}
-+
-+-- Returns the number of display cells occupied by text.
-+local function display_width(text)
-+  return vim.fn.strdisplaywidth(text or "")
-+end
-+
-+-- Sums the display widths of a list of styled text segments.
-+local function segments_width(segments)
-+  local width = 0
-+  for _, segment in ipairs(segments or {}) do
-+    width = width + display_width(segment.text)
-+  end
-+  return width
-+end
-+
-+-- Sums the display widths of all segments across layout regions.
-+local function regions_width(regions)
-+  local width = 0
-+  for _, region in ipairs(regions) do
-+    width = width + segments_width(region.segments)
-+  end
-+  return width
-+end
-+
-+-- Validates and copies non-empty formatter regions before mutating them for layout.
-+local function copy_regions(regions)
-+  local copied = {}
-+  for _, region in ipairs(regions or {}) do
-+    if region.truncate_priority ~= nil and type(region.truncate_priority) ~= "number" then
-+      error("Explorer formatter region truncate_priority must be numeric")
-+    end
-+
-+    local segments = {}
-+    for _, segment in ipairs(region.segments or {}) do
-+      if segment.text and segment.text ~= "" then
-+        segments[#segments + 1] = { text = tostring(segment.text), hl = segment.hl }
-+      end
-+    end
-+    if #segments > 0 then
-+      copied[#copied + 1] = {
-+        segments = segments,
-+        truncate_priority = region.truncate_priority,
-+      }
-+    end
-+  end
-+  return copied
-+end
-+
-+-- Appends text while merging adjacent segments that share a highlight.
-+local function append_text(segments, text, hl)
-+  if text == "" then
-+    return
-+  end
-+  local previous = segments[#segments]
-+  if previous and previous.hl == hl then
-+    previous.text = previous.text .. text
-+  else
-+    segments[#segments + 1] = { text = text, hl = hl }
-+  end
-+end
-+
-+-- Truncates styled segments to a display width and appends up to three dots.
-+local function truncate_segments(segments, max_width)
-+  if max_width <= 0 then
-+    return {}
-+  end
-+  if segments_width(segments) <= max_width then
-+    return segments
-+  end
-+
-+  local ellipsis = string.rep(".", math.min(3, max_width))
-+  local prefix_width = max_width - #ellipsis
-+  local truncated = {}
-+  local width = 0
-+  local ellipsis_hl = segments[1] and segments[1].hl or "Normal"
-+
-+  for _, segment in ipairs(segments) do
-+    for char in vim.gsplit(segment.text, "") do
-+      local char_width = display_width(char)
-+      if width + char_width > prefix_width then
-+        append_text(truncated, ellipsis, ellipsis_hl)
-+        return truncated
-+      end
-+      append_text(truncated, char, segment.hl)
-+      ellipsis_hl = segment.hl
-+      width = width + char_width
-+    end
-+  end
-+
-+  append_text(truncated, ellipsis, ellipsis_hl)
-+  return truncated
-+end
-+
-+-- Measures both layout sides plus their minimum gap when both are visible.
-+local function layout_width(left, right, min_gap)
-+  local left_width = regions_width(left)
-+  local right_width = regions_width(right)
-+  local gap = left_width > 0 and right_width > 0 and min_gap or 0
-+  return left_width + gap + right_width
-+end
-+
-+-- Shrinks one region by the current overflow amount.
-+local function shrink_region(region, overflow)
-+  local width = segments_width(region.segments)
-+  region.segments = truncate_segments(region.segments, math.max(0, width - overflow))
-+end
-+
-+-- Shrinks truncatable regions in ascending priority order until the layout fits.
-+local function shrink_priorities(left, right, max_width, min_gap)
-+  local candidates = {}
-+  for _, regions in ipairs({ left, right }) do
-+    for _, region in ipairs(regions) do
-+      if region.truncate_priority then
-+        candidates[#candidates + 1] = region
-+      end
-+    end
-+  end
-+  table.sort(candidates, function(a, b)
-+    return a.truncate_priority < b.truncate_priority
-+  end)
-+
-+  for _, region in ipairs(candidates) do
-+    local overflow = layout_width(left, right, min_gap) - max_width
-+    if overflow <= 0 then
-+      return
-+    end
-+    shrink_region(region, overflow)
-+  end
-+end
-+
-+-- Shrinks fixed left regions from the content edge only when prioritized regions were insufficient.
-+local function shrink_fixed_left(left, right, max_width, min_gap)
-+  for index = #left, 1, -1 do
-+    local overflow = layout_width(left, right, min_gap) - max_width
-+    if overflow <= 0 then
-+      return
-+    end
-+    shrink_region(left[index], overflow)
-+  end
-+end
-+
-+-- Shrinks fixed right regions from left to right as the final overflow fallback.
-+local function shrink_fixed_right(left, right, max_width, min_gap)
-+  for index = 1, #right do
-+    local overflow = layout_width(left, right, min_gap) - max_width
-+    if overflow <= 0 then
-+      return
-+    end
-+    shrink_region(right[index], overflow)
-+  end
-+end
-+
-+-- Appends resolved and selection-aware region segments to the rendered line.
-+local function append_regions(line, regions, selected_bg)
-+  for _, region in ipairs(regions) do
-+    for _, segment in ipairs(region.segments) do
-+      line:append(segment.text, line_highlights.resolve(segment.hl, selected_bg))
-+    end
-+  end
-+end
-+
-+-- Fits and renders a formatter layout into one highlighted explorer line.
-+function M.render(layout, max_width, selected_bg)
-+  if type(layout) ~= "table" then
-+    error("Explorer formatters must return a line layout")
-+  end
-+  local left = copy_regions(layout.left)
-+  local right = copy_regions(layout.right)
-+  local min_gap = math.max(0, layout.min_gap or 2)
-+  max_width = math.max(0, max_width)
-+
-+  shrink_priorities(left, right, max_width, min_gap)
-+  if layout_width(left, right, min_gap) > max_width then
-+    min_gap = math.max(0, min_gap - (layout_width(left, right, min_gap) - max_width))
-+  end
-+  shrink_fixed_left(left, right, max_width, min_gap)
-+  shrink_fixed_right(left, right, max_width, min_gap)
-+
-+  local line = Line()
-+  local left_width = regions_width(left)
-+  local right_width = regions_width(right)
-+  append_regions(line, left, selected_bg)
-+  if right_width > 0 then
-+    local gap = left_width > 0 and min_gap or 0
-+    local padding = math.max(gap, max_width - left_width - right_width)
-+    line:append(string.rep(" ", padding), line_highlights.resolve("Normal", selected_bg))
-+    append_regions(line, right, selected_bg)
-+  end
-+  return line
-+end
-+
-+return M
+@@ -64,7 +109,7 @@ function M.group(ctx)
+         truncate_priority = 2,
+       },
+       {
+-        segments = { { text = string.format(" (%d)", ctx.file_count), hl = "CodeDiffExplorerTreeGroup" } },
++        segments = group_summary(ctx),
+         truncate_priority = 1,
+       },
+     },
 diff --git a/lua/codediff/ui/explorer/line_stats.lua b/lua/codediff/ui/explorer/line_stats.lua
 new file mode 100644
 index 0000000..f9c443d
@@ -1068,46 +526,40 @@ index 0000000..f9c443d
 +
 +return M
 diff --git a/lua/codediff/ui/explorer/nodes.lua b/lua/codediff/ui/explorer/nodes.lua
-index 705edcd..8ca6323 100644
+index 95974dc..dae0e57 100644
 --- a/lua/codediff/ui/explorer/nodes.lua
 +++ b/lua/codediff/ui/explorer/nodes.lua
-@@ -3,8 +3,9 @@
- local M = {}
- 
+@@ -5,6 +5,7 @@ local M = {}
  local Tree = require("codediff.ui.lib.tree")
--local Line = require("codediff.ui.lib.line")
  local config = require("codediff.config")
-+local line_layout = require("codediff.ui.explorer.line_layout")
+ local line_layout = require("codediff.ui.explorer.line_layout")
 +local line_stats = require("codediff.ui.explorer.line_stats")
+ local default_formatters = require("codediff.ui.explorer.formatters")
  
  -- Merge artifact patterns (created by git mergetool)
- local MERGE_ARTIFACT_PATTERNS = {
-@@ -87,6 +88,24 @@ function M.get_folder_icon(is_open)
+@@ -88,6 +89,13 @@ function M.get_folder_icon(is_open)
    end
  end
  
-+local function normalize_file(file, group)
-+  return {
-+    path = file.path,
-+    old_path = file.old_path,
-+    group = group or file.group,
-+    status = file.status,
-+    stats = vim.deepcopy(file.line_stats or file.stats),
-+  }
-+end
-+
-+local function normalize_files(files, group)
-+  local normalized = {}
-+  for _, file in ipairs(files or {}) do
-+    normalized[#normalized + 1] = normalize_file(file, group)
++local function context_stats(stats)
++  if not config.options.explorer.line_stats.enabled then
++    return nil
 +  end
-+  return normalized
++  return vim.deepcopy(stats)
 +end
 +
- -- Create flat file nodes (list mode)
- function M.create_file_nodes(files, git_root, group)
-   local nodes = {}
-@@ -106,6 +125,7 @@ function M.create_file_nodes(files, git_root, group)
+ local function normalize_files(files, group)
+   local normalized = {}
+   for _, file in ipairs(files or {}) do
+@@ -96,6 +104,7 @@ local function normalize_files(files, group)
+       old_path = file.old_path,
+       group = group or file.group,
+       status = file.status,
++      stats = context_stats(file.line_stats),
+     }
+   end
+   return normalized
+@@ -120,6 +129,7 @@ function M.create_file_nodes(files, git_root, group)
          status_color = status_info.color,
          git_root = git_root,
          group = group,
@@ -1115,28 +567,15 @@ index 705edcd..8ca6323 100644
        },
      })
    end
-@@ -127,8 +147,9 @@ function M.create_tree_file_nodes(files, git_root, group)
-     for i = 1, #parts - 1 do
-       local dir_name = parts[i]
-       if not current[dir_name] then
--        current[dir_name] = { _is_dir = true, _children = {} }
-+        current[dir_name] = { _is_dir = true, _children = {}, _files = {} }
-       end
-+      current[dir_name]._files[#current[dir_name]._files + 1] = file
-       current = current[dir_name]._children
-     end
- 
-@@ -209,6 +230,9 @@ function M.create_tree_file_nodes(files, git_root, group)
-             dir_path = full_path,
+@@ -225,6 +235,7 @@ function M.create_tree_file_nodes(files, git_root, group)
              group = group,
              indent_state = node_indent_state,
-+            file_count = #item._files,
+             file_count = #item._files,
 +            stats = line_stats.sum(item._files),
-+            files = item._files,
+             files = item._files,
            },
          }, children)
-       else
-@@ -230,6 +254,7 @@ function M.create_tree_file_nodes(files, git_root, group)
+@@ -247,6 +258,7 @@ function M.create_tree_file_nodes(files, git_root, group)
              git_root = git_root,
              group = group,
              indent_state = node_indent_state,
@@ -1144,411 +583,79 @@ index 705edcd..8ca6323 100644
            },
          })
        end
-@@ -241,172 +266,133 @@ function M.create_tree_file_nodes(files, git_root, group)
-   return build_nodes(dir_tree, "", {})
- end
- 
---- Prepare node for rendering (format display)
--function M.prepare_node(node, max_width, selected_path, selected_group)
--  local line = Line()
--  local data = node.data or {}
--  local explorer_config = config.options.explorer or {}
--  local use_indent_markers = explorer_config.indent_markers ~= false -- default true
--
--  -- Helper to build indent string with markers (for tree mode)
--  local function build_indent_markers(indent_state)
--    if not indent_state or #indent_state == 0 then
--      return ""
--    end
--
--    if not use_indent_markers then
--      -- Plain space indentation
--      return string.rep("  ", #indent_state)
--    end
--
--    local indent_parts = {}
--    -- All levels except the last one: show edge or space
--    for i = 1, #indent_state - 1 do
--      if indent_state[i] then
--        -- Ancestor was last child, show space
--        indent_parts[#indent_parts + 1] = INDENT_MARKERS.none .. " "
--      else
--        -- Ancestor was not last, show edge
--        indent_parts[#indent_parts + 1] = INDENT_MARKERS.edge .. " "
--      end
--    end
--    -- Last level: show item or last marker
--    if indent_state[#indent_state] then
--      indent_parts[#indent_parts + 1] = INDENT_MARKERS.last .. " "
--    else
--      indent_parts[#indent_parts + 1] = INDENT_MARKERS.item .. " "
--    end
--    return table.concat(indent_parts)
-+local function build_indent_markers(indent_state, use_indent_markers)
-+  if not indent_state or #indent_state == 0 then
-+    return ""
-+  end
-+  if not use_indent_markers then
-+    return string.rep("  ", #indent_state)
-   end
- 
--  if data.type == "group" then
--    -- Group header
--    line:append(" ", "CodeDiffExplorerTreeGroup")
--    line:append(node.text, "CodeDiffExplorerTreeGroup")
--  elseif data.type == "directory" then
--    -- Directory node (tree view mode) - with indent markers
--    local indent = build_indent_markers(data.indent_state)
--    local folder_icon, folder_color = M.get_folder_icon(node:is_expanded())
--    if #indent > 0 then
--      line:append(indent, use_indent_markers and "NeoTreeIndentMarker" or "Normal")
--    end
--    line:append(folder_icon .. " ", folder_color or "Directory")
--    line:append(data.name, "Directory")
--  else
--    -- Match both path AND group to handle files in both staged and unstaged
--    local is_selected = data.path and data.path == selected_path and data.group == selected_group
--
--    -- Get selected background color once
--    local selected_bg = nil
--    if is_selected then
--      local sel_hl = vim.api.nvim_get_hl(0, { name = "CodeDiffExplorerSelected", link = false })
--      selected_bg = sel_hl.bg
--    end
--
--    -- Helper to get highlight with selected background but original foreground
--    local function get_hl(default)
--      if not is_selected then
--        return default or "Normal"
--      end
--      -- Create a combined highlight: original fg + selected bg
--      local base_hl_name = default or "Normal"
--      local combined_name = "CodeDiffExplorerSel_" .. base_hl_name:gsub("[^%w]", "_")
-+  local parts = {}
-+  for index = 1, #indent_state - 1 do
-+    parts[#parts + 1] = (indent_state[index] and INDENT_MARKERS.none or INDENT_MARKERS.edge) .. " "
-+  end
-+  parts[#parts + 1] = (indent_state[#indent_state] and INDENT_MARKERS.last or INDENT_MARKERS.item) .. " "
-+  return table.concat(parts)
-+end
- 
--      -- Get foreground from base highlight
--      local base_hl = vim.api.nvim_get_hl(0, { name = base_hl_name, link = false })
--      local fg = base_hl.fg
-+local function get_indent(node, data, explorer_config)
-+  local use_indent_markers = explorer_config.indent_markers ~= false
-+  if explorer_config.view_mode == "tree" and data.indent_state then
-+    return build_indent_markers(data.indent_state, use_indent_markers), use_indent_markers and "NeoTreeIndentMarker" or "Normal"
-+  end
-+  return string.rep("  ", node:get_depth() - 1), "Normal"
-+end
- 
--      -- Set the combined highlight (will be cached by nvim)
--      vim.api.nvim_set_hl(0, combined_name, { fg = fg, bg = selected_bg })
--      return combined_name
--    end
-+local function group_context(node, data, explorer_config)
-+  return {
-+    name = data.name,
-+    label = data.label,
-+    file_count = data.file_count,
-+    stats = explorer_config.line_stats.enabled and data.stats or nil,
-+    files = normalize_files(data.files, data.name),
-+    expanded = node:is_expanded(),
-+  }
-+end
- 
--    -- Check if we're in tree mode (directory is already shown in hierarchy)
--    local view_mode = explorer_config.view_mode or "list"
-+local function folder_context(node, data, explorer_config)
-+  local indent, indent_hl = get_indent(node, data, explorer_config)
-+  local icon, icon_hl = M.get_folder_icon(node:is_expanded())
-+  return {
-+    name = data.name,
-+    path = data.dir_path,
-+    group = data.group,
-+    file_count = data.file_count,
-+    stats = explorer_config.line_stats.enabled and data.stats or nil,
-+    files = normalize_files(data.files, data.group),
-+    indent = indent,
-+    indent_hl = indent_hl,
-+    icon = icon,
-+    icon_hl = icon_hl,
-+    expanded = node:is_expanded(),
-+  }
-+end
- 
--    -- File entry - VSCode style: filename (bold) + directory (dimmed) + status (right-aligned)
--    local indent
--    if view_mode == "tree" and data.indent_state then
--      indent = build_indent_markers(data.indent_state)
--      if #indent > 0 then
--        line:append(indent, get_hl(use_indent_markers and "NeoTreeIndentMarker" or "Normal"))
--      end
--    else
--      indent = string.rep("  ", node:get_depth() - 1)
--      line:append(indent, get_hl("Normal"))
--    end
-+local function file_context(node, data, explorer_config)
-+  local indent, indent_hl = get_indent(node, data, explorer_config)
-+  local full_path = data.path or node.text
-+  local filename = full_path:match("([^/]+)$") or full_path
-+  local directory = explorer_config.view_mode == "tree" and "" or full_path:sub(1, -(#filename + 1))
-+  return {
-+    path = full_path,
-+    filename = filename,
-+    directory = directory,
-+    old_path = data.old_path,
-+    group = data.group,
-+    file_count = 1,
-+    stats = explorer_config.line_stats.enabled and data.line_stats or nil,
-+    status = data.status_symbol or "",
-+    status_code = data.status,
-+    status_hl = data.status_color,
-+    status_right_margin = math.max(0, explorer_config.status_right_margin or 1),
-+    indent = indent,
-+    indent_hl = indent_hl,
-+    icon = data.icon or "",
-+    icon_hl = data.icon_color,
-+  }
-+end
- 
--    local icon_part = ""
--    if data.icon then
--      icon_part = data.icon .. " "
--      line:append(icon_part, get_hl(data.icon_color))
--    end
-+local function selected_background(is_selected)
-+  if not is_selected then
-+    return nil
-+  end
-+  return vim.api.nvim_get_hl(0, { name = "CodeDiffExplorerSelected", link = false }).bg
-+end
- 
--    -- Status symbol at the end (e.g., "M", "D", "??")
--    local status_symbol = data.status_symbol or ""
--
--    -- Split path into filename and directory
--    local full_path = data.path or node.text
--    local filename = full_path:match("([^/]+)$") or full_path
--    -- In tree mode, don't show directory (it's in the hierarchy)
--    local directory = (view_mode == "tree") and "" or full_path:sub(1, -(#filename + 1))
--
--    -- Calculate how much width we've used and reserve for status
--    local status_margin = config.options.explorer.status_right_margin or 1
--    local used_width = vim.fn.strdisplaywidth(indent) + vim.fn.strdisplaywidth(icon_part)
--    -- Reserve = symbol + 2 cells of minimum gap from content + configurable trailing margin
--    local status_reserve = vim.fn.strdisplaywidth(status_symbol) + 2 + status_margin
--    local available_for_content = max_width - used_width - status_reserve
--
--    -- Show: filename + full directory path, truncate directory from left if needed
--    local filename_len = vim.fn.strdisplaywidth(filename)
--    local directory_len = vim.fn.strdisplaywidth(directory)
--    local space_len = (directory_len > 0) and 1 or 0
--
--    if filename_len + space_len + directory_len > available_for_content then
--      -- Truncate directory from the right (keep the start)
--      local available_for_dir = available_for_content - filename_len - space_len
--      if available_for_dir > 3 then
--        local ellipsis = "..."
--        local chars_to_keep = available_for_dir - vim.fn.strdisplaywidth(ellipsis)
--
--        -- Truncate directory by display width, not byte index
--        local byte_pos = 0
--        local accumulated_width = 0
--        for char in vim.gsplit(directory, "") do
--          local char_width = vim.fn.strdisplaywidth(char)
--          if accumulated_width + char_width > chars_to_keep then
--            break
--          end
--          accumulated_width = accumulated_width + char_width
--          byte_pos = byte_pos + #char
--        end
--        directory = directory:sub(1, byte_pos) .. ellipsis
--      else
--        -- Not enough space for directory, just show filename
--        directory = ""
--        space_len = 0
--      end
--    end
-+-- Build the user-facing entry passed to custom explorer keymap callbacks.
-+function M.get_entry(node)
-+  local data = node.data or {}
-+  if data.type == "group" then
-+    return {
-+      kind = "group",
-+      name = data.name,
-+      group = data.name,
-+      stats = vim.deepcopy(data.stats),
-+      files = normalize_files(data.files, data.name),
-+    }
-+  end
-+  if data.type == "directory" then
-+    return {
-+      kind = "directory",
-+      name = data.name,
-+      path = data.dir_path,
-+      group = data.group,
-+      stats = vim.deepcopy(data.stats),
-+      files = normalize_files(data.files, data.group),
-+    }
-+  end
- 
--    -- Append filename (normal weight) and directory (dimmed)
--    line:append(filename, get_hl("Normal"))
--    if #directory > 0 then
--      line:append(" ", get_hl("Normal"))
--      line:append(directory, get_hl("ExplorerDirectorySmall"))
--    end
-+  local entry = normalize_file(data, data.group)
-+  entry.kind = "file"
-+  return entry
-+end
- 
--    -- Right-align status symbol; trailing `status_margin` cells keep it visible against the window edge
--    local content_len = vim.fn.strdisplaywidth(filename) + space_len + vim.fn.strdisplaywidth(directory)
--    local padding_needed = math.max(2, available_for_content - content_len + 2)
--    line:append(string.rep(" ", padding_needed), get_hl("Normal"))
--    line:append(status_symbol, get_hl(data.status_color))
--    if status_margin > 0 then
--      line:append(string.rep(" ", status_margin), get_hl("Normal"))
--    end
-+-- Prepare node for rendering (format display)
-+function M.prepare_node(node, max_width, selected_path, selected_group)
-+  local data = node.data or {}
-+  local explorer_config = config.options.explorer
-+  local formatters = explorer_config.formatters
-+  if data.type == "group" then
-+    return line_layout.render(formatters.group(group_context(node, data, explorer_config)), max_width)
-+  end
-+  if data.type == "directory" then
-+    return line_layout.render(formatters.folder(folder_context(node, data, explorer_config)), max_width)
-   end
- 
--  return line
-+  local is_selected = data.path == selected_path and data.group == selected_group
-+  local context = file_context(node, data, explorer_config)
-+  return line_layout.render(formatters.file(context), max_width, selected_background(is_selected))
- end
- 
- return M
+@@ -287,6 +299,7 @@ local function group_context(node, data)
+     name = data.name,
+     label = data.label,
+     file_count = data.file_count,
++    stats = context_stats(data.stats),
+     files = normalize_files(data.files, data.name),
+     expanded = node:is_expanded(),
+   }
+@@ -300,6 +313,7 @@ local function folder_context(node, data, explorer_config)
+     path = data.dir_path,
+     group = data.group,
+     file_count = data.file_count,
++    stats = context_stats(data.stats),
+     files = normalize_files(data.files, data.group),
+     indent = indent,
+     indent_hl = indent_hl,
+@@ -320,6 +334,7 @@ local function file_context(node, data, explorer_config)
+     directory = directory,
+     old_path = data.old_path,
+     group = data.group,
++    stats = context_stats(data.line_stats),
+     status = data.status_symbol or "",
+     status_hl = data.status_color,
+     status_right_margin = math.max(0, explorer_config.status_right_margin or 1),
 diff --git a/lua/codediff/ui/explorer/refresh.lua b/lua/codediff/ui/explorer/refresh.lua
-index ce30bf6..c27a7a5 100644
+index ec1266d..a9e5897 100644
 --- a/lua/codediff/ui/explorer/refresh.lua
 +++ b/lua/codediff/ui/explorer/refresh.lua
-@@ -392,11 +392,11 @@ function M.refresh(explorer)
+@@ -329,11 +329,11 @@ function M.refresh(explorer)
      local diff = dir_mod.diff_directories(explorer.dir1, explorer.dir2)
      process_result(nil, diff.status_result)
    elseif explorer.base_revision and explorer.target_revision and explorer.target_revision ~= "WORKING" then
--    git.get_diff_revisions(explorer.base_revision, explorer.target_revision, explorer.git_root, process_result)
-+    git.get_diff_revisions_with_line_stats(explorer.base_revision, explorer.target_revision, explorer.git_root, config.options.explorer.line_stats, process_result)
+-    git.get_diff_revisions(explorer.base_revision, explorer.target_revision, explorer.git_root, process_result, explorer.pathspec)
++    git.get_diff_revisions_with_line_stats(explorer.base_revision, explorer.target_revision, explorer.git_root, process_result, explorer.pathspec)
    elseif explorer.base_revision then
--    git.get_diff_revision(explorer.base_revision, explorer.git_root, process_result)
-+    git.get_diff_revision_with_line_stats(explorer.base_revision, explorer.git_root, config.options.explorer.line_stats, process_result)
+-    git.get_diff_revision(explorer.base_revision, explorer.git_root, process_result, explorer.pathspec)
++    git.get_diff_revision_with_line_stats(explorer.base_revision, explorer.git_root, process_result, explorer.pathspec)
    else
--    git.get_status(explorer.git_root, process_result)
-+    git.get_status_with_line_stats(explorer.git_root, config.options.explorer.line_stats, process_result)
+-    git.get_status(explorer.git_root, process_result, explorer.pathspec)
++    git.get_status_with_line_stats(explorer.git_root, process_result, explorer.pathspec)
    end
  end
  
 diff --git a/lua/codediff/ui/explorer/tree.lua b/lua/codediff/ui/explorer/tree.lua
-index 2f55cd8..13aed14 100644
+index d0330d2..5e9e91a 100644
 --- a/lua/codediff/ui/explorer/tree.lua
 +++ b/lua/codediff/ui/explorer/tree.lua
-@@ -6,6 +6,7 @@ local Tree = require("codediff.ui.lib.tree")
+@@ -5,6 +5,7 @@ local M = {}
+ local Tree = require("codediff.ui.lib.tree")
  local config = require("codediff.config")
  local filter = require("codediff.ui.explorer.filter")
- local nodes = require("codediff.ui.explorer.nodes")
 +local line_stats = require("codediff.ui.explorer.line_stats")
+ local nodes = require("codediff.ui.explorer.nodes")
  
  -- Filter files based on explorer.file_filter config
- -- Returns files that should be shown (not ignored)
-@@ -17,6 +18,21 @@ local function filter_files(files)
-   return filter.apply(files, ignore_patterns)
- end
- 
-+-- Creates a collapsible heading such as "Changes (3 · +42 -8)" above its file nodes.
-+local function create_group_node(label, name, files, children)
-+  return Tree.Node({
-+    text = string.format("%s (%d)", label, #files),
-+    data = {
-+      type = "group",
-+      name = name,
-+      label = label,
-+      file_count = #files,
+@@ -25,6 +26,7 @@ local function create_group_node(label, name, files, children)
+       name = name,
+       label = label,
+       file_count = #files,
 +      stats = line_stats.sum(files),
-+      files = files,
-+    },
-+  }, children)
-+end
-+
- -- Create tree data structure from git status result
- function M.create_tree_data(status_result, git_root, base_revision, is_dir_mode, visible_groups)
-   local explorer_config = config.options.explorer or {}
-@@ -36,10 +52,7 @@ function M.create_tree_data(status_result, git_root, base_revision, is_dir_mode,
-   if is_dir_mode or base_revision then
-     -- Dir or revision mode: single group showing all changes
-     return {
--      Tree.Node({
--        text = string.format("Changes (%d)", #unstaged),
--        data = { type = "group", name = "unstaged" },
--      }, unstaged_nodes),
-+      create_group_node("Changes", "unstaged", unstaged, unstaged_nodes),
-     }
-   else
-     -- Status mode: separate conflicts/staged/unstaged groups
-@@ -47,35 +60,17 @@ function M.create_tree_data(status_result, git_root, base_revision, is_dir_mode,
- 
-     -- Conflicts first (most important)
-     if #conflict_nodes > 0 and visible_groups.conflicts ~= false then
--      table.insert(
--        tree_nodes,
--        Tree.Node({
--          text = string.format("Merge Changes (%d)", #conflicts),
--          data = { type = "group", name = "conflicts" },
--        }, conflict_nodes)
--      )
-+      table.insert(tree_nodes, create_group_node("Merge Changes", "conflicts", conflicts, conflict_nodes))
-     end
- 
-     -- Unstaged changes
-     if visible_groups.unstaged ~= false then
--      table.insert(
--        tree_nodes,
--        Tree.Node({
--          text = string.format("Changes (%d)", #unstaged),
--          data = { type = "group", name = "unstaged" },
--        }, unstaged_nodes)
--      )
-+      table.insert(tree_nodes, create_group_node("Changes", "unstaged", unstaged, unstaged_nodes))
-     end
- 
-     -- Staged changes
-     if visible_groups.staged ~= false then
--      table.insert(
--        tree_nodes,
--        Tree.Node({
--          text = string.format("Staged Changes (%d)", #staged),
--          data = { type = "group", name = "staged" },
--        }, staged_nodes)
--      )
-+      table.insert(tree_nodes, create_group_node("Staged Changes", "staged", staged, staged_nodes))
-     end
- 
-     return tree_nodes
+       files = files,
+     },
+   }, children)
 diff --git a/lua/codediff/ui/highlights.lua b/lua/codediff/ui/highlights.lua
-index d6afce5..3c21c4e 100644
+index d6afce5..0ebe8eb 100644
 --- a/lua/codediff/ui/highlights.lua
 +++ b/lua/codediff/ui/highlights.lua
-@@ -253,6 +253,16 @@ function M.setup()
+@@ -253,6 +253,13 @@ function M.setup()
      return ok and hl and (hl.fg or hl.foreground)
    end
  
-+  -- Added and Removed are only available in Neovim 0.10+.
 +  local insertion_highlight = hl_exists("Added") and "Added" or "DiagnosticOk"
 +  local deletion_highlight = hl_exists("Removed") and "Removed" or "DiagnosticError"
-+
-+  vim.api.nvim_set_hl(0, "CodeDiffExplorerStat", { link = "NonText", default = true })
 +  vim.api.nvim_set_hl(0, "CodeDiffExplorerStatFiles", { link = "Number", default = true })
 +  vim.api.nvim_set_hl(0, "CodeDiffExplorerStatInsertions", { link = insertion_highlight, default = true })
 +  vim.api.nvim_set_hl(0, "CodeDiffExplorerStatDeletions", { link = deletion_highlight, default = true })
@@ -1559,15 +666,16 @@ index d6afce5..3c21c4e 100644
    -- @param user_value string|nil User config value (highlight group or hex color)
 diff --git a/tests/core/git_line_stats_spec.lua b/tests/core/git_line_stats_spec.lua
 new file mode 100644
-index 0000000..24056a8
+index 0000000..7df7e9b
 --- /dev/null
 +++ b/tests/core/git_line_stats_spec.lua
-@@ -0,0 +1,200 @@
+@@ -0,0 +1,251 @@
++local config = require("codediff.config")
 +local git = require("codediff.core.git")
 +local h = dofile("tests/helpers.lua")
 +
 +local get_file = function(files, path)
-+  for _, file in ipairs(files) do
++  for _, file in ipairs(files or {}) do
 +    if file.path == path then
 +      return file
 +    end
@@ -1596,14 +704,6 @@ index 0000000..24056a8
 +  return result
 +end
 +
-+local get_options = function()
-+  return {
-+    enabled = true,
-+    count_untracked = false,
-+    max_untracked_bytes = 1024 * 1024,
-+  }
-+end
-+
 +local write_raw_file = function(path, contents)
 +  local uv = vim.uv or vim.loop
 +  local fd = assert(uv.fs_open(path, "w", 420))
@@ -1614,8 +714,7 @@ index 0000000..24056a8
 +local commit_all = function(repo, message)
 +  repo.git("add -A")
 +  repo.git("commit -m " .. message)
-+  local output = repo.git("rev-parse HEAD")
-+  return vim.trim(output)
++  return vim.trim(repo.git("rev-parse HEAD"))
 +end
 +
 +describe("Git line stats", function()
@@ -1623,47 +722,67 @@ index 0000000..24056a8
 +  local base_revision
 +
 +  before_each(function()
++    config.options = vim.deepcopy(config.defaults)
++    config.options.explorer.line_stats.enabled = true
 +    repo = h.create_temp_git_repo()
 +    repo.write_file("tracked.txt", { "one", "two" })
 +    repo.write_file("renamed.txt", { "same" })
++    repo.write_file("deleted.txt", { "gone", "soon" })
++    repo.write_file("conflict.txt", { "base" })
++    repo.write_file("src/included.txt", { "base" })
++    repo.write_file("outside.txt", { "base" })
 +    base_revision = commit_all(repo, "initial")
 +  end)
 +
 +  after_each(function()
++    config.options = vim.deepcopy(config.defaults)
 +    repo.cleanup()
 +  end)
 +
-+  it("adds staged, unstaged, renamed, binary, and optional untracked stats", function()
-+    repo.write_file("tracked.txt", { "one", "changed", "three" })
++  it("adds separate staged, unstaged, rename, deletion, and binary stats", function()
++    repo.write_file("tracked.txt", { "one", "staged", "three" })
++    repo.git("add tracked.txt")
++    repo.write_file("tracked.txt", { "one", "working", "three", "four" })
 +    repo.write_file("staged.txt", { "alpha", "beta" })
 +    write_raw_file(repo.path("binary.dat"), "binary\0content")
 +    repo.git("add staged.txt binary.dat")
 +    repo.git("mv renamed.txt moved.txt")
-+    repo.write_file("untracked.txt", { "first", "second" })
++    repo.git("rm deleted.txt")
 +
-+    local options = get_options()
 +    local result = expect_result(function(callback)
-+      git.get_status_with_line_stats(repo.dir, options, callback)
++      git.get_status_with_line_stats(repo.dir, callback)
 +    end)
 +
 +    assert.same({ insertions = 2, deletions = 1, binary = false }, get_file(result.unstaged, "tracked.txt").line_stats)
++    assert.same({ insertions = 2, deletions = 1, binary = false }, get_file(result.staged, "tracked.txt").line_stats)
 +    assert.same({ insertions = 2, deletions = 0, binary = false }, get_file(result.staged, "staged.txt").line_stats)
 +    assert.same({ insertions = 0, deletions = 0, binary = false }, get_file(result.staged, "moved.txt").line_stats)
++    assert.same({ insertions = 0, deletions = 2, binary = false }, get_file(result.staged, "deleted.txt").line_stats)
 +    assert.same({ insertions = 0, deletions = 0, binary = true }, get_file(result.staged, "binary.dat").line_stats)
-+    assert.is_nil(get_file(result.unstaged, "untracked.txt").line_stats)
++  end)
 +
-+    options.count_untracked = true
-+    options.max_untracked_bytes = 1
-+    result = expect_result(function(callback)
-+      git.get_status_with_line_stats(repo.dir, options, callback)
++  it("optionally counts bounded untracked text and binary files", function()
++    write_raw_file(repo.path("untracked.txt"), "first\nsecond")
++    write_raw_file(repo.path("untracked.bin"), "binary\0content")
++
++    local result = expect_result(function(callback)
++      git.get_status_with_line_stats(repo.dir, callback)
 +    end)
 +    assert.is_nil(get_file(result.unstaged, "untracked.txt").line_stats)
 +
-+    options.max_untracked_bytes = 1024 * 1024
++    config.options.explorer.line_stats.count_untracked = true
++    config.options.explorer.line_stats.max_untracked_bytes = 1
 +    result = expect_result(function(callback)
-+      git.get_status_with_line_stats(repo.dir, options, callback)
++      git.get_status_with_line_stats(repo.dir, callback)
++    end)
++    assert.is_nil(get_file(result.unstaged, "untracked.txt").line_stats)
++
++    config.options.explorer.line_stats.max_untracked_bytes = 1024 * 1024
++    result = expect_result(function(callback)
++      git.get_status_with_line_stats(repo.dir, callback)
 +    end)
 +    assert.same({ insertions = 2, deletions = 0, binary = false }, get_file(result.unstaged, "untracked.txt").line_stats)
++    assert.same({ insertions = 0, deletions = 0, binary = true }, get_file(result.unstaged, "untracked.bin").line_stats)
 +  end)
 +
 +  it("adds aggregate working tree stats relative to one revision", function()
@@ -1672,66 +791,106 @@ index 0000000..24056a8
 +    repo.git("add staged.txt")
 +    repo.write_file("untracked.txt", { "first", "second" })
 +
-+    local options = get_options()
 +    local result = expect_result(function(callback)
-+      git.get_diff_revision_with_line_stats(base_revision, repo.dir, options, callback)
++      git.get_diff_revision_with_line_stats(base_revision, repo.dir, callback)
 +    end)
-+
 +    assert.same({ insertions = 2, deletions = 1, binary = false }, get_file(result.unstaged, "tracked.txt").line_stats)
 +    assert.same({ insertions = 2, deletions = 0, binary = false }, get_file(result.unstaged, "staged.txt").line_stats)
 +    assert.is_nil(get_file(result.unstaged, "untracked.txt").line_stats)
 +
-+    options.count_untracked = true
++    config.options.explorer.line_stats.count_untracked = true
 +    result = expect_result(function(callback)
-+      git.get_diff_revision_with_line_stats(base_revision, repo.dir, options, callback)
++      git.get_diff_revision_with_line_stats(base_revision, repo.dir, callback)
 +    end)
 +    assert.same({ insertions = 2, deletions = 0, binary = false }, get_file(result.unstaged, "untracked.txt").line_stats)
 +  end)
 +
-+  it("adds destination path stats between two revisions", function()
++  it("adds destination-path stats between two revisions", function()
 +    repo.write_file("tracked.txt", { "one", "changed", "three" })
 +    repo.git("mv renamed.txt moved.txt")
 +    write_raw_file(repo.path("binary.dat"), "binary\0content")
 +    local target_revision = commit_all(repo, "changes")
 +
 +    local result = expect_result(function(callback)
-+      git.get_diff_revisions_with_line_stats(base_revision, target_revision, repo.dir, get_options(), callback)
++      git.get_diff_revisions_with_line_stats(base_revision, target_revision, repo.dir, callback)
 +    end)
-+
 +    assert.same({ insertions = 2, deletions = 1, binary = false }, get_file(result.unstaged, "tracked.txt").line_stats)
 +    assert.same({ insertions = 0, deletions = 0, binary = false }, get_file(result.unstaged, "moved.txt").line_stats)
 +    assert.same({ insertions = 0, deletions = 0, binary = true }, get_file(result.unstaged, "binary.dat").line_stats)
 +    assert.is_nil(get_file(result.unstaged, "renamed.txt"))
 +  end)
 +
-+  it("returns base results without stats when disabled", function()
++  it("attaches stats to conflicts", function()
++    repo.git("checkout -b conflict-side")
++    repo.write_file("conflict.txt", { "side" })
++    commit_all(repo, "side")
++    repo.git("checkout main")
++    repo.write_file("conflict.txt", { "main" })
++    commit_all(repo, "main")
++    repo.git("merge conflict-side")
++
++    local result = expect_result(function(callback)
++      git.get_status_with_line_stats(repo.dir, callback)
++    end)
++    local stats = get_file(result.conflicts, "conflict.txt").line_stats
++    assert.is_not_nil(stats)
++    assert.is_number(stats.insertions)
++    assert.is_number(stats.deletions)
++    assert.is_false(stats.binary)
++  end)
++
++  it("preserves pathspecs in all explorer modes", function()
++    repo.write_file("src/included.txt", { "base", "included" })
++    repo.write_file("outside.txt", { "base", "outside" })
++
++    local status = expect_result(function(callback)
++      git.get_status_with_line_stats(repo.dir, callback, { "src" })
++    end)
++    assert.is_not_nil(get_file(status.unstaged, "src/included.txt").line_stats)
++    assert.is_nil(get_file(status.unstaged, "outside.txt"))
++
++    local one_revision = expect_result(function(callback)
++      git.get_diff_revision_with_line_stats(base_revision, repo.dir, callback, { "src" })
++    end)
++    assert.is_not_nil(get_file(one_revision.unstaged, "src/included.txt").line_stats)
++    assert.is_nil(get_file(one_revision.unstaged, "outside.txt"))
++
++    local target_revision = commit_all(repo, "pathspec")
++    local two_revisions = expect_result(function(callback)
++      git.get_diff_revisions_with_line_stats(base_revision, target_revision, repo.dir, callback, { "src" })
++    end)
++    assert.is_not_nil(get_file(two_revisions.unstaged, "src/included.txt").line_stats)
++    assert.is_nil(get_file(two_revisions.unstaged, "outside.txt"))
++  end)
++
++  it("returns unchanged base results when disabled", function()
 +    repo.write_file("tracked.txt", { "one", "committed", "three" })
 +    local target_revision = commit_all(repo, "target")
 +    repo.write_file("tracked.txt", { "one", "working", "three", "four" })
-+    local options = { enabled = false }
++    config.options.explorer.line_stats.enabled = false
 +    local cases = {
 +      {
 +        base = function(callback)
-+          git.get_status(repo.dir, callback)
++          git.get_status(repo.dir, callback, { "tracked.txt" })
 +        end,
 +        with_stats = function(callback)
-+          git.get_status_with_line_stats(repo.dir, options, callback)
++          git.get_status_with_line_stats(repo.dir, callback, { "tracked.txt" })
 +        end,
 +      },
 +      {
 +        base = function(callback)
-+          git.get_diff_revision(target_revision, repo.dir, callback)
++          git.get_diff_revision(target_revision, repo.dir, callback, { "tracked.txt" })
 +        end,
 +        with_stats = function(callback)
-+          git.get_diff_revision_with_line_stats(target_revision, repo.dir, options, callback)
++          git.get_diff_revision_with_line_stats(target_revision, repo.dir, callback, { "tracked.txt" })
 +        end,
 +      },
 +      {
 +        base = function(callback)
-+          git.get_diff_revisions(base_revision, target_revision, repo.dir, callback)
++          git.get_diff_revisions(base_revision, target_revision, repo.dir, callback, { "tracked.txt" })
 +        end,
 +        with_stats = function(callback)
-+          git.get_diff_revisions_with_line_stats(base_revision, target_revision, repo.dir, options, callback)
++          git.get_diff_revisions_with_line_stats(base_revision, target_revision, repo.dir, callback, { "tracked.txt" })
 +        end,
 +      },
 +    }
@@ -1741,18 +900,17 @@ index 0000000..24056a8
 +    end
 +  end)
 +
-+  it("propagates invalid repository and revision errors", function()
-+    local options = get_options()
++  it("propagates repository and revision errors", function()
 +    local missing_revision = "missing-line-stats-revision"
 +    local cases = {
 +      function(callback)
-+        git.get_status_with_line_stats(repo.path("missing"), options, callback)
++        git.get_status_with_line_stats(repo.path("missing"), callback)
 +      end,
 +      function(callback)
-+        git.get_diff_revision_with_line_stats(missing_revision, repo.dir, options, callback)
++        git.get_diff_revision_with_line_stats(missing_revision, repo.dir, callback)
 +      end,
 +      function(callback)
-+        git.get_diff_revisions_with_line_stats(base_revision, missing_revision, repo.dir, options, callback)
++        git.get_diff_revisions_with_line_stats(base_revision, missing_revision, repo.dir, callback)
 +      end,
 +    }
 +
@@ -1763,166 +921,43 @@ index 0000000..24056a8
 +    end
 +  end)
 +end)
-diff --git a/tests/ui/explorer/custom_keymaps_spec.lua b/tests/ui/explorer/custom_keymaps_spec.lua
-new file mode 100644
-index 0000000..ca9f62b
---- /dev/null
-+++ b/tests/ui/explorer/custom_keymaps_spec.lua
-@@ -0,0 +1,117 @@
-+local Tree = require("codediff.ui.lib.tree")
-+local Line = require("codediff.ui.lib.line")
-+local config = require("codediff.config")
-+local keymaps = require("codediff.ui.explorer.keymaps")
-+local refresh = require("codediff.ui.explorer.refresh")
-+
-+local original_refresh = refresh.refresh
-+
-+local reset_config = function()
-+  config.options = vim.deepcopy(config.defaults)
-+end
-+
-+local render_line = function(reviewed, node)
-+  local line = Line()
-+  line:append(node.data.type == "group" and "Changes" or (reviewed and "✓ file.lua" or "file.lua"), "Normal")
-+  return line
-+end
-+
-+describe("Explorer custom keymaps", function()
-+  before_each(function()
-+    reset_config()
-+    refresh.refresh = original_refresh
-+  end)
-+
-+  after_each(function()
-+    refresh.refresh = original_refresh
-+    reset_config()
-+  end)
-+
-+  it("passes a consistent entry context and redraws without rebuilding the tree", function()
-+    local previous_bufnr = vim.api.nvim_get_current_buf()
-+    local bufnr = vim.api.nvim_create_buf(false, true)
-+    vim.api.nvim_win_set_buf(0, bufnr)
-+
-+    local reviewed = false
-+    local received
-+    local file = { path = "file.lua", status = "M", line_stats = { insertions = 4, deletions = 2, binary = false } }
-+    local file_node = Tree.Node({
-+      text = file.path,
-+      data = {
-+        path = file.path,
-+        status = file.status,
-+        group = "unstaged",
-+        line_stats = file.line_stats,
-+      },
-+    })
-+    local group_node = Tree.Node({
-+      text = "Changes",
-+      data = {
-+        type = "group",
-+        name = "unstaged",
-+        label = "Changes",
-+        file_count = 1,
-+        files = { file },
-+      },
-+    }, { file_node })
-+    local tree = Tree({
-+      bufnr = bufnr,
-+      nodes = { group_node },
-+      prepare_node = function(node)
-+        return render_line(reviewed, node)
-+      end,
-+    })
-+    group_node:expand()
-+    tree:render()
-+    vim.api.nvim_win_set_cursor(0, { 2, 0 })
-+
-+    local explorer = {
-+      bufnr = bufnr,
-+      winid = vim.api.nvim_get_current_win(),
-+      tabpage = vim.api.nvim_get_current_tabpage(),
-+      split = { bufnr = bufnr },
-+      tree = tree,
-+    }
-+    config.options.keymaps.explorer.custom = {
-+      {
-+        key = "m",
-+        desc = "Toggle reviewed",
-+        callback = function(ctx)
-+          received = ctx
-+          reviewed = not reviewed
-+          ctx.redraw()
-+        end,
-+      },
-+    }
-+    keymaps.setup(explorer)
-+
-+    local mapping = vim.fn.maparg("m", "n", false, true)
-+    assert.equals("Toggle reviewed", mapping.desc)
-+    mapping.callback()
-+
-+    assert.same({
-+      kind = "file",
-+      path = "file.lua",
-+      group = "unstaged",
-+      status = "M",
-+      stats = { insertions = 4, deletions = 2, binary = false },
-+    }, received.entry)
-+    assert.equals("✓ file.lua", vim.api.nvim_buf_get_lines(bufnr, 1, 2, false)[1])
-+    assert.is_true(group_node:is_expanded())
-+    assert.equals(file_node, tree:get_node(file_node:get_id()))
-+
-+    local refresh_calls = 0
-+    refresh.refresh = function(value)
-+      assert.equals(explorer, value)
-+      refresh_calls = refresh_calls + 1
-+    end
-+    received.refresh()
-+    assert.equals(1, refresh_calls)
-+
-+    vim.api.nvim_win_set_buf(0, previous_bufnr)
-+    vim.api.nvim_buf_delete(bufnr, { force = true })
-+    assert.has_no.errors(received.redraw)
-+    assert.has_no.errors(received.refresh)
-+    assert.equals(1, refresh_calls)
-+  end)
-+end)
 diff --git a/tests/ui/explorer/explorer_modules_spec.lua b/tests/ui/explorer/explorer_modules_spec.lua
-index fc5d998..b5a13ea 100644
+index 223a8e0..2777e29 100644
 --- a/tests/ui/explorer/explorer_modules_spec.lua
 +++ b/tests/ui/explorer/explorer_modules_spec.lua
-@@ -33,6 +33,24 @@ describe("Explorer submodules", function()
-       assert.is_not_nil(mod)
+@@ -37,12 +37,15 @@ describe("Explorer submodules", function()
+       local formatters_ok, formatters = pcall(require, "codediff.ui.explorer.formatters")
+       local highlights_ok, highlights = pcall(require, "codediff.ui.explorer.line_highlights")
+       local layout_ok, layout = pcall(require, "codediff.ui.explorer.line_layout")
++      local stats_ok, stats = pcall(require, "codediff.ui.explorer.line_stats")
+       assert.is_true(formatters_ok, "Failed to require codediff.ui.explorer.formatters")
+       assert.is_true(highlights_ok, "Failed to require codediff.ui.explorer.line_highlights")
+       assert.is_true(layout_ok, "Failed to require codediff.ui.explorer.line_layout")
++      assert.is_true(stats_ok, "Failed to require codediff.ui.explorer.line_stats")
+       assert.is_not_nil(formatters)
+       assert.is_not_nil(highlights)
+       assert.is_not_nil(layout)
++      assert.is_not_nil(stats)
      end)
  
-+    it("loads line stats module", function()
-+      local ok, mod = pcall(require, "codediff.ui.explorer.line_stats")
-+      assert.is_true(ok, "Failed to require codediff.ui.explorer.line_stats")
-+      assert.is_not_nil(mod)
-+    end)
-+
-+    it("loads formatter and line rendering modules", function()
-+      local formatters_ok, formatters = pcall(require, "codediff.ui.explorer.formatters")
-+      local highlights_ok, highlights = pcall(require, "codediff.ui.explorer.line_highlights")
-+      local layout_ok, layout = pcall(require, "codediff.ui.explorer.line_layout")
-+      assert.is_true(formatters_ok, "Failed to require codediff.ui.explorer.formatters")
-+      assert.is_true(highlights_ok, "Failed to require codediff.ui.explorer.line_highlights")
-+      assert.is_true(layout_ok, "Failed to require codediff.ui.explorer.line_layout")
-+      assert.is_not_nil(formatters)
-+      assert.is_not_nil(highlights)
-+      assert.is_not_nil(layout)
-+    end)
-+
      it("loads init facade", function()
-       local ok, mod = pcall(require, "codediff.ui.explorer")
-       assert.is_true(ok, "Failed to require codediff.ui.explorer")
+@@ -94,5 +97,9 @@ describe("Explorer submodules", function()
+       assert.is_function(mod.folder)
+       assert.is_function(mod.group)
+     end)
++
++    it("line stats exports aggregation", function()
++      assert.is_function(require("codediff.ui.explorer.line_stats").sum)
++    end)
+   end)
+ end)
 diff --git a/tests/ui/explorer/line_stats_spec.lua b/tests/ui/explorer/line_stats_spec.lua
 new file mode 100644
-index 0000000..b7816d0
+index 0000000..cec6cba
 --- /dev/null
 +++ b/tests/ui/explorer/line_stats_spec.lua
-@@ -0,0 +1,184 @@
+@@ -0,0 +1,152 @@
 +local config = require("codediff.config")
-+local line_layout = require("codediff.ui.explorer.line_layout")
 +local line_stats = require("codediff.ui.explorer.line_stats")
 +local nodes = require("codediff.ui.explorer.nodes")
 +local tree = require("codediff.ui.explorer.tree")
@@ -1931,66 +966,77 @@ index 0000000..b7816d0
 +  config.options = vim.deepcopy(config.defaults)
 +end
 +
-+local fixed_layout = function(text, hl)
++local fixed_layout = function(text)
 +  return {
-+    left = { { segments = { { text = text, hl = hl } } } },
++    left = { { segments = { { text = text } } } },
 +    right = {},
 +  }
 +end
 +
-+describe("Explorer line formatters", function()
-+  before_each(function()
-+    reset_config()
-+  end)
++describe("Explorer line stats", function()
++  before_each(reset_config)
++  after_each(reset_config)
 +
-+  after_each(function()
-+    reset_config()
-+  end)
-+
-+  it("is disabled with whole-line formatter defaults", function()
++  it("is disabled by default without importing formatter defaults into config", function()
 +    local options = config.options.explorer
-+    assert.is_false(options.line_stats.enabled)
-+    assert.is_false(options.line_stats.count_untracked)
-+    assert.equals(1024 * 1024, options.line_stats.max_untracked_bytes)
-+    assert.is_function(options.formatters.file)
-+    assert.is_function(options.formatters.folder)
-+    assert.is_function(options.formatters.group)
-+    assert.same({}, config.options.keymaps.explorer.custom)
++    assert.same({ enabled = false, count_untracked = false, max_untracked_bytes = 1024 * 1024 }, options.line_stats)
++    assert.is_nil(options.formatters.file)
++    assert.is_nil(options.formatters.folder)
++    assert.is_nil(options.formatters.group)
 +  end)
 +
-+  it("aggregates text, binary, and unavailable file stats", function()
-+    local stats = line_stats.sum({
-+      { line_stats = { insertions = 3, deletions = 2, binary = false } },
-+      { line_stats = { insertions = 0, deletions = 0, binary = true } },
-+      {},
-+    })
-+    assert.same({
-+      files_changed = 3,
-+      insertions = 3,
-+      deletions = 2,
-+      binary_files = 1,
-+      unavailable_files = 1,
-+    }, stats)
++  it("aggregates text, binary, and unavailable files", function()
++    assert.same(
++      {
++        files_changed = 3,
++        insertions = 3,
++        deletions = 2,
++        binary_files = 1,
++        unavailable_files = 1,
++      },
++      line_stats.sum({
++        { line_stats = { insertions = 3, deletions = 2, binary = false } },
++        { line_stats = { insertions = 0, deletions = 0, binary = true } },
++        {},
++      })
++    )
 +  end)
 +
-+  it("renders default file stats and group totals", function()
++  it("renders right-aligned file stats and aggregate group totals", function()
 +    config.options.explorer.line_stats.enabled = true
 +    local files = {
 +      { path = "added.lua", status = "A", line_stats = { insertions = 20, deletions = 0, binary = false } },
 +      { path = "changed.lua", status = "M", line_stats = { insertions = 22, deletions = 8, binary = false } },
 +      { path = "image.png", status = "M", line_stats = { insertions = 0, deletions = 0, binary = true } },
 +    }
-+    local root = tree.create_tree_data({ unstaged = files, staged = {}, conflicts = {} }, "/repo", nil, false, { unstaged = true, staged = false })[1]
-+    assert.equals(" Changes (3 · +42 -8)", nodes.prepare_node(root, 50, nil, nil):content())
++    local root = tree.create_tree_data({ unstaged = files, staged = {}, conflicts = {} }, "/repo", nil, false, {
++      unstaged = true,
++      staged = false,
++    })[1]
 +
++    local group_line = nodes.prepare_node(root, 50, nil, nil)
++    assert.equals(" Changes (3 · +42 -8)", group_line:content())
 +    local file_nodes = nodes.create_file_nodes(files, "/repo", "unstaged")
-+    local content = nodes.prepare_node(file_nodes[2], 50, nil, nil):content()
-+    assert.matches("changed%.lua%s+%+22 %-8 M%s*$", content)
-+    assert.equals(50, vim.fn.strdisplaywidth(content))
-+    assert.matches("image%.png%s+bin M%s*$", nodes.prepare_node(file_nodes[3], 50, nil, nil):content())
++    local changed_line = nodes.prepare_node(file_nodes[2], 50, nil, nil)
++    local changed = changed_line:content()
++    assert.matches("changed%.lua%s+%+22 %-8 M%s*$", changed)
++    assert.equals(50, vim.fn.strdisplaywidth(changed))
++    local binary_line = nodes.prepare_node(file_nodes[3], 50, nil, nil)
++    assert.matches("image%.png%s+bin M%s*$", binary_line:content())
++
++    local highlights = {}
++    for _, line in ipairs({ group_line, changed_line, binary_line }) do
++      for _, segment in ipairs(line._segments) do
++        highlights[segment.hl] = true
++      end
++    end
++    assert.is_true(highlights.CodeDiffExplorerStatFiles)
++    assert.is_true(highlights.CodeDiffExplorerStatInsertions)
++    assert.is_true(highlights.CodeDiffExplorerStatDeletions)
++    assert.is_true(highlights.CodeDiffExplorerStatBinary)
 +  end)
 +
-+  it("passes complete file, folder, and group contexts", function()
++  it("exposes stats in existing file, folder, and group formatter metadata", function()
 +    config.options.explorer.view_mode = "tree"
 +    config.options.explorer.flatten_dirs = false
 +    config.options.explorer.line_stats.enabled = true
@@ -2014,22 +1060,20 @@ index 0000000..b7816d0
 +      { path = "src/one.lua", status = "M", line_stats = { insertions = 3, deletions = 2, binary = false } },
 +      { path = "src/two.lua", status = "A", line_stats = { insertions = 4, deletions = 0, binary = false } },
 +    }
-+    local root = tree.create_tree_data({ unstaged = files, staged = {}, conflicts = {} }, "/repo", nil, false, { unstaged = true, staged = false })[1]
++    local root = tree.create_tree_data({ unstaged = files, staged = {}, conflicts = {} }, "/repo", nil, false, {
++      unstaged = true,
++      staged = false,
++    })[1]
 +    local folder = root._children[1]
 +    local file = folder._children[1]
 +
-+    assert.equals("group", nodes.prepare_node(root, 40, nil, nil):content())
-+    assert.equals("folder", nodes.prepare_node(folder, 40, nil, nil):content())
-+    assert.equals("file", nodes.prepare_node(file, 40, nil, nil):content())
-+    assert.same({ files_changed = 2, insertions = 7, deletions = 2, binary_files = 0, unavailable_files = 0 }, contexts.group.stats)
-+    assert.same(contexts.group.stats, contexts.folder.stats)
-+    assert.equals(2, contexts.group.file_count)
-+    assert.equals(2, contexts.folder.file_count)
-+    assert.equals("src", contexts.folder.name)
-+    assert.equals("src/one.lua", contexts.file.path)
-+    assert.equals("one.lua", contexts.file.filename)
-+    assert.equals("M", contexts.file.status)
-+    assert.equals(1, contexts.file.file_count)
++    nodes.prepare_node(root, 40, nil, nil)
++    nodes.prepare_node(folder, 40, nil, nil)
++    nodes.prepare_node(file, 40, nil, nil)
++    local aggregate = { files_changed = 2, insertions = 7, deletions = 2, binary_files = 0, unavailable_files = 0 }
++    assert.same(aggregate, contexts.group.stats)
++    assert.same(aggregate, contexts.folder.stats)
++    assert.same({ insertions = 3, deletions = 2, binary = false }, contexts.file.stats)
 +    assert.same({
 +      path = "src/one.lua",
 +      group = "unstaged",
@@ -2045,108 +1089,45 @@ index 0000000..b7816d0
 +    assert.is_nil(contexts.group.stats)
 +    assert.is_nil(contexts.folder.stats)
 +    assert.is_nil(contexts.file.stats)
++    assert.is_nil(contexts.group.files[1].stats)
 +  end)
 +
-+  it("truncates regions by priority and keeps status visible", function()
-+    local layout = {
-+      left = {
-+        { segments = { { text = "file-name.lua" } }, truncate_priority = 2 },
-+        { segments = { { text = " src/components" } }, truncate_priority = 1 },
-+      },
-+      right = {
-+        { segments = { { text = "+123 -45 " } }, truncate_priority = 3 },
-+        { segments = { { text = "M " } } },
-+      },
-+      min_gap = 2,
-+    }
-+
-+    local wide = line_layout.render(layout, 30):content()
-+    assert.matches("file%-name%.lua %.%.%.%s+%+123 %-45 M $", wide)
-+    assert.equals(30, vim.fn.strdisplaywidth(wide))
-+
-+    local narrow = line_layout.render(layout, 2):content()
-+    assert.equals("M ", narrow)
-+    assert.equals(2, vim.fn.strdisplaywidth(narrow))
-+    assert.is_true(narrow:find("+", 1, true) == nil)
-+  end)
-+
-+  it("accepts highlight groups, hex colors, and highlight tables", function()
-+    local layout = {
-+      left = {
-+        { segments = {
-+          { text = "hex", hl = "#3fb950" },
-+          { text = " styled", hl = { fg = "#f00", bold = true } },
-+        } },
-+      },
-+      right = {},
-+    }
-+    local line = line_layout.render(layout, 40)
-+    local hex = vim.api.nvim_get_hl(0, { name = line._segments[1].hl, link = false })
-+    local styled = vim.api.nvim_get_hl(0, { name = line._segments[2].hl, link = false })
-+    assert.equals(0x3fb950, hex.fg)
-+    assert.equals(0xff0000, styled.fg)
-+    assert.is_true(styled.bold)
-+
-+    local selected = line_layout.render(layout, 40, 0x112233)
-+    local selected_hex = vim.api.nvim_get_hl(0, { name = selected._segments[1].hl, link = false })
-+    assert.equals(0x3fb950, selected_hex.fg)
-+    assert.equals(0x112233, selected_hex.bg)
-+  end)
-+
-+  it("keeps stats and status visible for long filenames", function()
++  it("truncates stats before the fixed status", function()
 +    config.options.explorer.line_stats.enabled = true
-+    local files = {
-+      { path = "a-very-long-filename-that-needs-truncation.lua", status = "??", line_stats = { insertions = 4, deletions = 0, binary = false } },
++    local file = {
++      path = "a-very-long-filename-that-needs-truncation.lua",
++      status = "??",
++      line_stats = { insertions = 123, deletions = 45, binary = false },
 +    }
-+    local node = nodes.create_file_nodes(files, "/repo", "unstaged")[1]
-+    local content = nodes.prepare_node(node, 40, nil, nil):content()
++    local node = nodes.create_file_nodes({ file }, "/repo", "unstaged")[1]
++    local wide = nodes.prepare_node(node, 40, nil, nil):content()
++    assert.matches("…%s+%+123 %-45 %?%? %s*$", wide)
++    assert.equals(40, vim.fn.strdisplaywidth(wide))
 +
-+    assert.matches("a%-very%-long%-filename.*%.%.%.%s+%+4 %?%? %s*$", content)
-+    assert.equals(40, vim.fn.strdisplaywidth(content))
++    local narrow = nodes.prepare_node(node, 3, nil, nil):content()
++    assert.equals("?? ", narrow)
++    assert.is_nil(narrow:find("+", 1, true))
 +  end)
 +end)
 diff --git a/tests/ui/highlights_spec.lua b/tests/ui/highlights_spec.lua
-index 13e3b9e..9e631d4 100644
+index 13e3b9e..44b67c2 100644
 --- a/tests/ui/highlights_spec.lua
 +++ b/tests/ui/highlights_spec.lua
-@@ -8,10 +8,20 @@ local highlights = require("codediff.ui.highlights")
- 
- local function reset_codediff()
-   -- Wipe any cached CodeDiff highlights so each test starts clean
--  pcall(vim.api.nvim_set_hl, 0, "CodeDiffLineInsert", {})
--  pcall(vim.api.nvim_set_hl, 0, "CodeDiffLineDelete", {})
--  pcall(vim.api.nvim_set_hl, 0, "CodeDiffCharInsert", {})
--  pcall(vim.api.nvim_set_hl, 0, "CodeDiffCharDelete", {})
-+  local groups = {
-+    "CodeDiffLineInsert",
-+    "CodeDiffLineDelete",
-+    "CodeDiffCharInsert",
-+    "CodeDiffCharDelete",
-+    "CodeDiffExplorerStat",
-+    "CodeDiffExplorerStatFiles",
-+    "CodeDiffExplorerStatInsertions",
-+    "CodeDiffExplorerStatDeletions",
-+    "CodeDiffExplorerStatBinary",
-+  }
-+  for _, group in ipairs(groups) do
-+    pcall(vim.api.nvim_set_hl, 0, group, {})
-+  end
-   vim.cmd("highlight clear CodeDiffGutterInsert")
-   vim.cmd("highlight clear CodeDiffGutterDelete")
-   vim.cmd("highlight clear CodeDiffGutterInsertNumber")
-@@ -23,6 +33,17 @@ end
+@@ -23,6 +23,19 @@ end
  describe("highlights.lua color derivation", function()
    before_each(reset_codediff)
  
-+  it("links explorer stats to semantic foreground highlights", function()
++  it("defines semantic explorer stat highlights", function()
 +    highlights.setup()
 +
-+    local expected_insertions = vim.api.nvim_get_hl(0, { name = "Added", link = false }).fg and "Added" or "DiagnosticOk"
-+    local expected_deletions = vim.api.nvim_get_hl(0, { name = "Removed", link = false }).fg and "Removed" or "DiagnosticError"
-+    assert.equals("Number", vim.api.nvim_get_hl(0, { name = "CodeDiffExplorerStatFiles", link = true }).link)
-+    assert.equals(expected_insertions, vim.api.nvim_get_hl(0, { name = "CodeDiffExplorerStatInsertions", link = true }).link)
-+    assert.equals(expected_deletions, vim.api.nvim_get_hl(0, { name = "CodeDiffExplorerStatDeletions", link = true }).link)
-+    assert.equals("NonText", vim.api.nvim_get_hl(0, { name = "CodeDiffExplorerStatBinary", link = true }).link)
++    local files = vim.api.nvim_get_hl(0, { name = "CodeDiffExplorerStatFiles", link = true })
++    local insertions = vim.api.nvim_get_hl(0, { name = "CodeDiffExplorerStatInsertions", link = true })
++    local deletions = vim.api.nvim_get_hl(0, { name = "CodeDiffExplorerStatDeletions", link = true })
++    local binary = vim.api.nvim_get_hl(0, { name = "CodeDiffExplorerStatBinary", link = true })
++    assert.equals("Number", files.link)
++    assert.is_true(insertions.link == "Added" or insertions.link == "DiagnosticOk")
++    assert.is_true(deletions.link == "Removed" or deletions.link == "DiagnosticError")
++    assert.equals("NonText", binary.link)
 +  end)
 +
    it("reads bg directly for colorschemes that use bg-based diff highlights", function()

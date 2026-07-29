@@ -1,7 +1,7 @@
 [stack]
-upstream = 1739102d1cc7153ea9f8f7df7d6a6134ebc46111
-expectedHead = 03889ae3485be79ba91eb916c230e7b6c35ea1a1
-expectedTree = 2270a2ff7ae05e67b773c0f2d837a4e3f4e5ed36
+upstream = 1c1746bb4208938c558363738ec4423ef5f797fd
+expectedHead = 6fd03b50def9a6e9ad3c727d49e53dadd4447c37
+expectedTree = 88f13db5f0acca476693e17c95c9a8237e14f662
 testCommand = make test
 publishRemote = origin
 publishBranch = main
@@ -15,6 +15,7 @@ patches =
     intraline-line-matching
     native-gutter-signs
     explorer-line-statistics
+    explorer-custom-keymaps
     pi-code-annotations
     local-native-build
     fork-notice
@@ -26,10 +27,16 @@ originCommit = 7873437263a5af86fa8d4830df56adfc55a6ee51
 pullRequest = https://github.com/esmuellert/codediff.nvim/pull/458
 
 [patch "explorer-line-statistics"]
-description = feat(explorer): Git stats + Explorer Keymaps + Explorer line renderer
+description = feat(explorer): add optional Git line statistics
 file = patches/016-explorer-line-statistics.patch
-originCommit = 40595138dc56e07890ebb1c70e1e76062213683b
-pullRequest = https://github.com/esmuellert/codediff.nvim/pull/448
+originCommit = 73f15b6269f65b59634e6cc4171e3b7feedd8d4d
+pullRequest = https://github.com/esmuellert/codediff.nvim/pull/491
+
+[patch "explorer-custom-keymaps"]
+description = feat(explorer): custom keymaps
+file = patches/022-explorer-custom-keymaps.patch
+originCommit = 4395bbf68fdaab1c5e7775191df8bcff0fc2708d
+pullRequest = https://github.com/esmuellert/codediff.nvim/pull/492
 
 [patch "intraline-line-matching"]
 description = feat: add line matching strategies
