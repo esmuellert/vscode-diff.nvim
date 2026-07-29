@@ -22,6 +22,11 @@ example/
 *.swp
 *.swo
 *~
+nvim-linux-x86_64/
+nvim-linux-x86_64.tar.gz
+
+# Local agent tooling
+.claude/
 
 # OS
 .DS_Store
