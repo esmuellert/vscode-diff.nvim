@@ -76,4 +76,30 @@ function M.prepare_buffer(is_virtual, git_root, revision, ref)
   end
 end
 
+--- Display a real-file buffer in a window, re-syncing it with disk first.
+---
+--- Neovim runs a timestamp check whenever a buffer becomes visible. When the
+--- file was deleted behind our back (branch switch, `git stash`, external `rm`)
+--- that check emits `E211: File ... no longer available`; worse, it can surface
+--- as an error out of `nvim_win_set_buf` and abort view construction halfway.
+---
+--- Running the check ourselves beforehand reloads the buffer when the file
+--- really did change and clears the pending check either way, so the display
+--- below stays quiet. `:checktime {buf}` is scoped to this buffer — a bare
+--- `:checktime` walks every loaded buffer and would reload unrelated files.
+--- `silent!` is required on top of `pcall`: for a buffer that is (or is about
+--- to be) displayed, `:checktime` *reports* `E211` rather than raising it, so
+--- `pcall` alone does not suppress it. A missing file has nothing to reload;
+--- the deletion is picked up by the refresh that follows.
+---@param win number Window handle
+---@param bufnr number Buffer handle backed by a real file on disk
+function M.show_real_file_buffer(win, bufnr)
+  -- Only normal (file-backed) buffers are timestamp-checked by Neovim; scratch
+  -- and codediff:// buffers are skipped, so don't bother them.
+  if vim.api.nvim_buf_is_valid(bufnr) and vim.bo[bufnr].buftype == "" then
+    pcall(vim.cmd, "silent! checktime " .. bufnr)
+  end
+  vim.api.nvim_win_set_buf(win, bufnr)
+end
+
 return M

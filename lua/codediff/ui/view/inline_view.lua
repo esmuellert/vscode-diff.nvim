@@ -17,6 +17,7 @@ local helpers = require("codediff.ui.view.helpers")
 local panel = require("codediff.ui.view.panel")
 local is_virtual_revision = helpers.is_virtual_revision
 local prepare_buffer = helpers.prepare_buffer
+local show_real_file_buffer = helpers.show_real_file_buffer
 
 local function disable_refresh_and_clear_highlights(session)
   for _, bufnr in pairs({ session.original_bufnr, session.modified_bufnr }) do
@@ -187,8 +188,10 @@ function M.create(session_config, filetype, on_ready)
     local cmd = modified_is_virtual and "edit! " or "edit "
     vim.cmd(cmd .. vim.fn.fnameescape(modified_info.target))
     modified_info.bufnr = vim.api.nvim_get_current_buf()
-  else
+  elseif modified_is_virtual then
     vim.api.nvim_win_set_buf(modified_win, modified_info.bufnr)
+  else
+    show_real_file_buffer(modified_win, modified_info.bufnr)
   end
   welcome_window.sync(modified_win)
 
@@ -387,10 +390,8 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
       mod_buf = bufnr
     else
       mod_buf = modified_info.bufnr
-      -- Scoped to this buffer; a bare `:checktime` walks every loaded buffer.
-      pcall(vim.cmd, "checktime " .. mod_buf)
     end
-    vim.api.nvim_win_set_buf(modified_win, mod_buf)
+    show_real_file_buffer(modified_win, mod_buf)
   end
   welcome_window.sync(modified_win)
 
@@ -578,7 +579,7 @@ function M.show_single_file(tabpage, file_path, opts)
     -- Real file
     file_bufnr = vim.fn.bufadd(file_path)
     vim.fn.bufload(file_bufnr)
-    vim.api.nvim_win_set_buf(mod_win, file_bufnr)
+    show_real_file_buffer(mod_win, file_bufnr)
     welcome_window.sync(mod_win)
   end
 

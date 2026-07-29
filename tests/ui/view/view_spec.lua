@@ -427,4 +427,35 @@ describe("Render View", function()
       vim.fn.delete(right_path)
     end
   end)
+
+  -- Test 16: Re-opening a diff whose file was deleted behind our back must stay
+  -- quiet. The views run `:checktime {buf}` when they reuse an already-loaded
+  -- real-file buffer; for a buffer that is displayed in a window, `:checktime`
+  -- *reports* `E211: File ... no longer available` instead of raising it, so a
+  -- bare `pcall` does not stop it reaching the user (and, in headless CI, stderr).
+  it("Does not report E211 when a diffed file is deleted behind the view", function()
+    local original = { "line 1", "line 2" }
+    local modified = { "line 1", "changed" }
+
+    local left_path = get_temp_path("test_view_left_16.txt")
+    local right_path = get_temp_path("test_view_right_16.txt")
+    vim.fn.writefile(original, left_path)
+    vim.fn.writefile(modified, right_path)
+
+    -- First create loads both real files into buffers displayed in windows.
+    create_test_diff_view(original, modified, left_path, right_path)
+    vim.wait(200)
+
+    -- Both files vanish (external `rm`, `git stash`, branch switch, ...).
+    vim.fn.delete(left_path)
+    vim.fn.delete(right_path)
+
+    -- Second create reuses those buffers, so it takes the `:checktime` path.
+    vim.cmd("messages clear")
+    create_test_diff_view(original, modified, left_path, right_path)
+    vim.wait(200)
+
+    local messages = vim.fn.execute("messages")
+    assert.is_nil(messages:find("E211", 1, true), "Re-opening a diff for a deleted file should not report E211, got: " .. messages)
+  end)
 end)

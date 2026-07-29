@@ -105,6 +105,25 @@ end
 local function run_git_async(args, opts, callback)
   opts = opts or {}
 
+  local argv = { "git" }
+  if opts.no_optional_locks then
+    -- `--no-optional-locks` (git 2.15+) tells git to skip the *optional* index
+    -- refresh that read-only queries perform, which takes `.git/index.lock`.
+    -- Required locks (e.g. the one `git add` needs) are unaffected.
+    --
+    -- The explorer polls status every 500ms. Without this, a poll landing while
+    -- the user stages or discards a hunk owns index.lock just long enough to
+    -- make the staging command fail with
+    -- `Unable to create '.../.git/index.lock': File exists`.
+    --
+    -- `git status` and `git ls-files` honor it; `git diff` refreshes the index
+    -- regardless, so it is passed there for intent and forward-compatibility
+    -- only. Reads never fail on a contended lock either way — git falls back to
+    -- not refreshing.
+    table.insert(argv, "--no-optional-locks")
+  end
+  vim.list_extend(argv, args)
+
   -- Use vim.system if available (Neovim 0.10+)
   if vim.system then
     -- On Windows, vim.system requires that cwd exists before running the command
@@ -114,7 +133,7 @@ local function run_git_async(args, opts, callback)
       return
     end
 
-    vim.system(vim.list_extend({ "git" }, args), {
+    vim.system(argv, {
       cwd = opts.cwd,
       text = true,
     }, function(result)
@@ -141,7 +160,9 @@ local function run_git_async(args, opts, callback)
 
     ---@diagnostic disable-next-line: missing-fields
     handle = vim.loop.spawn("git", {
-      args = args,
+      -- `argv` already carries `--no-optional-locks` when requested; `spawn`
+      -- takes the arguments *after* argv[0], so drop the leading "git".
+      args = vim.list_slice(argv, 2, #argv),
       cwd = opts.cwd,
       stdio = { nil, stdout, stderr },
     }, function(code)
@@ -349,7 +370,7 @@ function M.get_status(git_root, callback, pathspec)
   -- `-u<mode>` (untracked-files scan; #389) is read from explorer.untracked config.
   run_git_async(
     vim.list_extend({ "status", "--porcelain", "-u" .. untracked_mode(), "-M", "--" }, pathspec or {}), -- -M to detect renames
-    { cwd = git_root },
+    { cwd = git_root, no_optional_locks = true },
     function(err, output)
       if err then
         callback(err, nil)
@@ -413,7 +434,7 @@ end
 -- callback: function(err, status_result) where status_result has same format as get_status
 function M.get_diff_revision(revision, git_root, callback, pathspec)
   -- First get tracked file changes (trailing `-- <paths>` scopes to a pathspec)
-  run_git_async(vim.list_extend({ "diff", "--name-status", "-M", revision, "--" }, pathspec or {}), { cwd = git_root }, function(err, output)
+  run_git_async(vim.list_extend({ "diff", "--name-status", "-M", revision, "--" }, pathspec or {}), { cwd = git_root, no_optional_locks = true }, function(err, output)
     if err then
       callback(err, nil)
       return
@@ -462,7 +483,7 @@ function M.get_diff_revision(revision, git_root, callback, pathspec)
       table.insert(ls_args, "--directory")
     end
     table.insert(ls_args, "--")
-    run_git_async(vim.list_extend(ls_args, pathspec or {}), { cwd = git_root }, function(err_untracked, output_untracked)
+    run_git_async(vim.list_extend(ls_args, pathspec or {}), { cwd = git_root, no_optional_locks = true }, function(err_untracked, output_untracked)
       if err_untracked then
         -- If getting untracked files fails, just return what we have
         callback(nil, result)
@@ -491,7 +512,7 @@ end
 -- git_root: absolute path to git repository root
 -- callback: function(err, status_result)
 function M.get_diff_revisions(rev1, rev2, git_root, callback, pathspec)
-  run_git_async(vim.list_extend({ "diff", "--name-status", "-M", rev1, rev2, "--" }, pathspec or {}), { cwd = git_root }, function(err, output)
+  run_git_async(vim.list_extend({ "diff", "--name-status", "-M", rev1, rev2, "--" }, pathspec or {}), { cwd = git_root, no_optional_locks = true }, function(err, output)
     if err then
       callback(err, nil)
       return
