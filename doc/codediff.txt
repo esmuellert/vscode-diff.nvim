@@ -262,6 +262,12 @@ Setup entry point:
       },
       untracked = "all",  -- "all", "normal" (collapse dirs), or "no" (skip untracked; use for huge work trees like GIT_WORK_TREE=$HOME, #389)
       status_right_margin = 1,
+      ellipsis = "…",
+      formatters = {
+        file = nil,
+        folder = nil,
+        group = nil,
+      },
       visible_groups = {
         staged = true,
         unstaged = true,
@@ -328,6 +334,80 @@ Setup entry point:
         prev_conflict = "[x",
         diffget_incoming = "2do",
         diffget_current = "3do",
+      },
+    },
+  })
+<
+
+EXPLORER LINE FORMATTERS                    *codediff-explorer-line-formatters*
+
+`explorer.formatters.file`, `folder`, and `group` replace the complete
+corresponding explorer row. Each callback receives row metadata and returns a
+layout:
+>lua
+  {
+    left = {
+      {
+        segments = { { text = "name.lua", hl = "Normal" } },
+        truncate_priority = 2,
+      },
+    },
+    right = {
+      {
+        segments = { { text = "M", hl = "CodeDiffStatusModified" } },
+      },
+    },
+    min_gap = 2,
+  }
+<
+
+A region contains styled `segments`. A numeric `truncate_priority` makes it
+truncatable; lower priorities truncate first. Regions without one stay fixed
+unless all content cannot fit. The renderer measures display cells, truncates
+with `explorer.ellipsis` (default `…`), right-aligns `right`, and preserves
+`min_gap` when space permits. The ellipsis can contain multiple characters and
+is clipped display-width-aware when necessary.
+
+Each segment is `{ text = string, hl? = highlight }`. `hl` accepts a Neovim
+highlight group, a `#RGB`/`#RRGGBB` foreground color, or a highlight definition
+such as `{ fg = "#3fb950", bold = true }`. Omitted highlights use `Normal`;
+selected file rows retain their selection background.
+
+File contexts contain `path`, `filename`, `directory`, `old_path`, `group`,
+`status`, `status_hl`, `status_right_margin`, `indent`, `indent_hl`, `icon`, and
+`icon_hl`.
+
+Folder contexts contain `name`, `path`, `group`, `file_count`, `files`,
+`indent`, `indent_hl`, `icon`, `icon_hl`, and `expanded`. Group contexts contain
+`name`, `label`, `file_count`, `files`, and `expanded`.
+
+Folder and group `files` contain `{ path, old_path, group, status }` entries for
+every represented file. Built-in callbacks are exported by
+`codediff.ui.explorer.formatters` and return fresh layouts that can be assigned
+directly or wrapped.
+
+Example: replace only group rows and right-align the file count:
+>lua
+  require("codediff").setup({
+    explorer = {
+      formatters = {
+        group = function(ctx)
+          return {
+            left = {{
+              segments = {{
+                text = " " .. ctx.label,
+                hl = "CodeDiffExplorerTreeGroup",
+              }},
+              truncate_priority = 1,
+            }},
+            right = {{
+              segments = {{
+                text = ctx.file_count .. " files",
+                hl = "Number",
+              }},
+            }},
+          }
+        end,
       },
     },
   })
