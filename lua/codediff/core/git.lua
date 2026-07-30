@@ -554,6 +554,54 @@ function M.get_diff_revisions(rev1, rev2, git_root, callback, pathspec)
   end)
 end
 
+-- Get staged changes vs a revision (async) — the equivalent of diffview's
+-- `--staged`/`--cached` filter: `git diff --cached --name-status -M <revision>`.
+-- Only files whose index copy differs from `revision` are returned. Entries
+-- go into `result.staged` so the `-` toggle key unstages them and the tree
+-- renders them under the "Staged Changes" header.
+--
+-- revision: git revision (e.g., "HEAD"), the base to compare the index against
+-- git_root: absolute path to git repository root
+-- callback: function(err, status_result)
+function M.get_diff_staged(revision, git_root, callback, pathspec)
+  run_git_async(vim.list_extend({ "diff", "--cached", "--name-status", "-M", revision, "--" }, pathspec or {}), { cwd = git_root }, function(err, output)
+    if err then
+      callback(err, nil)
+      return
+    end
+
+    local result = {
+      unstaged = {},
+      staged = {},
+      conflicts = {},
+    }
+
+    for line in output:gmatch("[^\r\n]+") do
+      if #line > 0 then
+        local parts = vim.split(line, "\t")
+        if #parts >= 2 then
+          local status = parts[1]:sub(1, 1)
+          local path = unquote_path(parts[2])
+          local old_path = nil
+
+          if status == "R" and #parts >= 3 then
+            old_path = unquote_path(parts[2])
+            path = unquote_path(parts[3])
+          end
+
+          table.insert(result.staged, {
+            path = path,
+            status = status,
+            old_path = old_path,
+          })
+        end
+      end
+    end
+
+    callback(nil, result)
+  end)
+end
+
 -- Apply a unified diff patch to the git index (async)
 -- Used for hunk-level staging: generates a patch for a single hunk and applies it
 -- to the index without touching the working tree.

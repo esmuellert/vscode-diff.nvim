@@ -47,7 +47,15 @@ function M.create_tree_data(status_result, git_root, base_revision, is_dir_mode,
   local conflict_nodes = create_nodes(conflicts, git_root, "conflicts")
 
   if is_dir_mode or base_revision then
-    -- Dir or revision mode: single group showing all changes
+    -- Dir or revision mode: single group showing all changes.
+    -- `get_diff_revision(s)` and `dir.diff_directories` populate `unstaged`;
+    -- `get_diff_staged` (--staged, #352) populates `staged`. Pick whichever
+    -- has entries — no need for extra flags.
+    if #staged > 0 then
+      return {
+        create_group_node("Staged Changes", "staged", staged, staged_nodes),
+      }
+    end
     return {
       create_group_node("Changes", "unstaged", unstaged, unstaged_nodes),
     }

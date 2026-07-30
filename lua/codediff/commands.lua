@@ -453,6 +453,70 @@ local function handle_explorer(revision, revision2, global_opts, pathspec)
   resolve_working_root(global_opts, open_explorer)
 end
 
+-- Handle explorer for staged-only view (--staged / --cached flag).
+-- Matches diffview.nvim's `--staged`: compare the index against the given
+-- revision (defaulting to HEAD). Only files whose index differs from that
+-- revision are shown; opening a file diffs `<revision>` vs `:0` (the index).
+--
+-- revision: git revision to compare the index against (nil defaults to "HEAD")
+-- global_opts: layout / exit_on_close / repo overrides
+-- pathspec: optional trailing pathspec (#74)
+local function handle_explorer_staged(revision, global_opts, pathspec)
+  local current_file = vim.api.nvim_buf_get_name(0)
+  local rev = revision or "HEAD"
+
+  local function open_explorer(git_root, is_override)
+    local focus_file = nil
+    if current_file ~= "" and not is_override then
+      focus_file = git.get_relative_path(current_file, git_root)
+    end
+
+    git.resolve_revision(rev, git_root, function(err_resolve, commit_hash)
+      if err_resolve then
+        vim.schedule(function()
+          vim.notify(err_resolve, vim.log.levels.ERROR)
+        end)
+        return
+      end
+
+      git.get_diff_staged(commit_hash, git_root, function(err_status, status_result)
+        vim.schedule(function()
+          if err_status then
+            vim.notify(err_status, vim.log.levels.ERROR)
+            return
+          end
+
+          if #status_result.staged == 0 then
+            vim.notify("No staged changes to show", vim.log.levels.INFO)
+            return
+          end
+
+          ---@type SessionConfig
+          local session_config = {
+            mode = "explorer",
+            git_root = git_root,
+            original = path.empty(),
+            modified = path.empty(),
+            original_revision = commit_hash,
+            modified_revision = ":0", -- Index; tree.lua/refresh.lua key off this to render as staged-only mode
+            layout = global_opts.layout,
+            exit_on_close = global_opts.exit_on_close,
+            explorer_data = {
+              status_result = status_result,
+              focus_file = focus_file,
+              pathspec = pathspec,
+            },
+          }
+
+          view.create(session_config, "")
+        end)
+      end, pathspec)
+    end)
+  end
+
+  resolve_working_root(global_opts, open_explorer)
+end
+
 -- Wrapper for merge-base explorer mode: computes merge-base first, then opens explorer
 local function handle_explorer_merge_base(base_rev, target_rev, global_opts, pathspec)
   local current_buf = vim.api.nvim_get_current_buf()
@@ -696,6 +760,12 @@ local function build_app()
     :arg(
       Arg.new("repo"):long("--repo"):short("-C"):global(true):completor(complete_dirs)
     )
+    -- --staged / --cached: show only the diff between the index and [rev1]
+    -- (defaulting to HEAD). Mirrors :DiffviewOpen --staged (#352).
+    :arg(
+      Arg.flag("staged"):long("--staged")
+    )
+    :arg(Arg.flag("cached"):long("--cached"))
     -- Default action: explorer for the working tree, a revision, or two revisions.
     :arg(Arg.new("rev1"):completor(complete_revisions))
     :arg(Arg.new("rev2"):completor(complete_revisions))
@@ -707,6 +777,20 @@ local function build_app()
       local trailing = m:trailing()
       local pathspec = #trailing > 0 and trailing or nil
       local a, b = m:get_one("rev1"), m:get_one("rev2")
+      local staged = m:get_flag("staged") or m:get_flag("cached")
+      if staged then
+        -- Parity with diffview: `--staged` accepts a single optional revision.
+        if b then
+          vim.notify("--staged accepts at most one revision", vim.log.levels.ERROR)
+          return
+        end
+        if a and parse_triple_dot(a) then
+          vim.notify("--staged does not support triple-dot merge-base ranges", vim.log.levels.ERROR)
+          return
+        end
+        handle_explorer_staged(a, go, pathspec)
+        return
+      end
       if not a then
         handle_explorer(nil, nil, go, pathspec)
         return

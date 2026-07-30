@@ -8,6 +8,8 @@ local ns = vim.api.nvim_create_namespace("codediff-help")
 
 -- Key column width (right-aligned keys sit in this space)
 local KEY_COL = 14
+-- Inter-column gap for two-column layout. Plain whitespace — no divider glyph.
+local COL_SEP = "    "
 
 -- Setup highlight groups for the help window
 local function setup_highlights()
@@ -57,6 +59,7 @@ local function build_sections(keymaps, is_explorer, is_history, is_conflict)
     table.insert(view_items, { km.toggle_explorer, "Toggle explorer" })
     table.insert(view_items, { km.focus_explorer, "Focus explorer" })
     table.insert(view_items, { km.toggle_stage, "Stage/unstage current file" })
+    table.insert(view_items, { km.toggle_staged_view, "Toggle staged/unstaged view for current file" })
     table.insert(view_items, { km.stage_hunk, "Stage hunk under cursor" })
     table.insert(view_items, { km.unstage_hunk, "Unstage hunk under cursor" })
     table.insert(view_items, { km.discard_hunk, "Discard hunk under cursor" })
@@ -143,21 +146,27 @@ local function build_sections(keymaps, is_explorer, is_history, is_conflict)
   return sections
 end
 
--- Compute the required window width from sections
-local function compute_width(sections)
+-- Compute the required column width for one group of sections
+local function group_width(sections)
   local max_desc = 0
   for _, sec in ipairs(sections) do
     for _, item in ipairs(sec.items) do
       max_desc = math.max(max_desc, #item[2])
     end
   end
-  -- key_col + " → " (4) + desc + padding
+  -- key_col + " → " (4 display cells) + desc + padding
   return math.max(KEY_COL + 4 + max_desc + 3, 40)
 end
 
--- Render sections into the buffer with highlights
--- Returns: lines (string[]), highlights ({ line, col_start, col_end, hl_group }[])
-local function render(sections, win_width)
+-- Compute the required window width from sections (single-column layout)
+local function compute_width(sections)
+  return group_width(sections)
+end
+
+-- Render one group of sections into vertical lines (no column composition).
+-- Returns lines (string[]) and hls ({ line, col_start, col_end, hl_group }[]),
+-- with all offsets in bytes so nvim_buf_add_highlight can consume them directly.
+local function render_group(sections, col_width)
   local lines = {}
   local hls = {}
 
@@ -167,7 +176,7 @@ local function render(sections, win_width)
     end
 
     -- Section heading (centered)
-    local pad = math.floor((win_width - #sec.title) / 2)
+    local pad = math.max(0, math.floor((col_width - #sec.title) / 2))
     local heading = string.rep(" ", pad) .. sec.title
     table.insert(lines, heading)
     table.insert(hls, { #lines - 1, pad, pad + #sec.title, "CodeDiffHelpSection" })
@@ -194,6 +203,60 @@ local function render(sections, win_width)
   return lines, hls
 end
 
+-- Split sections into two column groups (heuristic: first section left, rest right).
+-- In practice we ever have at most 2 sections (VIEW + one of EXPLORER/HISTORY/CONFLICT),
+-- so this maps to VIEW on the left and the mode-specific section on the right.
+local function split_two_col(sections)
+  local left = { sections[1] }
+  local right = {}
+  for i = 2, #sections do
+    table.insert(right, sections[i])
+  end
+  return left, right
+end
+
+-- Compose two rendered column groups into a single (lines, hls, total_width) tuple.
+-- Both column widths are per-group; horizontal padding on the left column and
+-- byte-offset shifting on the right column keep highlights aligned.
+local function compose_two_col(left_sections, right_sections)
+  local left_w = group_width(left_sections)
+  local right_w = group_width(right_sections)
+  local left_lines, left_hls = render_group(left_sections, left_w)
+  local right_lines, right_hls = render_group(right_sections, right_w)
+
+  local n = math.max(#left_lines, #right_lines)
+  local sep_bytes = #COL_SEP
+  local sep_display = vim.fn.strdisplaywidth(COL_SEP)
+
+  local lines = {}
+  -- Precompute the byte offset where each row's right column starts, so we
+  -- can shift right-column highlights into the merged coordinate space.
+  local right_col_byte_offset = {}
+  for i = 1, n do
+    local L = left_lines[i] or ""
+    local R = right_lines[i] or ""
+    local L_display = vim.fn.strdisplaywidth(L)
+    local pad = math.max(0, left_w - L_display)
+    local padded_L = L .. string.rep(" ", pad)
+    lines[i] = padded_L .. COL_SEP .. R
+    right_col_byte_offset[i] = #padded_L + sep_bytes
+  end
+
+  local hls = {}
+  -- Left column highlights: byte offsets already correct for the merged line.
+  for _, hl in ipairs(left_hls) do
+    table.insert(hls, hl)
+  end
+  -- Right column highlights: shift col offsets by that row's right start.
+  for _, hl in ipairs(right_hls) do
+    local off = right_col_byte_offset[hl[1] + 1] or 0
+    table.insert(hls, { hl[1], hl[2] + off, hl[3] + off, hl[4] })
+  end
+
+  local total_width = left_w + sep_display + right_w
+  return lines, hls, total_width
+end
+
 --- Show or toggle the keymap help floating window
 function M.toggle(tabpage)
   local session = lifecycle.get_session(tabpage)
@@ -213,8 +276,22 @@ function M.toggle(tabpage)
   local is_conflict = session and session.result_bufnr ~= nil
 
   local sections = build_sections(keymaps, is_explorer, is_history, is_conflict)
-  local win_width = compute_width(sections)
-  local lines, hls = render(sections, win_width)
+
+  -- Prefer a two-column layout when there are 2+ sections and it fits on screen.
+  -- Falls back to a single column when the terminal is too narrow.
+  local lines, hls, win_width
+  local max_editor_width = math.max(vim.o.columns - 4, 40)
+  if #sections >= 2 then
+    local left, right = split_two_col(sections)
+    local two_lines, two_hls, two_w = compose_two_col(left, right)
+    if two_w <= max_editor_width then
+      lines, hls, win_width = two_lines, two_hls, two_w
+    end
+  end
+  if not lines then
+    win_width = compute_width(sections)
+    lines, hls = render_group(sections, win_width)
+  end
 
   -- Create buffer
   local buf = vim.api.nvim_create_buf(false, true)
