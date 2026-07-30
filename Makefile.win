@@ -20,7 +20,7 @@ test-c: build
 	ctest --test-dir build --output-on-failure -C Release
 
 test-lua:
-	tests\run_plenary_tests.cmd
+	tests\run_tests.cmd
 
 lint:
 	stylua --check lua

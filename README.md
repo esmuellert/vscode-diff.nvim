@@ -817,7 +817,7 @@ codediff.nvim/
 │   └── vscode-diff/       # Backward compatibility shims
 ├── plugin/                # Plugin entry point
 │   └── codediff.lua       # Auto-loaded on startup
-├── tests/                 # Test suite (plenary.nvim)
+├── tests/                 # Test suite (in-tree tests/framework/)
 ├── docs/                  # Documentation and development history
 ├── Makefile               # Build automation
 └── README.md
@@ -835,7 +835,7 @@ codediff.nvim/
 - [x] Syntax highlighting preservation (LSP semantic tokens + TreeSitter)
 - [x] Read-only buffers with virtual filler lines for alignment
 - [x] Flexible highlight configuration (colorscheme-aware)
-- [x] Integration tests (C + Lua with plenary.nvim)
+- [x] Integration tests (C + Lua via in-tree `tests/framework/` runner)
 - [x] File history mode (per-commit review, similar to DiffviewFileHistory)
 
 ### Future Enhancements

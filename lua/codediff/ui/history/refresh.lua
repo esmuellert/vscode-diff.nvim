@@ -69,6 +69,18 @@ function M.setup_auto_refresh(history, tabpage)
               {},
               vim.schedule_wrap(function(watch_err, filename, events)
                 if watch_err then
+                  -- A dead watch (typically the repository being deleted or
+                  -- replaced) keeps re-delivering the same error on Windows, so
+                  -- tear the handle down instead of spinning on it.
+                  if git_watcher then
+                    pcall(function()
+                      git_watcher:stop()
+                    end)
+                    pcall(function()
+                      git_watcher:close()
+                    end)
+                    git_watcher = nil
+                  end
                   return
                 end
                 if vim.api.nvim_get_current_tabpage() == tabpage and vim.api.nvim_tabpage_is_valid(tabpage) and not history.is_hidden then

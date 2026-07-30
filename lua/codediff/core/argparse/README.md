@@ -167,5 +167,5 @@ Each is a small, additive extension if a future need arises.
 
 ```sh
 nvim --headless --noplugin -u tests/init.lua \
-  -c "lua require('plenary.test_harness').test_file('tests/core/argparse_spec.lua', { minimal_init = 'tests/init.lua' })"
+  -c "lua require('tests.framework').run_and_exit('tests/core/argparse_spec.lua')"
 ```

@@ -148,7 +148,7 @@ jobs:
       - name: Run Neovim tests (Windows)
         if: startsWith(matrix.runs-on, 'windows')
         shell: bash
-        run: ./tests/run_plenary_tests.sh
+        run: ./tests/run_tests.sh
 
       - name: Upload build artifacts
         if: success()

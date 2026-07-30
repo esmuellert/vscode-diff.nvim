@@ -59,23 +59,8 @@ jobs:
           echo "$HOME/nvim/bin" >> "$GITHUB_PATH"
           "$HOME/nvim/bin/nvim" --version | head -n 1
 
-      # Preinstall plenary.nvim so the coding agent doesn't need github.com at task time.
-      # tests/init.lua expects it under vim.fn.stdpath("data")/plenary.nvim, which on
-      # Linux resolves to $HOME/.local/share/nvim/plenary.nvim.
-      # nui.nvim is not a runtime or test dependency (verified: zero require("nui...") in lua/).
-      - name: Cache plenary.nvim
-        id: cache-plenary
-        uses: actions/cache@v5
-        with:
-          path: ~/.local/share/nvim/plenary.nvim
-          key: plenary-nvim-${{ runner.os }}-v1
-
-      - name: Install plenary.nvim
-        if: steps.cache-plenary.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p "$HOME/.local/share/nvim"
-          git clone --depth=1 https://github.com/nvim-lua/plenary.nvim \
-            "$HOME/.local/share/nvim/plenary.nvim"
+      # The test framework is in-tree at tests/framework/ — no external clone needed.
+      # nui.nvim is installed on-demand by tests/init.lua only if a test actually requires it.
 
       - name: Build native library
         run: make build

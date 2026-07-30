@@ -24,6 +24,8 @@ local welcome_window = require("codediff.ui.view.welcome_window")
 
 local is_virtual_revision = helpers.is_virtual_revision
 local prepare_buffer = helpers.prepare_buffer
+local show_real_file_buffer = helpers.show_real_file_buffer
+local open_real_file = helpers.open_real_file
 local compute_and_render = render.compute_and_render
 local compute_and_render_conflict = render.compute_and_render_conflict
 local setup_auto_refresh = render.setup_auto_refresh
@@ -92,24 +94,34 @@ function M.create(session_config, filetype, on_ready)
     original_win = vim.api.nvim_get_current_win()
 
     -- Load original buffer
-    if original_info.needs_edit then
-      local cmd = original_is_virtual and "edit! " or "edit "
-      vim.cmd(cmd .. vim.fn.fnameescape(original_info.target))
-      original_info.bufnr = vim.api.nvim_get_current_buf()
+    if original_is_virtual then
+      if original_info.needs_edit then
+        vim.cmd("edit! " .. vim.fn.fnameescape(original_info.target))
+        original_info.bufnr = vim.api.nvim_get_current_buf()
+      else
+        vim.api.nvim_win_set_buf(original_win, original_info.bufnr)
+      end
+    elseif original_info.needs_edit then
+      original_info.bufnr = open_real_file(original_win, original_info.target)
     else
-      vim.api.nvim_win_set_buf(original_win, original_info.bufnr)
+      show_real_file_buffer(original_win, original_info.bufnr)
     end
 
     vim.cmd(split_cmd)
     modified_win = vim.api.nvim_get_current_win()
 
     -- Load modified buffer
-    if modified_info.needs_edit then
-      local cmd = modified_is_virtual and "edit! " or "edit "
-      vim.cmd(cmd .. vim.fn.fnameescape(modified_info.target))
-      modified_info.bufnr = vim.api.nvim_get_current_buf()
+    if modified_is_virtual then
+      if modified_info.needs_edit then
+        vim.cmd("edit! " .. vim.fn.fnameescape(modified_info.target))
+        modified_info.bufnr = vim.api.nvim_get_current_buf()
+      else
+        vim.api.nvim_win_set_buf(modified_win, modified_info.bufnr)
+      end
+    elseif modified_info.needs_edit then
+      modified_info.bufnr = open_real_file(modified_win, modified_info.target)
     else
-      vim.api.nvim_win_set_buf(modified_win, modified_info.bufnr)
+      show_real_file_buffer(modified_win, modified_info.bufnr)
     end
     welcome_window.sync(original_win)
     welcome_window.sync(modified_win)
@@ -598,18 +610,14 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
           original_info.bufnr = vim.api.nvim_get_current_buf()
         end
       else
-        local bufnr = vim.fn.bufadd(original_info.target)
-        vim.fn.bufload(bufnr)
-        original_info.bufnr = bufnr
-        vim.api.nvim_win_set_buf(original_win, original_info.bufnr)
+        original_info.bufnr = open_real_file(original_win, original_info.target)
       end
     else
       if vim.api.nvim_buf_is_valid(original_info.bufnr) then
-        vim.api.nvim_win_set_buf(original_win, original_info.bufnr)
-        if not original_is_virtual then
-          vim.api.nvim_buf_call(original_info.bufnr, function()
-            vim.cmd("checktime")
-          end)
+        if original_is_virtual then
+          vim.api.nvim_win_set_buf(original_win, original_info.bufnr)
+        else
+          show_real_file_buffer(original_win, original_info.bufnr)
         end
       else
         if original_is_virtual then
@@ -617,10 +625,7 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
           vim.cmd("edit! " .. vim.fn.fnameescape(original_info.target))
           original_info.bufnr = vim.api.nvim_get_current_buf()
         else
-          local bufnr = vim.fn.bufadd(original_info.target)
-          vim.fn.bufload(bufnr)
-          original_info.bufnr = bufnr
-          vim.api.nvim_win_set_buf(original_win, original_info.bufnr)
+          original_info.bufnr = open_real_file(original_win, original_info.target)
         end
       end
     end
@@ -638,18 +643,14 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
           modified_info.bufnr = vim.api.nvim_get_current_buf()
         end
       else
-        local bufnr = vim.fn.bufadd(modified_info.target)
-        vim.fn.bufload(bufnr)
-        modified_info.bufnr = bufnr
-        vim.api.nvim_win_set_buf(modified_win, modified_info.bufnr)
+        modified_info.bufnr = open_real_file(modified_win, modified_info.target)
       end
     else
       if vim.api.nvim_buf_is_valid(modified_info.bufnr) then
-        vim.api.nvim_win_set_buf(modified_win, modified_info.bufnr)
-        if not modified_is_virtual then
-          vim.api.nvim_buf_call(modified_info.bufnr, function()
-            vim.cmd("checktime")
-          end)
+        if modified_is_virtual then
+          vim.api.nvim_win_set_buf(modified_win, modified_info.bufnr)
+        else
+          show_real_file_buffer(modified_win, modified_info.bufnr)
         end
       else
         if modified_is_virtual then
@@ -657,10 +658,7 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
           vim.cmd("edit! " .. vim.fn.fnameescape(modified_info.target))
           modified_info.bufnr = vim.api.nvim_get_current_buf()
         else
-          local bufnr = vim.fn.bufadd(modified_info.target)
-          vim.fn.bufload(bufnr)
-          modified_info.bufnr = bufnr
-          vim.api.nvim_win_set_buf(modified_win, modified_info.bufnr)
+          modified_info.bufnr = open_real_file(modified_win, modified_info.target)
         end
       end
     end
@@ -789,7 +787,7 @@ local function show_single_file(tabpage, opts)
 
   -- Load the file into the kept window
   if keep_win and vim.api.nvim_win_is_valid(keep_win) then
-    vim.api.nvim_win_set_buf(keep_win, opts.load_bufnr)
+    show_real_file_buffer(keep_win, opts.load_bufnr)
     welcome_window.sync(keep_win)
 
     if opts.keep == "original" then

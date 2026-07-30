@@ -407,3 +407,116 @@ describe("Git untracked policy (#389)", function()
     repo.cleanup()
   end)
 end)
+
+-- The explorer polls `git status` every 500ms. A plain `git status` refreshes
+-- the index stat cache and writes it back, which takes `.git/index.lock`; a
+-- poll landing while the user stages/discards a hunk makes the *staging*
+-- command fail with "Unable to create '.../.git/index.lock': File exists".
+-- The read-only queries therefore pass `--no-optional-locks`, which skips
+-- exactly that write.
+describe("Git read-only queries do not write the index (#494)", function()
+  local uv = vim.uv or vim.loop
+
+  --- Repo whose index stat cache is stale: `tracked.txt` still has its
+  --- committed content, but its mtime was moved 60s into the past. git sees the
+  --- stat mismatch, re-reads the file, finds it clean, and — unless told not to
+  --- — rewrites the index to refresh the cache. The timestamp is strictly older
+  --- than the index, so this does not depend on filesystem mtime granularity.
+  local function make_repo_with_stale_index()
+    local repo = h.create_temp_git_repo()
+    repo.write_file("tracked.txt", { "base" })
+    repo.git("add tracked.txt")
+    repo.git("commit -m initial")
+
+    local past = os.time() - 60
+    assert.is_not_nil(uv.fs_utime(repo.dir .. "/tracked.txt", past, past), "should be able to backdate the tracked file")
+    return repo
+  end
+
+  local function index_bytes(repo)
+    return table.concat(vim.fn.readfile(repo.dir .. "/.git/index", "b"), "\n")
+  end
+
+  it("get_status leaves .git/index untouched", function()
+    local repo = make_repo_with_stale_index()
+    local before = index_bytes(repo)
+
+    local done, err = false, nil
+    git.get_status(repo.dir, function(e)
+      err = e
+      done = true
+    end)
+    vim.wait(5000, function()
+      return done
+    end)
+
+    assert.is_true(done, "callback should fire")
+    assert.is_nil(err, "git status should succeed")
+    assert.equals(before, index_bytes(repo), "git status must not rewrite the index, or it would contend for index.lock")
+    repo.cleanup()
+  end)
+
+  -- `git diff` refreshes the index unconditionally — it does not honor
+  -- `--no-optional-locks` the way `status` does — so it can still hold
+  -- index.lock briefly. What must hold is that neither query ever *fails*
+  -- because another git process owns the lock, so a poll can never surface an
+  -- error to the user.
+  it("read-only queries still succeed while another git process holds index.lock", function()
+    local repo = make_repo_with_stale_index()
+    local lock = repo.dir .. "/.git/index.lock"
+    vim.fn.writefile({ "" }, lock)
+
+    local done, err = false, nil
+    git.get_diff_revision("HEAD", repo.dir, function(e)
+      err = e
+      done = true
+    end)
+    vim.wait(5000, function()
+      return done
+    end)
+
+    vim.fn.delete(lock)
+    assert.is_true(done, "callback should fire")
+    assert.is_nil(err, "a held index.lock must not fail a read-only query")
+    repo.cleanup()
+  end)
+end)
+
+
+
+
+-- GitHub's Windows runners set `core.autocrlf=true` globally. git then warns
+-- "LF will be replaced by CRLF the next time Git touches it" on stderr for every
+-- LF file the specs write, and `vim.fn.system()` folds stderr into its return
+-- value ('shellredir' is `>%s 2>&1`) — so the warning ends up inside strings the
+-- specs compare against git output. tests/init.lua pins `core.autocrlf=false`
+-- through GIT_CONFIG_COUNT for every git process instead.
+describe("Git output is free of line-ending warnings (#494)", function()
+  --- Repo configured exactly like a Windows CI runner: autocrlf on, LF content.
+  local function make_autocrlf_repo()
+    local repo = h.create_temp_git_repo()
+    repo.git("config core.autocrlf true")
+    repo.write_file("file1.txt", { "alpha", "beta", "gamma" })
+    repo.git("add file1.txt")
+    repo.git("commit -m initial")
+    repo.write_file("file1.txt", { "alpha", "BETA", "gamma" })
+    return repo
+  end
+
+  it("git_cmd output carries no CRLF conversion warning", function()
+    local repo = make_autocrlf_repo()
+
+    local output = repo.git("diff --name-only")
+
+    assert.is_nil(output:match("LF will be replaced by CRLF"), "line-ending warning must not pollute git output: " .. output)
+    assert.equals("file1.txt", vim.trim(output), "git diff --name-only should report exactly the modified file")
+    repo.cleanup()
+  end)
+
+  it("core.autocrlf is pinned off for every git process", function()
+    local repo = make_autocrlf_repo()
+
+    assert.equals("false", vim.trim(repo.git("config --get core.autocrlf")), "environment config must outrank the repository config")
+    repo.cleanup()
+  end)
+end)
