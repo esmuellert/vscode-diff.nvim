@@ -171,6 +171,65 @@ describe("Render View", function()
     vim.fn.delete(right_path)
   end)
 
+  -- Test 4b: Regression (#254) - duplicating a diff window must not carry the
+  -- scroll mirroring into the copy. scrollbind/cursorbind/diff are window-local
+  -- options that :split copies, so leaving any of them on a diff pane made the
+  -- duplicate scroll in lockstep with its sibling.
+  it("Does not scroll-mirror a window split off a diff pane", function()
+    local original = {}
+    local modified = {}
+    for i = 1, 200 do
+      original[i] = string.format("line %03d", i)
+      modified[i] = original[i]
+    end
+    modified[50] = "CHANGED 050"
+
+    local left_path = get_temp_path("test_view_left_254.txt")
+    local right_path = get_temp_path("test_view_right_254.txt")
+    vim.fn.writefile(original, left_path)
+    vim.fn.writefile(modified, right_path)
+
+    local _, tabpage = create_test_diff_view(original, modified, left_path, right_path)
+    vim.cmd("redraw")
+    vim.wait(200)
+
+    local session = lifecycle.get_session(tabpage)
+    assert.is_not_nil(session, "diff session should exist")
+    local mod_win = session.modified_win
+
+    for _, win in ipairs({ session.original_win, mod_win }) do
+      assert.is_false(vim.wo[win].scrollbind, "scrollbind must stay off on diff windows")
+      assert.is_false(vim.wo[win].cursorbind, "cursorbind must stay off on diff windows")
+      assert.is_false(vim.wo[win].diff, "diff must stay off on diff windows")
+    end
+
+    -- Duplicate the modified pane the way a user would (<C-w>s).
+    vim.api.nvim_set_current_win(mod_win)
+    vim.cmd("split")
+    local clone = vim.api.nvim_get_current_win()
+    assert.is_false(vim.wo[clone].scrollbind, "the split window must not inherit scrollbind")
+
+    local function topline(win)
+      return vim.api.nvim_win_call(win, function()
+        return vim.fn.line("w0")
+      end)
+    end
+    local clone_top = topline(clone)
+
+    vim.api.nvim_set_current_win(mod_win)
+    for _ = 1, 30 do
+      vim.cmd("normal! \5") -- <C-e>
+    end
+    -- Headless has no UI, so WinScrolled does not fire on its own.
+    vim.api.nvim_exec_autocmds("WinScrolled", {})
+
+    assert.is_true(topline(mod_win) > 1, "the diff pane should have scrolled")
+    assert.are.equal(clone_top, topline(clone), "the split window must stay put")
+
+    vim.fn.delete(left_path)
+    vim.fn.delete(right_path)
+  end)
+
   -- Test 5: Empty files are handled correctly
   it("Handles empty files without error", function()
     local original = {}
