@@ -222,3 +222,122 @@ describe("scrollsync manager alignment", function()
     end
   end)
 end)
+
+-- Regression (#254): duplicating a diff window (`<C-w>s`, optionally followed by
+-- `<C-w>T` to move it to a new tab) must not carry the scroll mirroring with it.
+-- Native `scrollbind` is a window-local option that `:split` copies, so a clone
+-- of a bound pane stayed scroll-bound to its sibling. The structural sync only
+-- ever drives the explicit window IDs it was given and keeps every bindable
+-- window option off, so clones are always independent.
+describe("scrollsync window duplication (#254)", function()
+  local scroll = require("codediff.ui.scroll")
+  local tab
+
+  before_each(function()
+    vim.cmd("tabnew")
+    tab = vim.api.nvim_get_current_tabpage()
+    vim.o.lines = 24
+  end)
+
+  after_each(function()
+    scroll.teardown(tab)
+    while vim.fn.tabpagenr("$") > 1 do
+      pcall(vim.cmd, "tabclose!")
+    end
+  end)
+
+  -- Two bound panes over the same long content, no fillers needed: the bug is
+  -- about option inheritance, not alignment.
+  local function bound_pair()
+    local lines = {}
+    for i = 1, 200 do
+      lines[i] = string.format("line %03d", i)
+    end
+    local left = make_win(lines, {})
+    vim.cmd("rightbelow vsplit")
+    local right = make_win(lines, {})
+    scroll.bind(tab, { left, right })
+    scroll.resync(tab, right)
+    return left, right
+  end
+
+  local function topline(win)
+    return vim.api.nvim_win_call(win, function()
+      return vim.fn.line("w0")
+    end)
+  end
+
+  local function scroll_down(win, count)
+    vim.api.nvim_set_current_win(win)
+    for _ = 1, count do
+      vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<C-e>", true, false, true), "nx", false)
+    end
+    -- Headless has no UI, so WinScrolled does not fire on its own.
+    vim.api.nvim_exec_autocmds("WinScrolled", {})
+  end
+
+  it("leaves no inheritable scroll-binding option on the diff windows", function()
+    local wl, wr = bound_pair()
+    for _, w in ipairs({ wl, wr }) do
+      -- Every one of these is copied by :split and would mirror scrolling.
+      assert.is_false(vim.wo[w].scrollbind, "scrollbind must stay off on diff windows")
+      assert.is_false(vim.wo[w].cursorbind, "cursorbind must stay off on diff windows")
+      assert.is_false(vim.wo[w].diff, "diff must stay off on diff windows")
+    end
+  end)
+
+  it("does not scroll-mirror a window split off a diff pane", function()
+    local wl, wr = bound_pair()
+
+    vim.api.nvim_set_current_win(wr)
+    vim.cmd("split")
+    local clone = vim.api.nvim_get_current_win()
+    assert.are_not.equal(wr, clone, "split should create a new window")
+    assert.is_false(vim.wo[clone].scrollbind, "the split window must not inherit scrollbind")
+
+    local group = scroll.get(tab)
+    assert.is_not_nil(group, "the diff panes should still be bound")
+    for _, w in ipairs(group.wins) do
+      assert.are_not.equal(clone, w, "the split window must not join the scroll-sync group")
+    end
+
+    local clone_top = topline(clone)
+    scroll_down(wr, 30)
+
+    assert.is_true(topline(wr) > 1, "the diff pane should have scrolled")
+    assert.is_true(topline(wl) > 1, "the other diff pane should follow (sync is live)")
+    assert.are.equal(clone_top, topline(clone), "the split window must stay put")
+  end)
+
+  it("does not scroll-mirror the panes of a new tab opened with <C-w>s<C-w>T", function()
+    local _, wr = bound_pair()
+
+    -- The exact sequence from the issue: split the diff pane, then move that
+    -- split to its own tab.
+    vim.api.nvim_set_current_win(wr)
+    vim.cmd("wincmd s")
+    local moved = vim.api.nvim_get_current_win()
+    -- The intermediate split is where the mirroring used to leak in: `wincmd T`
+    -- itself resets scrollbind, so the clone must already be clean here.
+    assert.is_false(vim.wo[moved].scrollbind, "the intermediate split must not inherit scrollbind")
+    vim.cmd("wincmd T")
+    local new_tab = vim.api.nvim_get_current_tabpage()
+    assert.are_not.equal(tab, new_tab, "wincmd T should move the window to a new tab")
+
+    -- Splitting inside the new tab must give two fully independent windows.
+    vim.cmd("split")
+    local wins = vim.api.nvim_tabpage_list_wins(new_tab)
+    assert.are.equal(2, #wins, "the new tab should have two windows")
+    for _, w in ipairs(wins) do
+      assert.is_false(vim.wo[w].scrollbind, "windows in the new tab must not have scrollbind")
+    end
+
+    local other = wins[1]
+    local driver = wins[2]
+    local other_top = topline(other)
+    scroll_down(driver, 30)
+
+    assert.is_true(topline(driver) > 1, "the driven window should have scrolled")
+    assert.are.equal(other_top, topline(other), "the sibling in the new tab must stay put")
+  end)
+end)
