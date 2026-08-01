@@ -1,0 +1,116 @@
+name: Build library (Linux)
+
+# Native Linux build in a CentOS 7 Docker container. CentOS 7 is chosen for
+# GLIBC 2.17 compatibility — that's the oldest widely-deployed GLIBC we
+# support, which lets our prebuilt binaries `dlopen` on most distro versions.
+#
+# Inputs:
+#   arch     - "x64" or "arm64" (affects toolchain: devtoolset-11 vs system GCC)
+#   runs-on  - GitHub runner label (ubuntu-latest for x64, ubuntu-24.04-arm for arm64)
+#   artifact - Name of the uploaded artifact (e.g. "linux-x64")
+
+on:
+  workflow_call:
+    inputs:
+      arch:
+        required: true
+        type: string
+      runs-on:
+        required: true
+        type: string
+      artifact:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build
+    runs-on: ${{ inputs.runs-on }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 'lts/*'
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake valgrind
+
+      - name: Setup Neovim
+        uses: ./.github/actions/setup-neovim
+        with:
+          arch: ${{ inputs.arch }}
+
+      - name: Build library (CentOS 7 Docker for GLIBC 2.17 compatibility)
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            -e HOST_UID=$(id -u) \
+            -e HOST_GID=$(id -g) \
+            centos:7 \
+            bash -c "
+              set -e
+              # CentOS 7 is EOL, use vault archives (following c-ares approach)
+              sed -i -e 's/^mirrorlist/#mirrorlist/' -e 's/^#baseurl/baseurl/' -e 's/mirror.centos.org/vault.centos.org/' /etc/yum.repos.d/*.repo
+              yum clean all
+              yum install -y epel-release
+              yum install -y centos-release-scl
+              # Delete problematic centos-sclo-sclo repo (from Apache Gluten approach)
+              rm -f /etc/yum.repos.d/CentOS-SCLo-scl.repo
+              # ARM64: devtoolset-11 not available, use system GCC
+              # x86_64: use devtoolset-11 for modern GCC with old GLIBC
+              if [ \$(uname -m) = \"aarch64\" ]; then
+                # Remove SCL-RH repo (not needed for system GCC)
+                rm -f /etc/yum.repos.d/CentOS-SCLo-scl-rh.repo
+                yum install -y gcc gcc-c++ make curl
+                # ARM64 cmake3 in EPEL is 3.14.6, need 3.15+. Use CMake 3.20.0 (first with ARM64 support).
+                curl -LO https://github.com/Kitware/CMake/releases/download/v3.20.0/cmake-3.20.0-linux-aarch64.tar.gz
+                tar --strip-components=1 -xzf cmake-3.20.0-linux-aarch64.tar.gz -C /usr/local
+              else
+                sed -i -e 's/^mirrorlist/#mirrorlist/' -e 's/^#baseurl/baseurl/' -e 's/mirror\.centos\.org/vault.centos.org/' /etc/yum.repos.d/CentOS-SCLo-scl-rh.repo
+                yum install -y devtoolset-11-gcc devtoolset-11-gcc-c++ cmake3 make
+                source /opt/rh/devtoolset-11/enable
+                ln -s /usr/bin/cmake3 /usr/local/bin/cmake
+              fi
+              make build
+              # Copy libgomp.so.1 from CentOS 7 (old GLIBC 2.17 compatible)
+              cp /lib64/libgomp.so.1 ./ || cp /usr/lib64/libgomp.so.1 ./ || true
+              # Fix ownership of build artifacts for host user
+              chown -R \$HOST_UID:\$HOST_GID build/ libvscode_diff.so libgomp.so.1 2>/dev/null || true
+            "
+
+      - name: Run C unit tests
+        run: |
+          # Run test executables directly (bypass ctest which has Docker paths)
+          cd build/libvscode-diff
+          for test in test_*; do
+            echo "Running $test..."
+            ./$test || exit 1
+          done
+
+      - name: Run Valgrind memory leak test
+        run: |
+          cd build/libvscode-diff
+          ctest -R test_memory_leak_valgrind -V
+
+      - name: Run Neovim tests
+        run: make test-lua
+
+      - name: Upload build artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact }}
+          path: |
+            libvscode_diff.so
+            libgomp.so.1
+          if-no-files-found: ignore
+          retention-days: 7

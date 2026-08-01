@@ -178,6 +178,16 @@ jobs:
             cp artifacts/windows-arm64/libvscode_diff.dll release-assets/libvscode_diff_windows_arm64_${VERSION}.dll
           fi
 
+          # Android ARM64 (Termux, #333)
+          if [ -f artifacts/android-arm64/libvscode_diff.so ]; then
+            cp artifacts/android-arm64/libvscode_diff.so release-assets/libvscode_diff_android_arm64_${VERSION}.so
+          fi
+
+          # Android x64 (Termux on Chromebooks / Android-x86 / x86_64 emulators)
+          if [ -f artifacts/android-x64/libvscode_diff.so ]; then
+            cp artifacts/android-x64/libvscode_diff.so release-assets/libvscode_diff_android_x64_${VERSION}.so
+          fi
+
           ls -lah release-assets/
 
       - name: Create Release
