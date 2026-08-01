@@ -5,6 +5,7 @@ local M = {}
 local Tree = require("codediff.ui.lib.tree")
 local config = require("codediff.config")
 local filter = require("codediff.ui.explorer.filter")
+local line_stats = require("codediff.ui.explorer.line_stats")
 local nodes = require("codediff.ui.explorer.nodes")
 
 -- Filter files based on explorer.file_filter config
@@ -25,6 +26,7 @@ local function create_group_node(label, name, files, children)
       name = name,
       label = label,
       file_count = #files,
+      stats = line_stats.sum(files),
       files = files,
     },
   }, children)

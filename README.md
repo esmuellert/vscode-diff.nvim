@@ -130,6 +130,11 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
       focus_on_select = false,  -- Jump to modified pane after selecting a file (default: stay in explorer)
       auto_open_on_cursor = false, -- Rebind j/k/Down/Up in the explorer to also open the file under the cursor
       status_right_margin = 1,  -- Trailing cells between status symbol (M/A/D) and right edge; increase if Nerd Font icons clip it
+      line_stats = {
+        enabled = false,         -- Fetch and show Git line statistics
+        count_untracked = false, -- Count untracked file lines as insertions
+        max_untracked_bytes = 1024 * 1024, -- Skip larger untracked files
+      },
       ellipsis = "…",          -- Text appended to truncated Explorer regions
       formatters = {  -- Optional function(ctx) -> line layout callbacks; omit to use the built-ins
         file = nil,   -- File rows
@@ -234,6 +239,10 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
 
 `diff.filler_text` accepts any non-empty text pattern and repeats it across filler rows. Set it to `""` to hide the decoration while preserving the rows that keep side-by-side and conflict panes aligned. Non-empty patterns use the `CodeDiffFiller` highlight group.
 
+Explorer line statistics are disabled by default because they require extra Git queries and consume space in the default 40-column Explorer. Set `explorer.line_stats.enabled = true` to show per-file Git numstat counts and group totals in status, one-revision, and two-revision modes. Untracked files have no stats unless `count_untracked = true`; files larger than `max_untracked_bytes` are not read (1 MiB by default).
+
+Files use `+12 -4` (`bin` for binary files), and group headings use `Changes (3 · +42 -8)`. Aggregate folder and group stats contain `files_changed`, `insertions`, `deletions`, `binary_files`, and `unavailable_files`.
+
 #### Explorer line formatters
 
 `explorer.formatters.file`, `folder`, and `group` replace the complete corresponding explorer row. Each callback receives row metadata and returns a layout:
@@ -255,13 +264,13 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
 }
 ```
 
-A region contains styled `segments`. A numeric `truncate_priority` makes it truncatable; lower priorities truncate first. Regions without a priority stay fixed unless all content cannot fit. The renderer measures display cells, truncates with `explorer.ellipsis` (default `…`), right-aligns `right`, and preserves `min_gap` when space permits. The ellipsis can contain multiple characters and is clipped display-width-aware when necessary.
+A region contains styled `segments`. A numeric `truncate_priority` makes it truncatable; lower priorities truncate first. Regions without a priority stay fixed unless all content cannot fit. The renderer measures display cells, truncates with `explorer.ellipsis` (default `…`), right-aligns `right`, and preserves `min_gap` when space permits. The built-in file formatter truncates the directory, filename, then stats while keeping status fixed. The ellipsis can contain multiple characters and is clipped display-width-aware when necessary.
 
 Each segment is `{ text = string, hl? = highlight }`. `hl` accepts a Neovim highlight group, a `#RGB`/`#RRGGBB` foreground color, or a highlight definition such as `{ fg = "#3fb950", bold = true }`. Omitted highlights use `Normal`; selected file rows retain their selection background.
 
-File contexts contain `path`, `filename`, `directory`, `old_path`, `group`, `status`, `status_hl`, `status_right_margin`, `indent`, `indent_hl`, `icon`, and `icon_hl`. Folder contexts contain `name`, `path`, `group`, `file_count`, `files`, `indent`, `indent_hl`, `icon`, `icon_hl`, and `expanded`. Group contexts contain `name`, `label`, `file_count`, `files`, and `expanded`.
+File contexts contain `path`, `filename`, `directory`, `old_path`, `group`, `stats`, `status`, `status_hl`, `status_right_margin`, `indent`, `indent_hl`, `icon`, and `icon_hl`. Folder contexts contain `name`, `path`, `group`, `file_count`, `stats`, `files`, `indent`, `indent_hl`, `icon`, `icon_hl`, and `expanded`. Group contexts contain `name`, `label`, `file_count`, `stats`, `files`, and `expanded`. `stats` is `nil` when line statistics are disabled.
 
-Folder and group `files` contain `{ path, old_path, group, status }` entries for every represented file. The built-in callbacks are exported by `codediff.ui.explorer.formatters` and return fresh layouts that can be assigned directly or wrapped.
+Folder and group `files` contain `{ path, old_path, group, status, stats }` entries for every represented file. The built-in callbacks are exported by `codediff.ui.explorer.formatters` and return fresh layouts that can be assigned directly or wrapped.
 
 ```lua
 require("codediff").setup({
@@ -712,6 +721,10 @@ The plugin defines highlight groups matching VSCode's diff colors:
 - `CodeDiffFiller` - Gray foreground for non-empty filler line patterns
 - `CodeDiffLineMove` - Background for moved code lines (derived from DiffChange)
 - `CodeDiffMoveTo` - Sign column and annotation color for move indicators
+- `CodeDiffExplorerStatFiles` - Explorer file counts
+- `CodeDiffExplorerStatInsertions` - Explorer insertion counts
+- `CodeDiffExplorerStatDeletions` - Explorer deletion counts
+- `CodeDiffExplorerStatBinary` - Explorer binary-file labels
 
 <details open>
 <summary><b>📸 Visual Examples</b> (click to collapse)</summary>

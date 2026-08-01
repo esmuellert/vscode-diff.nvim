@@ -333,11 +333,11 @@ function M.refresh(explorer)
     -- isn't a valid rev-pair; use `git diff --cached base` instead.
     git.get_diff_staged(explorer.base_revision, explorer.git_root, process_result, explorer.pathspec)
   elseif explorer.base_revision and explorer.target_revision and explorer.target_revision ~= "WORKING" then
-    git.get_diff_revisions(explorer.base_revision, explorer.target_revision, explorer.git_root, process_result, explorer.pathspec)
+    git.get_diff_revisions_with_line_stats(explorer.base_revision, explorer.target_revision, explorer.git_root, process_result, explorer.pathspec)
   elseif explorer.base_revision then
-    git.get_diff_revision(explorer.base_revision, explorer.git_root, process_result, explorer.pathspec)
+    git.get_diff_revision_with_line_stats(explorer.base_revision, explorer.git_root, process_result, explorer.pathspec)
   else
-    git.get_status(explorer.git_root, process_result, explorer.pathspec)
+    git.get_status_with_line_stats(explorer.git_root, process_result, explorer.pathspec)
   end
 end
 
