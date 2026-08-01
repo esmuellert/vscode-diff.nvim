@@ -440,6 +440,13 @@ function M.get_relative_path(file_path, git_root)
   return rel_path
 end
 
+-- The universal SHA-1 for an empty git tree object. Every git repository
+-- recognizes this hash — see `git hash-object -t tree /dev/null`. Diffing
+-- against it yields the entire other side as newly added, which is the
+-- correct semantic for "no HEAD yet" (a fresh repo before the first commit,
+-- see #498).
+local GIT_EMPTY_TREE_SHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
 -- Resolve a git revision to its commit hash (async, atomic)
 -- revision: branch name, tag, or commit reference
 -- git_root: absolute path to git repository root
@@ -447,6 +454,27 @@ end
 function M.resolve_revision(revision, git_root, callback)
   run_git_async({ "rev-parse", "--verify", revision }, { cwd = git_root }, function(err, output)
     if err then
+      -- Special case: on an unborn branch (fresh `git init` with no commits
+      -- yet), `rev-parse --verify HEAD` fails with "Needed a single
+      -- revision". Callers ask for HEAD to get a diff base; the empty-tree
+      -- hash IS a valid diff base and produces the correct visual (every
+      -- staged/worktree file appears as newly added), so translate the
+      -- failure into a hash the caller can use unchanged (#498).
+      if revision == "HEAD" then
+        -- Double-check we're actually on an unborn branch (not, say, a
+        -- corrupt repo). `symbolic-ref HEAD` succeeds even when the target
+        -- branch has no commits yet, so this positively identifies unborn.
+        run_git_async({ "symbolic-ref", "--quiet", "HEAD" }, { cwd = git_root }, function(sym_err)
+          if sym_err then
+            -- HEAD is not a symbolic ref (detached HEAD without any commit,
+            -- or a genuinely broken repo). Surface the original failure.
+            callback(string.format("Invalid revision '%s': %s", revision, err), nil)
+          else
+            callback(nil, GIT_EMPTY_TREE_SHA)
+          end
+        end)
+        return
+      end
       callback(string.format("Invalid revision '%s': %s", revision, err), nil)
     else
       local commit_hash = vim.trim(output)
