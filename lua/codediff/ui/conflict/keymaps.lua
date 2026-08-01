@@ -92,7 +92,7 @@ function M.setup_keymaps(tabpage)
     end
   end
 
-  lifecycle.end_keymap_scope(tabpage)
+  lifecycle.end_keymap_scope(tabpage, "conflict")
 end
 
 return M

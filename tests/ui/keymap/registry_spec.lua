@@ -405,6 +405,33 @@ describe("keymap registry", function()
       assert.equals("other", map_of(bufnr, "n", "q").desc, "dispose must not restore over a foreign mapping")
     end)
 
+    it("treats an active remap of the same RHS as foreign", function()
+      -- A plugin may re-map the same right-hand side with different options.
+      -- That is its mapping, not ours, and must survive teardown.
+      local bufnr = new_buf()
+      local r = keymap.new("test")
+      r:claim(bufnr, "n", "q", "<Cmd>echo 1<CR>", { desc = "codediff", silent = true })
+      vim.keymap.set("n", "q", "<Cmd>echo 1<CR>", { buffer = bufnr, desc = "foreign", silent = false })
+
+      r:dispose()
+      local current = map_of(bufnr, "n", "q")
+      assert.is_not_nil(current, "the foreign mapping must not be deleted")
+      assert.equals("foreign", current.desc)
+    end)
+
+    it("treats an active remap reusing our callback as foreign", function()
+      local bufnr = new_buf()
+      local r = keymap.new("test")
+      r:claim(bufnr, "n", "q", noop, { desc = "codediff" })
+      local installed = map_of(bufnr, "n", "q")
+      vim.keymap.set("n", "q", installed.callback, { buffer = bufnr, desc = "foreign" })
+
+      r:dispose()
+      local current = map_of(bufnr, "n", "q")
+      assert.is_not_nil(current, "the foreign mapping must not be deleted")
+      assert.equals("foreign", current.desc)
+    end)
+
     it("stops reporting ownership once displaced", function()
       local bufnr = new_buf()
       local r = keymap.new("test")
@@ -440,6 +467,30 @@ describe("keymap registry", function()
       r:dispose()
     end)
 
+    it("reveals the outer scope's claim when an overlapping scope is released", function()
+      -- A user may configure a view key that collides with a scope-owned one,
+      -- e.g. view.toggle_compact = "zo" against compact's own zo wrapper.
+      local bufnr = new_buf()
+      local r = keymap.new("test")
+
+      r:begin_scope("view")
+      r:claim(bufnr, "n", "zo", noop, { desc = "toggle compact" })
+      r:end_scope("view")
+
+      r:begin_scope("compact")
+      r:claim(bufnr, "n", "zo", noop, { desc = "synced fold" })
+      r:end_scope("compact")
+      assert.equals("synced fold", map_of(bufnr, "n", "zo").desc, "the newer scope wins while active")
+
+      r:release_scope("compact")
+      local revealed = map_of(bufnr, "n", "zo")
+      assert.is_not_nil(revealed, "the view mapping must come back, not vanish")
+      assert.equals("toggle compact", revealed.desc)
+
+      r:dispose()
+      assert.is_nil(map_of(bufnr, "n", "zo"), "both scopes released on dispose")
+    end)
+
     it("releases a whole scope on demand", function()
       local bufnr = new_buf()
       local r = keymap.new("test")
@@ -454,6 +505,42 @@ describe("keymap registry", function()
       r:release_scope("conflict")
       assert.is_nil(map_of(bufnr, "n", "]x"), "leaving conflict mode retires its mappings")
       assert.is_not_nil(map_of(bufnr, "n", "q"), "other scopes are untouched")
+      r:dispose()
+    end)
+
+    it("restores the outer pass when scopes nest", function()
+      local bufnr = new_buf()
+      local r = keymap.new("test")
+
+      r:begin_scope("view")
+      r:claim(bufnr, "n", "q", noop, { desc = "quit" })
+      -- an inner pass (compact) opening and closing inside the view pass
+      r:begin_scope("compact")
+      r:claim(bufnr, "n", "zo", noop, { desc = "fold" })
+      r:end_scope("compact")
+      -- still inside the view pass: this claim must belong to "view"
+      r:claim(bufnr, "n", "gm", noop, { desc = "align" })
+      r:end_scope("view")
+
+      -- a later view pass omits gm; the inner scope's claim must be untouched
+      r:begin_scope("view")
+      r:claim(bufnr, "n", "q", noop, { desc = "quit" })
+      r:end_scope("view")
+
+      assert.is_nil(map_of(bufnr, "n", "gm"), "claims after a nested scope still belong to the outer pass")
+      assert.is_not_nil(map_of(bufnr, "n", "zo"), "the inner scope's claims are not retired by the outer pass")
+      r:dispose()
+    end)
+
+    it("does not accumulate scopes when a pass never closes", function()
+      local bufnr = new_buf()
+      local r = keymap.new("test")
+      for _ = 1, 20 do
+        r:begin_scope("view")
+        r:claim(bufnr, "n", "q", noop, { desc = "quit" })
+        -- deliberately no end_scope, as if the pass raised
+      end
+      assert.is_true(#r.scope_stack <= 1, "an aborted pass must not grow the scope stack, got " .. #r.scope_stack)
       r:dispose()
     end)
 

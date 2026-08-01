@@ -89,28 +89,6 @@ local function drop_slot(slot)
   end
 end
 
-local function install(slot, claim)
-  local rhs = claim.rhs
-  if type(rhs) == "function" then
-    -- Wrap in a per-claim dispatcher so the installed mapping is identifiable
-    -- by function identity even when two claims share the same handler.
-    if not claim.dispatcher then
-      claim.dispatcher = function(...)
-        return claim.rhs(...)
-      end
-    end
-    rhs = claim.dispatcher
-  end
-
-  local opts = vim.tbl_extend("force", claim.opts or {}, { buffer = slot.bufnr })
-  local ok = pcall(vim.keymap.set, slot.mode, slot.lhs, rhs, opts)
-  if ok then
-    slot.applied = claim
-  else
-    slot.applied = nil
-  end
-end
-
 -- Mapping fields that decide whether two mappings are "the same mapping".
 -- Options matter: re-mapping the same RHS with different `silent` or `nowait`
 -- is a different mapping and must count as foreign.
@@ -136,21 +114,45 @@ local function same_map(a, b)
   return true
 end
 
+local function install(slot, claim)
+  local rhs = claim.rhs
+  if type(rhs) == "function" then
+    -- Wrap in a per-claim dispatcher so the installed mapping is identifiable
+    -- by function identity even when two claims share the same handler.
+    if not claim.dispatcher then
+      claim.dispatcher = function(...)
+        return claim.rhs(...)
+      end
+    end
+    rhs = claim.dispatcher
+  end
+
+  local opts = vim.tbl_extend("force", claim.opts or {}, { buffer = slot.bufnr })
+  local ok = pcall(vim.keymap.set, slot.mode, slot.lhs, rhs, opts)
+  if ok then
+    slot.applied = claim
+    -- Remember the mapping exactly as Neovim recorded it. Ownership is decided
+    -- against this snapshot: another plugin may reuse the same RHS, or even the
+    -- same callback, while changing options, and that is still its mapping.
+    slot.applied_map = read_current(slot.bufnr, slot.mode, slot.lhs)
+  else
+    slot.applied = nil
+    slot.applied_map = nil
+  end
+end
+
 --- True when the mapping currently installed is the one this slot applied.
+--- Compares the whole mapping, not just its right-hand side: a plugin that
+--- re-maps the same RHS with different options has replaced ours.
 local function installed_is_ours(slot)
-  local claim = slot.applied
-  if not claim then
+  if not slot.applied or not slot.applied_map then
     return false
   end
   local current = read_current(slot.bufnr, slot.mode, slot.lhs)
   if not is_buffer_local(current) then
     return false
   end
-  local expected = claim.dispatcher or claim.rhs
-  if type(expected) == "function" then
-    return current.callback == expected
-  end
-  return current.rhs == expected
+  return same_map(current, slot.applied_map)
 end
 
 --- True when codediff may take this slot.
@@ -184,6 +186,7 @@ local function restore(slot)
     pcall(vim.keymap.del, slot.mode, slot.lhs, { buffer = slot.bufnr })
   end
   slot.applied = nil
+  slot.applied_map = nil
 end
 
 --- Highest-priority active claim; ties resolve to the most recent claim.
@@ -246,9 +249,14 @@ local function reconcile(slot)
   end
 end
 
-local function find_claim(slot, owner)
+--- Claims are identified by owner *and* scope: one registry can hold several
+--- claims on the same key from different setup passes (a custom
+--- `view.toggle_compact = "zo"` alongside compact's own `zo` wrapper). Keying
+--- on the owner alone would make the later pass overwrite the earlier one, and
+--- releasing it would leave the key unmapped instead of revealing the first.
+local function find_claim(slot, owner, scope)
   for index, claim in ipairs(slot.claims) do
-    if claim.owner == owner then
+    if claim.owner == owner and claim.scope == scope then
       return index, claim
     end
   end
@@ -271,7 +279,7 @@ end
 --- @param opts table|nil Forwarded verbatim to vim.keymap.set
 --- @param priority integer|nil
 --- @return boolean claimed
-function M.claim(owner, bufnr, mode, key, lhs, rhs, opts, priority)
+function M.claim(owner, bufnr, mode, key, lhs, rhs, opts, priority, scope)
   if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) or not key or not lhs then
     return false
   end
@@ -307,13 +315,14 @@ function M.claim(owner, bufnr, mode, key, lhs, rhs, opts, priority)
     by_lhs[key] = slot
   end
 
-  local existing_index = find_claim(slot, owner)
+  local existing_index = find_claim(slot, owner, scope)
   if existing_index then
     table.remove(slot.claims, existing_index)
   end
 
   table.insert(slot.claims, {
     owner = owner,
+    scope = scope,
     rhs = rhs,
     opts = opts or {},
     priority = priority or 0,
@@ -326,14 +335,14 @@ end
 
 --- Release `owner`'s claim on a slot.
 --- @param key string Canonical key sequence used as slot identity
-function M.release(owner, bufnr, mode, key)
+function M.release(owner, bufnr, mode, key, scope)
   local by_lhs = slot_table(bufnr, mode, false)
   local slot = by_lhs and by_lhs[key]
   if not slot then
     return
   end
 
-  local index = find_claim(slot, owner)
+  local index = find_claim(slot, owner, scope)
   if index then
     table.remove(slot.claims, index)
   end
@@ -343,14 +352,14 @@ end
 
 --- Suspend or resume `owner`'s claim without forgetting it.
 --- @param key string Canonical key sequence used as slot identity
-function M.set_active(owner, bufnr, mode, key, active)
+function M.set_active(owner, bufnr, mode, key, active, scope)
   local by_lhs = slot_table(bufnr, mode, false)
   local slot = by_lhs and by_lhs[key]
   if not slot then
     return
   end
 
-  local _, claim = find_claim(slot, owner)
+  local _, claim = find_claim(slot, owner, scope)
   if not claim or claim.active == active then
     return
   end
@@ -367,13 +376,13 @@ end
 --- over. The help popup relies on this to avoid advertising an action the key
 --- no longer invokes.
 --- @return boolean
-function M.is_live(owner, bufnr, mode, key)
+function M.is_live(owner, bufnr, mode, key, scope)
   local by_lhs = slot_table(bufnr, mode, false)
   local slot = by_lhs and by_lhs[key]
   if not slot or slot.displaced then
     return false
   end
-  local _, claim = find_claim(slot, owner)
+  local _, claim = find_claim(slot, owner, scope)
   if not claim or not claim.active or slot.applied ~= claim then
     return false
   end

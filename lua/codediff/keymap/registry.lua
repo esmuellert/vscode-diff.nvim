@@ -21,8 +21,8 @@ local normalize = require("codediff.keymap.normalize")
 local Registry = {}
 Registry.__index = Registry
 
-local function entry_key(bufnr, mode, lhs)
-  return string.format("%d\0%s\0%s", bufnr, mode, lhs)
+local function entry_key(bufnr, mode, lhs, scope)
+  return string.format("%d\0%s\0%s\0%s", bufnr, mode, lhs, scope or "")
 end
 
 --- @param name string Diagnostic label (e.g. "session:3")
@@ -34,9 +34,9 @@ function M.new(name)
     suspended = false,
     disposed = false,
     -- Generation counter per scope, used to retire claims that a later setup
-    -- pass no longer makes.
+    -- pass no longer makes, plus the stack of passes currently open.
     scope_gen = {},
-    current_scope = nil,
+    scope_stack = {},
   }, Registry)
 end
 
@@ -53,21 +53,58 @@ function Registry:begin_scope(scope)
   if self.disposed then
     return
   end
+  -- A pass that aborted before its end_scope would otherwise leave its name on
+  -- the stack forever, so drop any stale entry for this scope first. Claims
+  -- made in that window are still attributed to it and will be retired here;
+  -- that is acceptable because an aborted setup pass is already a failed state.
+  for i = #self.scope_stack, 1, -1 do
+    if self.scope_stack[i] == scope then
+      table.remove(self.scope_stack, i)
+    end
+  end
   self.scope_gen[scope] = (self.scope_gen[scope] or 0) + 1
-  self.current_scope = scope
+  table.insert(self.scope_stack, scope)
 end
 
---- Finish the current setup pass, releasing claims it did not renew.
-function Registry:end_scope()
-  local scope = self.current_scope
-  self.current_scope = nil
-  if self.disposed or not scope then
+--- The pass a claim made right now belongs to.
+local function current_scope(self)
+  return self.scope_stack[#self.scope_stack]
+end
+
+--- Finish a setup pass, releasing claims it did not renew.
+---
+--- Unwinds to `scope` when given, so a pass that aborted before its own
+--- end_scope cannot leave the stack dirty and silently mis-tag later claims.
+--- @param scope string|nil Defaults to the innermost open pass
+function Registry:end_scope(scope)
+  if self.disposed then
     return
+  end
+  if scope then
+    -- Pop until this scope has been closed; anything above it never closed.
+    local found = false
+    for i = #self.scope_stack, 1, -1 do
+      if self.scope_stack[i] == scope then
+        found = true
+        for _ = #self.scope_stack, i, -1 do
+          table.remove(self.scope_stack)
+        end
+        break
+      end
+    end
+    if not found then
+      return
+    end
+  else
+    scope = table.remove(self.scope_stack)
+    if not scope then
+      return
+    end
   end
   local generation = self.scope_gen[scope]
   for key, entry in pairs(self.entries) do
     if entry.scope == scope and entry.generation ~= generation then
-      slots.release(self, entry.bufnr, entry.mode, entry.lhs)
+      slots.release(self, entry.bufnr, entry.mode, entry.lhs, entry.scope)
       self.entries[key] = nil
     end
   end
@@ -82,7 +119,7 @@ function Registry:release_scope(scope)
   end
   for key, entry in pairs(self.entries) do
     if entry.scope == scope then
-      slots.release(self, entry.bufnr, entry.mode, entry.lhs)
+      slots.release(self, entry.bufnr, entry.mode, entry.lhs, entry.scope)
       self.entries[key] = nil
     end
   end
@@ -125,20 +162,21 @@ function Registry:claim(bufnr, modes, lhs, rhs, opts, meta)
     -- APIs accept. Passing the canonical bytes to vim.keymap.set would encode
     -- keys like <2-LeftMouse> and <Down> a second time, leaving a mapping the
     -- real key press can never reach.
-    if slots.claim(self, bufnr, mode, canonical, resolved, rhs, opts, meta.priority) then
-      local key = entry_key(bufnr, mode, canonical)
+    local scope = current_scope(self)
+    if slots.claim(self, bufnr, mode, canonical, resolved, rhs, opts, meta.priority, scope) then
+      local key = entry_key(bufnr, mode, canonical, scope)
       self.entries[key] = {
         bufnr = bufnr,
         mode = mode,
         lhs = canonical,
         suspendable = suspendable,
         documented = documented,
-        scope = self.current_scope,
-        generation = self.current_scope and self.scope_gen[self.current_scope] or nil,
+        scope = scope,
+        generation = scope and self.scope_gen[scope] or nil,
       }
       -- A claim added while suspended must not be installed yet.
       if self.suspended and suspendable then
-        slots.set_active(self, bufnr, mode, canonical, false)
+        slots.set_active(self, bufnr, mode, canonical, false, scope)
       end
       claimed = true
     end
@@ -152,7 +190,7 @@ end
 function Registry:documented_keys()
   local keys = {}
   for _, entry in pairs(self.entries) do
-    if entry.documented and slots.is_live(self, entry.bufnr, entry.mode, entry.lhs) then
+    if entry.documented and slots.is_live(self, entry.bufnr, entry.mode, entry.lhs, entry.scope) then
       keys[entry.lhs] = true
     end
   end
@@ -175,7 +213,7 @@ function Registry:owns(lhs, mode, bufnr)
   end
   for _, entry in pairs(self.entries) do
     if entry.lhs == canonical and (mode == nil or entry.mode == mode) and (bufnr == nil or entry.bufnr == bufnr) then
-      if slots.is_live(self, entry.bufnr, entry.mode, entry.lhs) then
+      if slots.is_live(self, entry.bufnr, entry.mode, entry.lhs, entry.scope) then
         return true
       end
     end
@@ -197,8 +235,14 @@ function Registry:release(bufnr, modes, lhs)
     return
   end
   for _, mode in ipairs(normalize.modes(modes)) do
-    slots.release(self, bufnr, mode, canonical)
-    self.entries[entry_key(bufnr, mode, canonical)] = nil
+    -- Release every scope's claim on this key, since the caller names a
+    -- mapping rather than a particular setup pass.
+    for key, entry in pairs(self.entries) do
+      if entry.bufnr == bufnr and entry.mode == mode and entry.lhs == canonical then
+        slots.release(self, bufnr, mode, canonical, entry.scope)
+        self.entries[key] = nil
+      end
+    end
   end
 end
 
@@ -223,7 +267,7 @@ function Registry:detach_buffer(bufnr)
   end
   for key, entry in pairs(self.entries) do
     if entry.bufnr == bufnr then
-      slots.release(self, entry.bufnr, entry.mode, entry.lhs)
+      slots.release(self, entry.bufnr, entry.mode, entry.lhs, entry.scope)
       self.entries[key] = nil
     end
   end
@@ -251,7 +295,7 @@ function Registry:suspend()
   self.suspended = true
   for _, entry in pairs(self.entries) do
     if entry.suspendable then
-      slots.set_active(self, entry.bufnr, entry.mode, entry.lhs, false)
+      slots.set_active(self, entry.bufnr, entry.mode, entry.lhs, false, entry.scope)
     end
   end
 end
@@ -264,7 +308,7 @@ function Registry:resume()
   self.suspended = false
   for _, entry in pairs(self.entries) do
     if entry.suspendable then
-      slots.set_active(self, entry.bufnr, entry.mode, entry.lhs, true)
+      slots.set_active(self, entry.bufnr, entry.mode, entry.lhs, true, entry.scope)
     end
   end
 end
@@ -276,7 +320,7 @@ function Registry:dispose()
   end
   self.disposed = true
   for key, entry in pairs(self.entries) do
-    slots.release(self, entry.bufnr, entry.mode, entry.lhs)
+    slots.release(self, entry.bufnr, entry.mode, entry.lhs, entry.scope)
     self.entries[key] = nil
   end
 end

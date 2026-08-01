@@ -176,7 +176,7 @@ local function setup_fold_sync(session, tabpage)
     end
   end
 
-  lifecycle.end_keymap_scope(tabpage)
+  lifecycle.end_keymap_scope(tabpage, "compact")
 end
 
 --- Remove the synced-fold keymap wraps from a session's panes.

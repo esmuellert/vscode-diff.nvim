@@ -204,7 +204,7 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
     end, { desc = "Align moved code block" })
   end
 
-  lifecycle.end_keymap_scope(tabpage)
+  lifecycle.end_keymap_scope(tabpage, "view")
 
   -- Keep compact mode in sync when the diff view is (re)built — applies the
   -- configured default on open and re-folds on file switches (no-op if off).

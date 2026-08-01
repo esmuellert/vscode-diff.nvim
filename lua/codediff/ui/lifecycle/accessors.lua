@@ -608,12 +608,13 @@ function M.begin_keymap_scope(tabpage, scope)
   end
 end
 
---- Finish the current keymap setup pass, releasing claims it did not renew.
+--- Finish a keymap setup pass, releasing claims it did not renew.
 --- @param tabpage number
-function M.end_keymap_scope(tabpage)
+--- @param scope string|nil Names the pass to close; defaults to the innermost
+function M.end_keymap_scope(tabpage, scope)
   local sess = get_active_diffs()[tabpage]
   if sess and sess.keymaps then
-    sess.keymaps:end_scope()
+    sess.keymaps:end_scope(scope)
   end
 end
 
