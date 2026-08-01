@@ -779,15 +779,22 @@ local function show_single_file(tabpage, opts)
     close_win = nil
   end
 
+  -- Load the file into the kept window BEFORE closing the other one. Virtual
+  -- buffers (from load_virtual_file) carry `bufhidden = "wipe"` so they get
+  -- wiped as soon as they have no window; closing close_win first would leave
+  -- the freshly-created virtual buffer with no window, wiping it before we can
+  -- set it into keep_win — producing "Invalid buffer id" (#498).
+  if keep_win and vim.api.nvim_win_is_valid(keep_win) then
+    show_real_file_buffer(keep_win, opts.load_bufnr)
+  end
+
   if close_win and vim.api.nvim_win_is_valid(close_win) then
     vim.w[close_win].codediff_restore = nil
     vim.api.nvim_win_close(close_win, true)
     close_win = nil
   end
 
-  -- Load the file into the kept window
   if keep_win and vim.api.nvim_win_is_valid(keep_win) then
-    show_real_file_buffer(keep_win, opts.load_bufnr)
     welcome_window.sync(keep_win)
 
     if opts.keep == "original" then
