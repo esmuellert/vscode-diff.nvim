@@ -204,6 +204,14 @@ function M.create_session(
         local current_tab = vim.api.nvim_get_current_tabpage()
         if current_tab == tabpage and active_diffs[tabpage] then
           local sess = active_diffs[tabpage]
+          -- resume_diff tears the session down when a pane was wiped while we
+          -- were away; let it run first so we never reinstall mappings onto a
+          -- session that is about to disappear.
+          local panes_valid = vim.api.nvim_buf_is_valid(sess.original_bufnr) and vim.api.nvim_buf_is_valid(sess.modified_bufnr)
+          if not panes_valid then
+            state.resume_diff(tabpage)
+            return
+          end
           accessors.restore_tab_keymaps(tabpage)
           if sess.reapply_keymaps then
             pcall(sess.reapply_keymaps)

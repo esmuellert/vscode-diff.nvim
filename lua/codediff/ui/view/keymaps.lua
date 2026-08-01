@@ -26,6 +26,11 @@ end
 -- Centralized keymap setup for all diff view keymaps
 -- This function sets up ALL keymaps in one place for better maintainability
 function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explorer_mode)
+  -- Scope the pass so mappings from a previous session shape (gm after
+  -- switching to inline, an old quit key after reconfiguration) are retired
+  -- rather than left installed alongside the new ones.
+  lifecycle.begin_keymap_scope(tabpage, "view")
+
   local keymaps = config.options.keymaps.view
 
   -- Check mode context
@@ -879,6 +884,8 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
   if keymaps.align_move and not is_inline and config.options.diff.compute_moves then
     lifecycle.set_tab_keymap(tabpage, "n", keymaps.align_move, align_move, { desc = "Align moved code block" })
   end
+
+  lifecycle.end_keymap_scope(tabpage)
 
   -- Keep compact mode in sync when the diff view is (re)built — applies the
   -- configured default on open and re-folds on file switches (no-op if off).

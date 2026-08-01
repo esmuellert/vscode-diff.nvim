@@ -33,7 +33,59 @@ function M.new(name)
     entries = {},
     suspended = false,
     disposed = false,
+    -- Generation counter per scope, used to retire claims that a later setup
+    -- pass no longer makes.
+    scope_gen = {},
+    current_scope = nil,
   }, Registry)
+end
+
+--- Begin a setup pass for `scope`.
+---
+--- Keymap setup is re-run whenever a session changes shape (layout toggle,
+--- entering or leaving conflict mode, reconfiguration). Without a scope the
+--- pass could only add claims, so mappings from the previous shape survived —
+--- `gm` after switching to inline, conflict mappings after leaving a merge.
+--- Claims made between begin_scope and end_scope are tagged; end_scope
+--- releases anything in that scope the pass did not re-claim.
+--- @param scope string
+function Registry:begin_scope(scope)
+  if self.disposed then
+    return
+  end
+  self.scope_gen[scope] = (self.scope_gen[scope] or 0) + 1
+  self.current_scope = scope
+end
+
+--- Finish the current setup pass, releasing claims it did not renew.
+function Registry:end_scope()
+  local scope = self.current_scope
+  self.current_scope = nil
+  if self.disposed or not scope then
+    return
+  end
+  local generation = self.scope_gen[scope]
+  for key, entry in pairs(self.entries) do
+    if entry.scope == scope and entry.generation ~= generation then
+      slots.release(self, entry.bufnr, entry.mode, entry.lhs)
+      self.entries[key] = nil
+    end
+  end
+end
+
+--- Release every claim belonging to `scope`.
+--- Used when a capability goes away entirely, such as leaving conflict mode.
+--- @param scope string
+function Registry:release_scope(scope)
+  if self.disposed then
+    return
+  end
+  for key, entry in pairs(self.entries) do
+    if entry.scope == scope then
+      slots.release(self, entry.bufnr, entry.mode, entry.lhs)
+      self.entries[key] = nil
+    end
+  end
 end
 
 --- Install a mapping owned by this registry.
@@ -81,6 +133,8 @@ function Registry:claim(bufnr, modes, lhs, rhs, opts, meta)
         lhs = canonical,
         suspendable = suspendable,
         documented = documented,
+        scope = self.current_scope,
+        generation = self.current_scope and self.scope_gen[self.current_scope] or nil,
       }
       -- A claim added while suspended must not be installed yet.
       if self.suspended and suspendable then
@@ -98,7 +152,7 @@ end
 function Registry:documented_keys()
   local keys = {}
   for _, entry in pairs(self.entries) do
-    if entry.documented then
+    if entry.documented and slots.is_live(self, entry.bufnr, entry.mode, entry.lhs) then
       keys[entry.lhs] = true
     end
   end
@@ -121,7 +175,9 @@ function Registry:owns(lhs, mode, bufnr)
   end
   for _, entry in pairs(self.entries) do
     if entry.lhs == canonical and (mode == nil or entry.mode == mode) and (bufnr == nil or entry.bufnr == bufnr) then
-      return true
+      if slots.is_live(self, entry.bufnr, entry.mode, entry.lhs) then
+        return true
+      end
     end
   end
   return false
@@ -143,6 +199,17 @@ function Registry:release(bufnr, modes, lhs)
   for _, mode in ipairs(normalize.modes(modes)) do
     slots.release(self, bufnr, mode, canonical)
     self.entries[entry_key(bufnr, mode, canonical)] = nil
+  end
+end
+
+--- Drop bookkeeping for a buffer that no longer exists, without calling into
+--- Neovim: a wiped buffer already took its mappings with it.
+--- @param bufnr number
+function Registry:forget_buffer(bufnr)
+  for key, entry in pairs(self.entries) do
+    if entry.bufnr == bufnr then
+      self.entries[key] = nil
+    end
   end
 end
 

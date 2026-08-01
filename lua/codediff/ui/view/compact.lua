@@ -123,6 +123,8 @@ local function setup_fold_sync(session, tabpage)
     { win = session.modified_win, buf = session.modified_bufnr, side = "modified" },
   }
 
+  lifecycle.begin_keymap_scope(tabpage, "compact")
+
   for _, pane in ipairs(panes) do
     if pane.win and vim.api.nvim_win_is_valid(pane.win)
         and pane.buf and vim.api.nvim_buf_is_valid(pane.buf) then
@@ -169,10 +171,12 @@ local function setup_fold_sync(session, tabpage)
           if not ok then
             vim.notify("[codediff] synced-fold error: " .. tostring(err), vim.log.levels.DEBUG)
           end
-        end, { buffer = pane.buf, silent = true, desc = "codediff: synced fold " .. key }, { suspendable = false, help = false })
+        end, { buffer = pane.buf, silent = true, desc = "codediff: synced fold " .. key }, { help = false })
       end
     end
   end
+
+  lifecycle.end_keymap_scope(tabpage)
 end
 
 --- Remove the synced-fold keymap wraps from a session's panes.
@@ -180,15 +184,8 @@ end
 --- explorer paths where buffers persist we need to release them explicitly.
 --- @param session table
 --- @param tabpage number
-local function teardown_fold_sync(session, tabpage)
-  local panes = { session.original_bufnr, session.modified_bufnr }
-  for _, buf in ipairs(panes) do
-    if buf and vim.api.nvim_buf_is_valid(buf) then
-      for _, key in ipairs(FOLD_KEYS) do
-        lifecycle.del_buf_keymap(tabpage, buf, "n", key)
-      end
-    end
-  end
+local function teardown_fold_sync(_, tabpage)
+  lifecycle.release_keymap_scope(tabpage, "compact")
 end
 
 --- The fold-target panes for a session (inline folds only the modified pane).

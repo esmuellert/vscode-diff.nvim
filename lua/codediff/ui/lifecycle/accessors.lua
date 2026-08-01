@@ -373,6 +373,12 @@ function M.set_result(tabpage, result_bufnr, result_win)
     return false
   end
 
+  -- Leaving conflict mode: retire the conflict mappings so do/dp and the
+  -- ordinary view mappings can be claimed again on the next setup pass.
+  if result_bufnr == nil and sess.result_bufnr ~= nil and sess.keymaps then
+    sess.keymaps:release_scope("conflict")
+  end
+
   sess.result_bufnr = result_bufnr
   sess.result_win = result_win
 
@@ -587,6 +593,38 @@ function M.documented_keymaps(tabpage)
     return {}
   end
   return sess.keymaps:documented_keys()
+end
+
+--- Begin a keymap setup pass for `scope` on this session.
+--- Claims made until end_keymap_scope are tagged; anything in the scope the
+--- pass does not re-claim is released, so a shape change (layout toggle,
+--- leaving conflict mode, reconfiguration) cannot leave stale mappings behind.
+--- @param tabpage number
+--- @param scope string
+function M.begin_keymap_scope(tabpage, scope)
+  local sess = get_active_diffs()[tabpage]
+  if sess then
+    registry_for(sess):begin_scope(scope)
+  end
+end
+
+--- Finish the current keymap setup pass, releasing claims it did not renew.
+--- @param tabpage number
+function M.end_keymap_scope(tabpage)
+  local sess = get_active_diffs()[tabpage]
+  if sess and sess.keymaps then
+    sess.keymaps:end_scope()
+  end
+end
+
+--- Release every mapping belonging to `scope`.
+--- @param tabpage number
+--- @param scope string
+function M.release_keymap_scope(tabpage, scope)
+  local sess = get_active_diffs()[tabpage]
+  if sess and sess.keymaps then
+    sess.keymaps:release_scope(scope)
+  end
 end
 
 --- Release a specific mapping the session installed on a buffer.

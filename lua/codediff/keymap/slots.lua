@@ -111,15 +111,29 @@ local function install(slot, claim)
   end
 end
 
---- Compare two mapping descriptions for identity.
+-- Mapping fields that decide whether two mappings are "the same mapping".
+-- Options matter: re-mapping the same RHS with different `silent` or `nowait`
+-- is a different mapping and must count as foreign.
+local COMPARED_FIELDS = { "expr", "noremap", "script", "silent", "nowait", "desc", "replace_keycodes" }
+
+--- Compare two mapping descriptions for identity, including options.
 local function same_map(a, b)
   if not a or not b then
     return false
   end
   if a.callback ~= nil or b.callback ~= nil then
-    return a.callback == b.callback
+    if a.callback ~= b.callback then
+      return false
+    end
+  elseif a.rhs ~= b.rhs then
+    return false
   end
-  return a.rhs == b.rhs
+  for _, field in ipairs(COMPARED_FIELDS) do
+    if a[field] ~= b[field] then
+      return false
+    end
+  end
+  return true
 end
 
 --- True when the mapping currently installed is the one this slot applied.
@@ -139,12 +153,19 @@ local function installed_is_ours(slot)
   return current.rhs == expected
 end
 
---- True when codediff may take this slot: either nothing buffer-local is
---- installed, or what is installed is the snapshot we previously handed back.
+--- True when codediff may take this slot.
+---
+--- Only two states are ours to take: nothing buffer-local is installed and
+--- there was nothing to begin with, or what is installed is exactly the
+--- snapshot we previously handed back. Anything else — including the snapshot
+--- having been deleted by someone else while we were suspended — means another
+--- party now owns the key.
 local function slot_is_free_for_us(slot)
   local current = read_current(slot.bufnr, slot.mode, slot.lhs)
   if not is_buffer_local(current) then
-    return true
+    -- Absence is only "free" when there was no prior mapping to preserve.
+    -- If we had a snapshot, its disappearance means someone deleted it.
+    return slot.saved == false
   end
   return slot.saved ~= false and same_map(current, slot.saved)
 end
@@ -255,16 +276,29 @@ function M.claim(owner, bufnr, mode, key, lhs, rhs, opts, priority)
     return false
   end
 
+  -- Freeze the spelling now. `lhs` may contain <leader>, which resolves
+  -- against mapleader at this instant; if the user changes mapleader later,
+  -- re-reading the configured string would address a different key and we
+  -- would fail to find, restore or delete what we installed. keytrans gives a
+  -- stable, API-safe rendering of the canonical bytes.
+  local frozen = lhs
+  if vim.fn.exists("*keytrans") == 1 then
+    local ok, translated = pcall(vim.fn.keytrans, key)
+    if ok and translated ~= "" then
+      frozen = translated
+    end
+  end
+
   local by_lhs = slot_table(bufnr, mode, true)
   local slot = by_lhs[key]
 
   if not slot then
-    local current = read_current(bufnr, mode, lhs)
+    local current = read_current(bufnr, mode, frozen)
     slot = {
       bufnr = bufnr,
       mode = mode,
       key = key,
-      lhs = lhs,
+      lhs = frozen,
       -- Only buffer-local mappings are ours to restore. A global mapping must
       -- never be recreated as a buffer-local one.
       saved = is_buffer_local(current) and current or false,
@@ -323,6 +357,27 @@ function M.set_active(owner, bufnr, mode, key, active)
   claim.active = active
 
   reconcile(slot)
+end
+
+--- True when `owner` has a live, installed claim on this slot.
+---
+--- Verifies against the mapping actually installed rather than trusting cached
+--- state: displacement is normally detected during reconcile, and a passive
+--- query would otherwise still report a key that another plugin has taken
+--- over. The help popup relies on this to avoid advertising an action the key
+--- no longer invokes.
+--- @return boolean
+function M.is_live(owner, bufnr, mode, key)
+  local by_lhs = slot_table(bufnr, mode, false)
+  local slot = by_lhs and by_lhs[key]
+  if not slot or slot.displaced then
+    return false
+  end
+  local _, claim = find_claim(slot, owner)
+  if not claim or not claim.active or slot.applied ~= claim then
+    return false
+  end
+  return installed_is_ours(slot)
 end
 
 --- Forget every slot for a buffer without touching Neovim.

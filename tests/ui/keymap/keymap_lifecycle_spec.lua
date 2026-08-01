@@ -256,6 +256,67 @@ describe("keymap lifecycle", function()
       repo.cleanup()
     end)
 
+    it("releases compact fold wraps when leaving the tab", function()
+      -- The wraps live on real diff buffers, so they must not follow those
+      -- buffers into other tabs.
+      local tabpage, mod_buf, cleanup = open_standalone({ "a", "b", "c" }, { "a", "X", "c" })
+      assert.is_true(require("codediff.ui.view.compact").enable(tabpage), "compact should enable")
+      assert.is_not_nil(matrix.map_index(mod_buf, "n")["zo"], "zo should be wrapped while compact is active")
+
+      vim.cmd("tabnew")
+      vim.wait(100)
+
+      assert.is_nil(matrix.map_index(mod_buf, "n")["zo"], "compact fold wraps must not leak into other tabs")
+      cleanup()
+    end)
+
+    it("retires layout-specific mappings when the layout changes", function()
+      reset_config({ diff = { compute_moves = true, layout = "side-by-side" } })
+      local left = temp_file("_move_left.txt", { "a1", "a2", "a3", "a4", "a5", "u1", "u2", "u3", "b1", "b2", "b3", "b4", "b5" })
+      local right = temp_file("_move_right.txt", { "u1", "u2", "u3", "b1", "b2", "b3", "b4", "b5", "a1", "a2", "a3", "a4", "a5" })
+
+      view.create({
+        mode = "standalone",
+        git_root = nil,
+        original = path.make_ref(left, nil),
+        modified = path.make_ref(right, nil),
+      })
+      local tabpage = vim.api.nvim_get_current_tabpage()
+      assert.is_true(wait_for_diff(tabpage), "session should be ready")
+
+      local session = lifecycle.get_session(tabpage)
+      assert.is_not_nil(matrix.map_index(session.modified_bufnr, "n")["gm"], "gm should be bound in side-by-side")
+
+      view.toggle_layout(tabpage)
+      assert.is_true(vim.wait(10000, function()
+        local s = lifecycle.get_session(tabpage)
+        return s and s.layout == "inline" and s.stored_diff_result ~= nil
+      end, 50), "layout should toggle to inline")
+
+      session = lifecycle.get_session(tabpage)
+      assert.is_nil(matrix.map_index(session.modified_bufnr, "n")["gm"], "gm applies only to side-by-side and must be retired")
+
+      vim.fn.delete(left)
+      vim.fn.delete(right)
+    end)
+
+    it("retires the previous key when the configuration is changed and reapplied", function()
+      local tabpage, mod_buf, cleanup = open_standalone({ "a", "b" }, { "a", "c" })
+      assert.is_not_nil(matrix.map_index(mod_buf, "n")["q"], "default quit should be bound")
+
+      require("codediff").setup({ keymaps = { view = { quit = "Q" } } })
+      local session = lifecycle.get_session(tabpage)
+      if session.reapply_keymaps then
+        session.reapply_keymaps()
+      end
+      vim.wait(200)
+
+      assert.is_not_nil(matrix.map_index(mod_buf, "n")["Q"], "the new quit key should be bound")
+      assert.is_nil(matrix.map_index(mod_buf, "n")["q"], "the previous quit key must be released")
+
+      cleanup()
+    end)
+
     it("restores the user's do/dp instead of deleting them in conflict mode", function()
       local repo = h.create_temp_git_repo()
       repo.write_file("conf.txt", { "l1", "l2", "l3" })

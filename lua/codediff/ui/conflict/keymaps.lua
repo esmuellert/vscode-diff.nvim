@@ -43,6 +43,8 @@ function M.setup_keymaps(tabpage)
     return
   end
 
+  lifecycle.begin_keymap_scope(tabpage, "conflict")
+
   local keymaps = config.options.keymaps.conflict or {}
 
   -- Bind to incoming (left), current (right), AND result buffers
@@ -89,6 +91,8 @@ function M.setup_keymaps(tabpage)
       end
     end
   end
+
+  lifecycle.end_keymap_scope(tabpage)
 end
 
 return M

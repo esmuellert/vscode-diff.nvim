@@ -228,6 +228,22 @@ function M.setup_autocmds()
     end,
   })
 
+  -- A wiped buffer takes its mappings with it. Drop the bookkeeping so slots
+  -- do not accumulate for buffers that no longer exist.
+  vim.api.nvim_create_autocmd("BufWipeout", {
+    group = augroup,
+    callback = function(args)
+      if args.buf then
+        require("codediff.keymap").forget_buffer(args.buf)
+        for _, diff in pairs(session.get_active_diffs()) do
+          if diff.keymaps then
+            diff.keymaps:forget_buffer(args.buf)
+          end
+        end
+      end
+    end,
+  })
+
   -- Re-pin panel widths on terminal/tmux resize for every active diff session
   -- (see issue #346). VimResized is editor-global, so one autocmd handles all
   -- tabs; layout.arrange() is a no-op for tabs without a session.

@@ -352,6 +352,125 @@ describe("keymap registry", function()
     end)
   end)
 
+  describe("ownership edge cases", function()
+    -- Regressions found by an adversarial audit of the registry.
+
+    it("restores the user mapping after mapleader changes mid-session", function()
+      local bufnr = new_buf()
+      local saved_leader = vim.g.mapleader
+      vim.g.mapleader = "\\"
+      vim.keymap.set("n", "\\x", noop, { buffer = bufnr, desc = "user" })
+
+      local r = keymap.new("test")
+      r:claim(bufnr, "n", "<leader>x", noop, { desc = "codediff" })
+
+      -- Changing the leader must not make the installed key unaddressable.
+      vim.g.mapleader = ","
+      r:dispose()
+      vim.g.mapleader = saved_leader
+
+      local restored = map_of(bufnr, "n", "\\x")
+      assert.is_not_nil(restored, "the user's mapping should be restored")
+      assert.equals("user", restored.desc)
+    end)
+
+    it("does not resurrect a mapping the user deleted while suspended", function()
+      local bufnr = new_buf()
+      vim.keymap.set("n", "q", noop, { buffer = bufnr, desc = "user" })
+
+      local r = keymap.new("test")
+      r:claim(bufnr, "n", "q", noop, { desc = "codediff" })
+      r:suspend()
+      vim.keymap.del("n", "q", { buffer = bufnr })
+      r:resume()
+
+      assert.is_nil(map_of(bufnr, "n", "q"), "resume must not reclaim a key the user freed")
+      r:dispose()
+      assert.is_nil(map_of(bufnr, "n", "q"), "dispose must not resurrect the deleted mapping")
+    end)
+
+    it("treats an options-only change as a foreign mapping", function()
+      local bufnr = new_buf()
+      vim.keymap.set("n", "q", "<Cmd>echo 1<CR>", { buffer = bufnr, desc = "user", silent = true })
+
+      local r = keymap.new("test")
+      r:claim(bufnr, "n", "q", noop, { desc = "codediff" })
+      r:suspend()
+      -- Same RHS, different options: a different mapping, and not ours.
+      vim.keymap.set("n", "q", "<Cmd>echo 1<CR>", { buffer = bufnr, desc = "other", silent = false })
+      r:resume()
+
+      assert.equals("other", map_of(bufnr, "n", "q").desc, "resume must not overwrite a foreign mapping")
+      r:dispose()
+      assert.equals("other", map_of(bufnr, "n", "q").desc, "dispose must not restore over a foreign mapping")
+    end)
+
+    it("stops reporting ownership once displaced", function()
+      local bufnr = new_buf()
+      local r = keymap.new("test")
+      r:claim(bufnr, "n", "q", noop, { desc = "codediff" })
+      assert.is_true(r:owns("q"), "codediff owns the key while installed")
+
+      vim.keymap.set("n", "q", function() end, { buffer = bufnr, desc = "foreign" })
+
+      assert.is_false(r:owns("q"), "a displaced key is not owned by codediff")
+      assert.is_nil(r:documented_keys()[normalize.canonical("q")], "a displaced key must not be advertised in help")
+      r:dispose()
+    end)
+  end)
+
+  describe("scopes", function()
+    it("releases claims a later pass no longer makes", function()
+      local bufnr = new_buf()
+      local r = keymap.new("test")
+
+      r:begin_scope("view")
+      r:claim(bufnr, "n", "q", noop, { desc = "quit" })
+      r:claim(bufnr, "n", "gm", noop, { desc = "align move" })
+      r:end_scope()
+      assert.is_not_nil(map_of(bufnr, "n", "gm"))
+
+      -- Second pass omits gm, as happens when switching to inline layout.
+      r:begin_scope("view")
+      r:claim(bufnr, "n", "q", noop, { desc = "quit" })
+      r:end_scope()
+
+      assert.is_not_nil(map_of(bufnr, "n", "q"), "renewed claims survive")
+      assert.is_nil(map_of(bufnr, "n", "gm"), "claims not renewed by the pass are released")
+      r:dispose()
+    end)
+
+    it("releases a whole scope on demand", function()
+      local bufnr = new_buf()
+      local r = keymap.new("test")
+
+      r:begin_scope("view")
+      r:claim(bufnr, "n", "q", noop, { desc = "quit" })
+      r:end_scope()
+      r:begin_scope("conflict")
+      r:claim(bufnr, "n", "]x", noop, { desc = "next conflict" })
+      r:end_scope()
+
+      r:release_scope("conflict")
+      assert.is_nil(map_of(bufnr, "n", "]x"), "leaving conflict mode retires its mappings")
+      assert.is_not_nil(map_of(bufnr, "n", "q"), "other scopes are untouched")
+      r:dispose()
+    end)
+
+    it("keeps unscoped claims out of scope retirement", function()
+      local bufnr = new_buf()
+      local r = keymap.new("test")
+      r:claim(bufnr, "n", "K", noop, { desc = "hover" })
+
+      r:begin_scope("view")
+      r:claim(bufnr, "n", "q", noop, { desc = "quit" })
+      r:end_scope()
+
+      assert.is_not_nil(map_of(bufnr, "n", "K"), "claims made outside a scope are never retired by one")
+      r:dispose()
+    end)
+  end)
+
   describe("invalid buffers", function()
     it("ignores claims on an invalid buffer", function()
       local bufnr = new_buf()
