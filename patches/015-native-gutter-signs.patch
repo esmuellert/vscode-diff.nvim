@@ -1,4 +1,4 @@
-From fcecf06bfbcfa5bb5d286fa2669ca848d9916d12 Mon Sep 17 00:00:00 2001
+From 3119297564ad774301af6a065fa56f068fee3aba Mon Sep 17 00:00:00 2001
 From: Richard Gill <richard@rgill.co.uk>
 Date: Fri, 17 Jul 2026 20:18:52 +0100
 Subject: [PATCH] Added native gutter signs support
@@ -28,7 +28,7 @@ Subject: [PATCH] Added native gutter signs support
  create mode 100644 tests/ui/gutter_signs_spec.lua
 
 diff --git a/README.md b/README.md
-index 6940a5c..11e9eab 100644
+index edb07ae..efb1036 100644
 --- a/README.md
 +++ b/README.md
 @@ -106,6 +106,7 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
@@ -39,7 +39,7 @@ index 6940a5c..11e9eab 100644
        compute_moves = false,              -- Detect moved code blocks (opt-in, matches VSCode experimental.showMoves)
        compact_context_lines = 3,          -- Number of context lines around hunks in compact mode
        compact_sync_folds = true,          -- Sync fold open/close across panes (mirrors Vim diff mode behavior)
-@@ -337,6 +338,39 @@ Custom Lua matcher callbacks are not supported.
+@@ -347,6 +348,39 @@ Custom Lua matcher callbacks are not supported.
  
  The C library will be downloaded automatically on first use. No `build` step needed!
  
@@ -79,9 +79,9 @@ index 6940a5c..11e9eab 100644
  ### Managing Library Installation
  
  The plugin automatically manages the C library installation:
-@@ -755,6 +789,13 @@ The plugin defines highlight groups matching VSCode's diff colors:
- - `CodeDiffLineMove` - Background for moved code lines (derived from DiffChange)
- - `CodeDiffMoveTo` - Sign column and annotation color for move indicators
+@@ -779,6 +813,13 @@ The plugin defines highlight groups matching VSCode's diff colors:
+ - `CodeDiffExplorerStatDeletions` - Explorer deletion counts
+ - `CodeDiffExplorerStatBinary` - Explorer binary-file labels
  
 +To customize gutter colors, define these four highlight groups in your colorscheme configuration:
 +
@@ -94,10 +94,10 @@ index 6940a5c..11e9eab 100644
  <summary><b>📸 Visual Examples</b> (click to collapse)</summary>
  
 diff --git a/doc/codediff.txt b/doc/codediff.txt
-index 1621fa2..ad59839 100644
+index 01e07ce..0db59c0 100644
 --- a/doc/codediff.txt
 +++ b/doc/codediff.txt
-@@ -300,6 +300,7 @@ Setup entry point:
+@@ -309,6 +309,7 @@ Setup entry point:
        jump_to_first_change = true,
        highlight_added_deleted_files = false,
        highlight_priority = 100,
@@ -105,7 +105,7 @@ index 1621fa2..ad59839 100644
        compute_moves = false,
        compact_context_lines = 3,
        compact_sync_folds = true,
-@@ -476,6 +477,51 @@ Example: replace only group rows and right-align the file count:
+@@ -506,6 +507,51 @@ Example: replace only group rows and right-align the file count:
    })
  <
  
@@ -157,7 +157,7 @@ index 1621fa2..ad59839 100644
  ==============================================================================
  HIGHLIGHT GROUPS                                     *codediff-highlight-groups*
  
-@@ -494,6 +540,14 @@ CodeDiff defines highlight groups matching VSCode's diff colors:
+@@ -524,6 +570,14 @@ CodeDiff defines highlight groups matching VSCode's diff colors:
  - CodeDiffHelpSep - separators in keymap help (links to NonText)
  - CodeDiffHelpDesc - descriptions in keymap help (links to Normal)
  
@@ -173,12 +173,12 @@ index 1621fa2..ad59839 100644
  - Uses DiffAdd and DiffDelete for line-level highlights
  - Full-file highlighting for added, untracked, and deleted files is disabled by default
 diff --git a/doc/tags b/doc/tags
-index 6b7d19b..8d80ced 100644
+index e453b0d..ef4e68f 100644
 --- a/doc/tags
 +++ b/doc/tags
-@@ -7,6 +7,7 @@ codediff-configuration	codediff.txt	/*codediff-configuration*
- codediff-events	codediff.txt	/*codediff-events*
+@@ -8,6 +8,7 @@ codediff-events	codediff.txt	/*codediff-events*
  codediff-explorer-line-formatters	codediff.txt	/*codediff-explorer-line-formatters*
+ codediff-explorer-line-statistics	codediff.txt	/*codediff-explorer-line-statistics*
  codediff-filler-text	codediff.txt	/*codediff-filler-text*
 +codediff-gutter-signs	codediff.txt	/*codediff-gutter-signs*
  codediff-highlight-groups	codediff.txt	/*codediff-highlight-groups*
@@ -200,7 +200,7 @@ index 0000000..dec3e5b
 +
 +Neovim 0.11 introduced the experimental `nvim__ns_set()` API, which can scope persistent extmark namespaces to windows. CodeDiff does not depend on that private-style API; window-local signs can be reconsidered when Neovim exposes a stable supported mechanism.
 diff --git a/lua/codediff/config.lua b/lua/codediff/config.lua
-index ed61759..57adc5d 100644
+index 79dd1d8..4bcd573 100644
 --- a/lua/codediff/config.lua
 +++ b/lua/codediff/config.lua
 @@ -50,6 +50,7 @@ M.defaults = {
@@ -407,7 +407,7 @@ index 0000000..e985dec
 +
 +return M
 diff --git a/lua/codediff/ui/highlights.lua b/lua/codediff/ui/highlights.lua
-index 52dec55..d6afce5 100644
+index 9a350b9..0ebe8eb 100644
 --- a/lua/codediff/ui/highlights.lua
 +++ b/lua/codediff/ui/highlights.lua
 @@ -170,6 +170,22 @@ function M.setup()
@@ -615,10 +615,10 @@ index a929f7f..d7c02ff 100644
  
  -- ============================================================================
 diff --git a/lua/codediff/ui/view/side_by_side.lua b/lua/codediff/ui/view/side_by_side.lua
-index fb0f518..324cb95 100644
+index 78209c9..386eb0d 100644
 --- a/lua/codediff/ui/view/side_by_side.lua
 +++ b/lua/codediff/ui/view/side_by_side.lua
-@@ -735,11 +735,15 @@ local function show_single_file(tabpage, opts)
+@@ -733,11 +733,15 @@ local function show_single_file(tabpage, opts)
      return
    end
  
@@ -635,7 +635,7 @@ index fb0f518..324cb95 100644
    if old_orig_buf then
      auto_refresh.disable(old_orig_buf)
      lifecycle.clear_highlights(old_orig_buf)
-@@ -816,6 +820,11 @@ local function show_single_file(tabpage, opts)
+@@ -821,6 +825,11 @@ local function show_single_file(tabpage, opts)
        core.render_whole_file(opts.load_bufnr, session.single_side)
      end
  
@@ -950,7 +950,7 @@ index 0000000..bdf7512
 +  end)
 +end)
 diff --git a/tests/ui/highlights_spec.lua b/tests/ui/highlights_spec.lua
-index 9a15ae2..13e3b9e 100644
+index 315fca2..44b67c2 100644
 --- a/tests/ui/highlights_spec.lua
 +++ b/tests/ui/highlights_spec.lua
 @@ -12,6 +12,10 @@ local function reset_codediff()
@@ -964,7 +964,7 @@ index 9a15ae2..13e3b9e 100644
    config.options = vim.deepcopy(config.defaults)
    require("codediff").setup({})
  end
-@@ -163,6 +167,39 @@ describe("highlights.lua color derivation", function()
+@@ -176,6 +180,39 @@ describe("highlights.lua color derivation", function()
      assert.is_nil(insert.bold)
    end)
  

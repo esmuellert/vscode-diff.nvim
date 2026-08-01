@@ -1,24 +1,24 @@
-From 55d8f74b0a992fcc6aa1ea766c9ff83844c6ca13 Mon Sep 17 00:00:00 2001
+From 7e5a77833ff67fdb8cc91595d573b8f1b444cb4b Mon Sep 17 00:00:00 2001
 From: Richard Gill <richard@rgill.co.uk>
 Date: Wed, 29 Jul 2026 06:43:18 +0100
 Subject: [PATCH] feat(explorer): custom keymaps
 
 ---
- README.md                                 |  35 ++++
+ README.md                                 |  35 +++
  doc/codediff.txt                          |  40 ++++
  doc/tags                                  |   1 +
  lua/codediff/config.lua                   |   1 +
- lua/codediff/ui/explorer/keymaps.lua      |  42 +++++
- lua/codediff/ui/explorer/nodes.lua        |  43 ++++-
- tests/ui/explorer/custom_keymaps_spec.lua | 211 ++++++++++++++++++++++
- 7 files changed, 366 insertions(+), 7 deletions(-)
+ lua/codediff/ui/explorer/keymaps.lua      |  42 ++++
+ lua/codediff/ui/explorer/nodes.lua        |  45 +++-
+ tests/ui/explorer/custom_keymaps_spec.lua | 249 ++++++++++++++++++++++
+ 7 files changed, 406 insertions(+), 7 deletions(-)
  create mode 100644 tests/ui/explorer/custom_keymaps_spec.lua
 
 diff --git a/README.md b/README.md
-index 2295ac9..5f0c0f3 100644
+index efb1036..f19e403 100644
 --- a/README.md
 +++ b/README.md
-@@ -197,6 +197,7 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
+@@ -198,6 +198,7 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
          restore = "X",      -- Discard changes (restore file)
          toggle_changes = "gu",  -- Toggle Changes (unstaged) group visibility
          toggle_staged = "gs",   -- Toggle Staged Changes group visibility
@@ -26,7 +26,7 @@ index 2295ac9..5f0c0f3 100644
          -- Fold keymaps (Vim-style)
          fold_open = "zo",           -- Open fold (expand current node)
          fold_open_recursive = "zO", -- Open fold recursively (expand all descendants)
-@@ -345,6 +346,40 @@ Three strategies are available:
+@@ -346,6 +347,40 @@ Three strategies are available:
  
  Custom Lua matcher callbacks are not supported.
  
@@ -57,21 +57,21 @@ index 2295ac9..5f0c0f3 100644
 +The callback receives the selected Explorer row as `ctx.entry`:
 +
 +```lua
-+{ kind = "file", path, old_path, group, status }
-+{ kind = "directory", name, path, group, files }
-+{ kind = "group", name, group, files }
++{ kind = "file", path, old_path, group, status, stats }
++{ kind = "directory", name, path, group, stats, files }
++{ kind = "group", name, group, stats, files }
 +```
 +
-+Directory and group `files` use the normalized `{ path, old_path, group, status }` shape. `ctx.redraw()` renders the existing tree again without rebuilding nodes, changing selection or fold state, or running Git. `ctx.refresh()` starts the normal asynchronous Explorer refresh. Both functions become no-ops after the Explorer closes. Custom mappings are installed after built-in Explorer mappings, so matching keys intentionally override them.
++Directory and group `files` use the normalized `{ path, old_path, group, status, stats }` shape. `stats` is `nil` when line statistics are disabled. `ctx.redraw()` renders the existing tree again without rebuilding nodes, changing selection or fold state, or running Git. `ctx.refresh()` starts the normal asynchronous Explorer refresh. Both functions become no-ops after the Explorer closes. Custom mappings are installed after built-in Explorer mappings, so matching keys intentionally override them.
 +
  The C library will be downloaded automatically on first use. No `build` step needed!
  
  ### Native gutter signs
 diff --git a/doc/codediff.txt b/doc/codediff.txt
-index 1c4ef24..b02dd57 100644
+index 0db59c0..ad5544c 100644
 --- a/doc/codediff.txt
 +++ b/doc/codediff.txt
-@@ -373,6 +373,7 @@ Setup entry point:
+@@ -383,6 +383,7 @@ Setup entry point:
          restore = "X",
          toggle_changes = "gu",
          toggle_staged = "gs",
@@ -79,7 +79,7 @@ index 1c4ef24..b02dd57 100644
          fold_open = "zo",
          fold_open_recursive = "zO",
          fold_close = "zc",
-@@ -497,6 +498,45 @@ Example: replace only group rows and right-align the file count:
+@@ -507,6 +508,45 @@ Example: replace only group rows and right-align the file count:
    })
  <
  
@@ -109,18 +109,18 @@ index 1c4ef24..b02dd57 100644
 +
 +The callback receives the selected row as `ctx.entry`, in one of these shapes:
 +>lua
-+  { kind = "file", path, old_path, group, status }
-+  { kind = "directory", name, path, group, files }
-+  { kind = "group", name, group, files }
++  { kind = "file", path, old_path, group, status, stats }
++  { kind = "directory", name, path, group, stats, files }
++  { kind = "group", name, group, stats, files }
 +<
 +
 +Directory and group `files` use the normalized
-+`{ path, old_path, group, status }` shape. `ctx.redraw()` renders the existing
-+tree again without rebuilding nodes, changing selection or fold state, or
-+running Git. `ctx.refresh()` starts the normal asynchronous Explorer refresh.
-+Both functions become no-ops after the Explorer closes. Custom mappings are
-+installed after built-in Explorer mappings, so matching keys intentionally
-+override them.
++`{ path, old_path, group, status, stats }` shape. `stats` is nil when line
++statistics are disabled. `ctx.redraw()` renders the existing tree again without
++rebuilding nodes, changing selection or fold state, or running Git.
++`ctx.refresh()` starts the normal asynchronous Explorer refresh. Both functions
++become no-ops after the Explorer closes. Custom mappings are installed after
++built-in Explorer mappings, so matching keys intentionally override them.
 +
  ==============================================================================
  NATIVE GUTTER SIGNS                                  *codediff-gutter-signs*
@@ -138,10 +138,10 @@ index ef4e68f..c411dd8 100644
  codediff-explorer-line-statistics	codediff.txt	/*codediff-explorer-line-statistics*
  codediff-filler-text	codediff.txt	/*codediff-filler-text*
 diff --git a/lua/codediff/config.lua b/lua/codediff/config.lua
-index 0984eee..ff8cf9b 100644
+index 4bcd573..6898b2e 100644
 --- a/lua/codediff/config.lua
 +++ b/lua/codediff/config.lua
-@@ -141,6 +141,7 @@ M.defaults = {
+@@ -142,6 +142,7 @@ M.defaults = {
        restore = "X", -- Discard changes to file (restore to index/HEAD)
        toggle_changes = "gu", -- Toggle Changes (unstaged) group visibility
        toggle_staged = "gs", -- Toggle Staged Changes group visibility
@@ -214,7 +214,7 @@ index 4256c02..1ce6745 100644
    -- which uses set_tab_keymap to set them on all buffers including explorer
  end
 diff --git a/lua/codediff/ui/explorer/nodes.lua b/lua/codediff/ui/explorer/nodes.lua
-index dae0e57..1e030a3 100644
+index dae0e57..2e4ae07 100644
 --- a/lua/codediff/ui/explorer/nodes.lua
 +++ b/lua/codediff/ui/explorer/nodes.lua
 @@ -96,16 +96,20 @@ local function context_stats(stats)
@@ -245,7 +245,7 @@ index dae0e57..1e030a3 100644
    end
    return normalized
  end
-@@ -352,6 +356,31 @@ local function selected_background(is_selected)
+@@ -352,6 +356,33 @@ local function selected_background(is_selected)
    return vim.api.nvim_get_hl(0, { name = "CodeDiffExplorerSelected", link = false }).bg
  end
  
@@ -256,6 +256,7 @@ index dae0e57..1e030a3 100644
 +      kind = "group",
 +      name = data.name,
 +      group = data.name,
++      stats = context_stats(data.stats),
 +      files = normalize_files(data.files, data.name),
 +    }
 +  end
@@ -265,6 +266,7 @@ index dae0e57..1e030a3 100644
 +      name = data.name,
 +      path = data.dir_path,
 +      group = data.group,
++      stats = context_stats(data.stats),
 +      files = normalize_files(data.files, data.group),
 +    }
 +  end
@@ -279,10 +281,10 @@ index dae0e57..1e030a3 100644
    local data = node.data or {}
 diff --git a/tests/ui/explorer/custom_keymaps_spec.lua b/tests/ui/explorer/custom_keymaps_spec.lua
 new file mode 100644
-index 0000000..cd6b59b
+index 0000000..13e3cac
 --- /dev/null
 +++ b/tests/ui/explorer/custom_keymaps_spec.lua
-@@ -0,0 +1,211 @@
+@@ -0,0 +1,249 @@
 +local Tree = require("codediff.ui.lib.tree")
 +local Line = require("codediff.ui.lib.line")
 +local config = require("codediff.config")
@@ -304,8 +306,13 @@ index 0000000..cd6b59b
 +  local bufnr = vim.api.nvim_create_buf(false, true)
 +  vim.api.nvim_win_set_buf(0, bufnr)
 +  local files = {
-+    { path = "src/renamed.lua", old_path = "src/old.lua", status = "M", stats = { insertions = 5 } },
-+    { path = "src/new.lua", status = "A", stats = { insertions = 3 } },
++    {
++      path = "src/renamed.lua",
++      old_path = "src/old.lua",
++      status = "M",
++      line_stats = { insertions = 5, deletions = 2, binary = false },
++    },
++    { path = "src/new.lua", status = "A", line_stats = { insertions = 3, deletions = 1, binary = false } },
 +  }
 +  local roots = explorer_tree.create_tree_data({ unstaged = files, staged = {}, conflicts = {} }, "/repo", nil, false, {
 +    unstaged = true,
@@ -387,6 +394,39 @@ index 0000000..cd6b59b
 +        { path = "src/new.lua", group = "unstaged", status = "A" },
 +      },
 +    }, nodes.get_entry(fixture.root))
++
++    cleanup_explorer(fixture)
++  end)
++
++  it("includes line stats in callback entries when enabled", function()
++    config.options.explorer.line_stats.enabled = true
++    local fixture = create_explorer()
++    local totals = {
++      files_changed = 2,
++      insertions = 8,
++      deletions = 3,
++      binary_files = 0,
++      unavailable_files = 0,
++    }
++
++    assert.same({ insertions = 5, deletions = 2, binary = false }, nodes.get_entry(fixture.file).stats)
++    assert.same(totals, nodes.get_entry(fixture.directory).stats)
++    assert.same(totals, nodes.get_entry(fixture.root).stats)
++    assert.same({
++      {
++        path = "src/renamed.lua",
++        old_path = "src/old.lua",
++        group = "unstaged",
++        status = "M",
++        stats = { insertions = 5, deletions = 2, binary = false },
++      },
++      {
++        path = "src/new.lua",
++        group = "unstaged",
++        status = "A",
++        stats = { insertions = 3, deletions = 1, binary = false },
++      },
++    }, nodes.get_entry(fixture.directory).files)
 +
 +    cleanup_explorer(fixture)
 +  end)

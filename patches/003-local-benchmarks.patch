@@ -1,4 +1,4 @@
-From e0f385e905380689df0bc2ab578b50d68085e07c Mon Sep 17 00:00:00 2001
+From 1fb1c9c04d88353f8f4fe312a6930f87fced6e3b Mon Sep 17 00:00:00 2001
 From: Richard Gill <richard@rgill.co.uk>
 Date: Sat, 18 Jul 2026 11:56:21 +0000
 Subject: [PATCH] chore: add local benchmark suites
@@ -32,7 +32,7 @@ Subject: [PATCH] chore: add local benchmark suites
  create mode 100755 scripts/benchmark.sh
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 9b7d9a0..79b167c 100644
+index 9e01e00..b373f90 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -50,7 +50,7 @@ file(WRITE "${CMAKE_CURRENT_SOURCE_DIR}/Makefile"
@@ -64,7 +64,7 @@ index 9b7d9a0..79b167c 100644
  ")
  
 diff --git a/Makefile b/Makefile
-index 99ec60b..25d7334 100644
+index 1901925..f25c017 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -2,7 +2,7 @@

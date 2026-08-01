@@ -1,4 +1,4 @@
-From f254b18f504a7c7fdaf07c667d267facdabfa585 Mon Sep 17 00:00:00 2001
+From e27dbaba08ed248565e734a1e2ade9b4a85af064 Mon Sep 17 00:00:00 2001
 From: Richard Gill <richard@rgill.co.uk>
 Date: Sat, 18 Jul 2026 15:25:25 +0100
 Subject: [PATCH] Added native line matcher implementation and tests
@@ -34,7 +34,7 @@ Subject: [PATCH] Added native line matcher implementation and tests
  create mode 100644 tests/core/line_matcher_spec.lua
 
 diff --git a/README.md b/README.md
-index 54dccd4..6940a5c 100644
+index f26566e..edb07ae 100644
 --- a/README.md
 +++ b/README.md
 @@ -90,6 +90,10 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
@@ -48,7 +48,7 @@ index 54dccd4..6940a5c 100644
        hide_merge_artifacts = false,       -- Hide merge tool temp files (*.orig, *.BACKUP.*, *.BASE.*, *.LOCAL.*, *.REMOTE.*)
        original_position = "left",         -- Position of original (old) content: "left" or "right"
        conflict_ours_position = "right",   -- Position of ours (:2) in conflict view: "left" or "right"
-@@ -282,6 +286,55 @@ require("codediff").setup({
+@@ -292,6 +296,55 @@ require("codediff").setup({
  })
  ```
  
@@ -129,10 +129,10 @@ index fd09ca3..fe0acb8 100755
  src/optimize.c \
  src/sequence.c \
 diff --git a/doc/codediff.txt b/doc/codediff.txt
-index 0b662b3..1621fa2 100644
+index 63a3216..01e07ce 100644
 --- a/doc/codediff.txt
 +++ b/doc/codediff.txt
-@@ -211,6 +211,65 @@ The toggle keymap can be customized:
+@@ -220,6 +220,65 @@ The toggle keymap can be customized:
    })
  <
  
@@ -198,7 +198,7 @@ index 0b662b3..1621fa2 100644
  Setup entry point:
  >lua
    require("codediff").setup({
-@@ -230,6 +289,10 @@ Setup entry point:
+@@ -239,6 +298,10 @@ Setup entry point:
        filler_text = "╱",
        disable_inlay_hints = true,
        max_computation_time_ms = 5000,
@@ -210,10 +210,10 @@ index 0b662b3..1621fa2 100644
        conflict_result_position = "bottom",
        conflict_result_height = 30,
 diff --git a/doc/tags b/doc/tags
-index 38439aa..6b7d19b 100644
+index f1c5ef0..e453b0d 100644
 --- a/doc/tags
 +++ b/doc/tags
-@@ -11,6 +11,7 @@ codediff-highlight-groups	codediff.txt	/*codediff-highlight-groups*
+@@ -12,6 +12,7 @@ codediff-highlight-groups	codediff.txt	/*codediff-highlight-groups*
  codediff-history	codediff.txt	/*codediff-history*
  codediff-history-line-range	codediff.txt	/*codediff-history-line-range*
  codediff-layout	codediff.txt	/*codediff-layout*
@@ -2247,7 +2247,7 @@ index 0000000..f4ced82
 +  return passed ? 0 : 1;
 +}
 diff --git a/lua/codediff/config.lua b/lua/codediff/config.lua
-index 1b1c17e..ed61759 100644
+index 51d5433..79dd1d8 100644
 --- a/lua/codediff/config.lua
 +++ b/lua/codediff/config.lua
 @@ -34,6 +34,10 @@ M.defaults = {
@@ -2261,7 +2261,7 @@ index 1b1c17e..ed61759 100644
      hide_merge_artifacts = false, -- Hide merge tool temp files (*.orig, *.BACKUP.*, *.BASE.*, *.LOCAL.*, *.REMOTE.*)
      original_position = "left", -- Position of original (old) content: "left" or "right"
      conflict_ours_position = "right", -- Position of ours (:2) in conflict view: "left" or "right" (independent of original_position)
-@@ -177,8 +181,50 @@ M.defaults = {
+@@ -183,8 +187,50 @@ M.defaults = {
  
  M.options = vim.deepcopy(M.defaults)
  

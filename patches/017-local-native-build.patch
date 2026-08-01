@@ -1,4 +1,4 @@
-From bd58797c712b015588668af1da3dcaab3ae9604b Mon Sep 17 00:00:00 2001
+From 7ce6854a94188e0df7c7b5dc7844c76ebae1c6f6 Mon Sep 17 00:00:00 2001
 From: Richard Gill <richard@rgill.co.uk>
 Date: Sat, 18 Jul 2026 16:30:00 +0100
 Subject: [PATCH] fix: build fork native library locally
@@ -18,12 +18,12 @@ Subject: [PATCH] fix: build fork native library locally
  create mode 100644 tests/core/local_builder_spec.lua
 
 diff --git a/README.md b/README.md
-index baa2af9..47ebeb5 100644
+index 0bb0c82..d7c4e6d 100644
 --- a/README.md
 +++ b/README.md
-@@ -380,7 +380,7 @@ The callback receives the selected Explorer row as `ctx.entry`:
+@@ -381,7 +381,7 @@ The callback receives the selected Explorer row as `ctx.entry`:
  
- Directory and group `files` use the normalized `{ path, old_path, group, status }` shape. `ctx.redraw()` renders the existing tree again without rebuilding nodes, changing selection or fold state, or running Git. `ctx.refresh()` starts the normal asynchronous Explorer refresh. Both functions become no-ops after the Explorer closes. Custom mappings are installed after built-in Explorer mappings, so matching keys intentionally override them.
+ Directory and group `files` use the normalized `{ path, old_path, group, status, stats }` shape. `stats` is `nil` when line statistics are disabled. `ctx.redraw()` renders the existing tree again without rebuilding nodes, changing selection or fold state, or running Git. `ctx.refresh()` starts the normal asynchronous Explorer refresh. Both functions become no-ops after the Explorer closes. Custom mappings are installed after built-in Explorer mappings, so matching keys intentionally override them.
  
 -The C library will be downloaded automatically on first use. No `build` step needed!
 +The C library is built locally and cached automatically on first use.
@@ -381,10 +381,10 @@ index fe0acb8..58d9ed0 100644
 +echo "✓ Build successful: $OUTPUT_PATH"
  cd ..
 diff --git a/lua/codediff/commands.lua b/lua/codediff/commands.lua
-index bf5f524..8fa2994 100644
+index 4dfa55e..82cb126 100644
 --- a/lua/codediff/commands.lua
 +++ b/lua/codediff/commands.lua
-@@ -806,7 +806,7 @@ local function build_app()
+@@ -890,7 +890,7 @@ local function build_app()
  
    app:subcommand(ap.Command.new("install"):handler(function(m)
      local force = m:bang()
