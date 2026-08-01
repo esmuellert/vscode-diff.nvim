@@ -57,8 +57,10 @@ jobs:
             -DANDROID_PLATFORM=android-24 \
             -DENABLE_OPENMP=OFF \
             -DCMAKE_BUILD_TYPE=Release
-          cmake --build build-android --target vscode-diff -j
-          cp build-android/libvscode-diff/libvscode_diff.so ./libvscode_diff.so
+          cmake --build build-android --target vscode_diff -j
+          # The CMake target's POST_BUILD command copies the .so to repo root
+          # (see libvscode-diff/CMakeLists.txt), so it's already at ./libvscode_diff.so.
+          ls -la ./libvscode_diff.so
 
       - name: ABI sanity check (bionic-linked, no glibc SONAMEs)
         run: |
