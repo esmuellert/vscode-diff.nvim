@@ -57,7 +57,7 @@ jobs:
       artifact: ${{ matrix.artifact }}
 
   android:
-    name: ubuntu-latest
+    name: ubuntu-latest (${{ matrix.android_abi }})
     strategy:
       fail-fast: false
       matrix:
