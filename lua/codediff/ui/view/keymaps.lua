@@ -32,6 +32,9 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
   local session = lifecycle.get_session(tabpage)
   local is_history_mode = session and session.mode == "history"
   local is_inline = session and session.layout == "inline"
+  -- Merge/conflict view: the result pane exists and do/dp are replaced by the
+  -- conflict mappings (see codediff.ui.conflict.keymaps).
+  local is_conflict = session and session.result_bufnr ~= nil
 
   -- Helper: Toggle explorer visibility (explorer mode only)
   local function toggle_explorer()
@@ -612,12 +615,15 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
     lifecycle.set_tab_keymap(tabpage, "n", keymaps.focus_explorer, focus_explorer, { desc = "Focus explorer panel" })
   end
 
-  -- Diff get/put (do, dp) - layout-aware semantics
-  if keymaps.diff_get then
+  -- Diff get/put (do, dp) - layout-aware semantics.
+  -- Skipped in conflict mode: the merge view uses 2do/3do on the result pane
+  -- instead. Not claiming the keys here means any mapping the user already had
+  -- on do/dp is handed back for the duration of the merge, rather than deleted.
+  if keymaps.diff_get and not is_conflict then
     local desc = is_inline and "Revert hunk to original" or "Get change from other buffer"
     lifecycle.set_tab_keymap(tabpage, "n", keymaps.diff_get, diff_get, { desc = desc })
   end
-  if keymaps.diff_put then
+  if keymaps.diff_put and not is_conflict then
     local desc = is_inline and "Accept change (no-op in inline)" or "Put change to other buffer"
     lifecycle.set_tab_keymap(tabpage, "n", keymaps.diff_put, diff_put, { desc = desc })
   end
@@ -692,13 +698,13 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
   end
   for _, bufnr in ipairs(diff_bufs) do
     if keymaps.stage_hunk then
-      vim.keymap.set("n", keymaps.stage_hunk, stage_hunk, vim.tbl_extend("force", hunk_opts, { buffer = bufnr, desc = "Stage hunk under cursor" }))
+      lifecycle.set_buf_keymap(tabpage, bufnr, "n", keymaps.stage_hunk, stage_hunk, vim.tbl_extend("force", hunk_opts, { desc = "Stage hunk under cursor" }))
     end
     if keymaps.unstage_hunk then
-      vim.keymap.set("n", keymaps.unstage_hunk, unstage_hunk, vim.tbl_extend("force", hunk_opts, { buffer = bufnr, desc = "Unstage hunk under cursor" }))
+      lifecycle.set_buf_keymap(tabpage, bufnr, "n", keymaps.unstage_hunk, unstage_hunk, vim.tbl_extend("force", hunk_opts, { desc = "Unstage hunk under cursor" }))
     end
     if keymaps.discard_hunk then
-      vim.keymap.set("n", keymaps.discard_hunk, discard_hunk, vim.tbl_extend("force", hunk_opts, { buffer = bufnr, desc = "Discard hunk under cursor" }))
+      lifecycle.set_buf_keymap(tabpage, bufnr, "n", keymaps.discard_hunk, discard_hunk, vim.tbl_extend("force", hunk_opts, { desc = "Discard hunk under cursor" }))
     end
 
     -- Hunk textobject (ih) - select hunk lines in visual/operator-pending mode
@@ -722,7 +728,7 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
         vim.cmd("normal! " .. start_line .. "GV" .. (end_line - 1) .. "G")
       end
 
-      vim.keymap.set({ "o", "x" }, keymaps.hunk_textobject, select_hunk, vim.tbl_extend("force", hunk_opts, { buffer = bufnr, desc = "Hunk textobject" }))
+      lifecycle.set_buf_keymap(tabpage, bufnr, { "o", "x" }, keymaps.hunk_textobject, select_hunk, vim.tbl_extend("force", hunk_opts, { desc = "Hunk textobject" }))
     end
   end
 

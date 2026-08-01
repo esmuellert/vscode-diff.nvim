@@ -1,0 +1,379 @@
+-- Unit tests for the keymap slot arbiter and per-session registry.
+-- These exercise the machinery directly on scratch buffers, independent of any
+-- diff session, so ownership logic can be reviewed in isolation.
+
+local keymap = require("codediff.keymap")
+local slots = require("codediff.keymap.slots")
+local normalize = require("codediff.keymap.normalize")
+
+local function scratch()
+  return vim.api.nvim_create_buf(false, true)
+end
+
+-- nvim_buf_get_keymap reports lhs in display form ("<CR>"), while claims are
+-- keyed by raw bytes. Query through maparg so both sides agree.
+local function map_of(bufnr, mode, lhs)
+  if not vim.api.nvim_buf_is_valid(bufnr) then
+    return nil
+  end
+  local result = vim.api.nvim_buf_call(bufnr, function()
+    return vim.fn.maparg(lhs, mode, false, true)
+  end)
+  if type(result) ~= "table" or next(result) == nil or result.buffer ~= 1 then
+    return nil
+  end
+  return result
+end
+
+local function noop() end
+
+describe("keymap registry", function()
+  local buffers
+
+  before_each(function()
+    slots.reset()
+    buffers = {}
+  end)
+
+  after_each(function()
+    for _, bufnr in ipairs(buffers) do
+      if vim.api.nvim_buf_is_valid(bufnr) then
+        vim.api.nvim_buf_delete(bufnr, { force = true })
+      end
+    end
+    slots.reset()
+  end)
+
+  local function new_buf()
+    local bufnr = scratch()
+    table.insert(buffers, bufnr)
+    return bufnr
+  end
+
+  describe("normalization", function()
+    it("treats <Tab> and <C-i> as the same slot", function()
+      assert.equals(normalize.canonical("<Tab>"), normalize.canonical("<C-i>"))
+    end)
+
+    it("expands <leader>", function()
+      local canonical = normalize.canonical("<leader>x")
+      assert.is_not_nil(canonical)
+      assert.is_not.equal("<leader>x", canonical)
+    end)
+
+    it("treats false, nil and empty string as disabled", function()
+      assert.is_nil(normalize.resolve(false))
+      assert.is_nil(normalize.resolve(nil))
+      assert.is_nil(normalize.resolve(""))
+      assert.equals("q", normalize.resolve("q"))
+    end)
+  end)
+
+  describe("claim and release", function()
+    it("installs a mapping and removes it when no prior mapping existed", function()
+      local bufnr = new_buf()
+      local r = keymap.new("test")
+
+      assert.is_true(r:claim(bufnr, "n", "q", noop, { desc = "codediff" }))
+      assert.equals("codediff", map_of(bufnr, "n", "q").desc)
+
+      r:dispose()
+      assert.is_nil(map_of(bufnr, "n", "q"))
+      assert.equals(0, slots.count())
+    end)
+
+    it("restores a pre-existing buffer-local mapping", function()
+      local bufnr = new_buf()
+      vim.keymap.set("n", "q", noop, { buffer = bufnr, desc = "user" })
+
+      local r = keymap.new("test")
+      r:claim(bufnr, "n", "q", noop, { desc = "codediff" })
+      assert.equals("codediff", map_of(bufnr, "n", "q").desc)
+
+      r:dispose()
+      assert.equals("user", map_of(bufnr, "n", "q").desc)
+    end)
+
+    it("does not recreate a global mapping as buffer-local", function()
+      local bufnr = new_buf()
+      vim.keymap.set("n", "<Plug>codediffGlobalProbe", noop, { desc = "global" })
+
+      local r = keymap.new("test")
+      r:claim(bufnr, "n", "<Plug>codediffGlobalProbe", noop, { desc = "codediff" })
+      r:dispose()
+
+      assert.is_nil(map_of(bufnr, "n", "<Plug>codediffGlobalProbe"))
+      pcall(vim.keymap.del, "n", "<Plug>codediffGlobalProbe")
+    end)
+
+    it("silently ignores a disabled binding", function()
+      local bufnr = new_buf()
+      local r = keymap.new("test")
+
+      assert.is_false(r:claim(bufnr, "n", false, noop, {}))
+      assert.is_false(r:claim(bufnr, "n", nil, noop, {}))
+      assert.equals(0, r:count())
+    end)
+
+    it("claims every requested mode independently", function()
+      local bufnr = new_buf()
+      local r = keymap.new("test")
+
+      r:claim(bufnr, { "o", "x" }, "ih", noop, { desc = "textobject" })
+      assert.is_not_nil(map_of(bufnr, "o", "ih"))
+      assert.is_not_nil(map_of(bufnr, "x", "ih"))
+
+      r:dispose()
+      assert.is_nil(map_of(bufnr, "o", "ih"))
+      assert.is_nil(map_of(bufnr, "x", "ih"))
+    end)
+
+    it("replaces its own previous claim when re-registering", function()
+      local bufnr = new_buf()
+      local r = keymap.new("test")
+
+      r:claim(bufnr, "n", "q", noop, { desc = "first" })
+      r:claim(bufnr, "n", "q", noop, { desc = "second" })
+
+      assert.equals("second", map_of(bufnr, "n", "q").desc)
+      assert.equals(1, r:count())
+
+      r:dispose()
+      assert.is_nil(map_of(bufnr, "n", "q"))
+    end)
+  end)
+
+  describe("multiple owners", function()
+    it("keeps the other session's mapping when one disposes", function()
+      local bufnr = new_buf()
+      vim.keymap.set("n", "q", noop, { buffer = bufnr, desc = "user" })
+
+      local a = keymap.new("a")
+      local b = keymap.new("b")
+      a:claim(bufnr, "n", "q", noop, { desc = "session-a" })
+      b:claim(bufnr, "n", "q", noop, { desc = "session-b" })
+
+      assert.equals("session-b", map_of(bufnr, "n", "q").desc, "newest claim wins")
+
+      b:dispose()
+      assert.equals("session-a", map_of(bufnr, "n", "q").desc, "falls back to the remaining claim")
+
+      a:dispose()
+      assert.equals("user", map_of(bufnr, "n", "q").desc, "original returns only after the last release")
+    end)
+
+    it("restores the original when sessions dispose out of order", function()
+      local bufnr = new_buf()
+      vim.keymap.set("n", "q", noop, { buffer = bufnr, desc = "user" })
+
+      local a = keymap.new("a")
+      local b = keymap.new("b")
+      a:claim(bufnr, "n", "q", noop, { desc = "session-a" })
+      b:claim(bufnr, "n", "q", noop, { desc = "session-b" })
+
+      a:dispose()
+      assert.equals("session-b", map_of(bufnr, "n", "q").desc)
+
+      b:dispose()
+      assert.equals("user", map_of(bufnr, "n", "q").desc)
+    end)
+
+    it("honors priority over claim order", function()
+      local bufnr = new_buf()
+      local a = keymap.new("a")
+      local b = keymap.new("b")
+
+      a:claim(bufnr, "n", "q", noop, { desc = "high" }, { priority = 10 })
+      b:claim(bufnr, "n", "q", noop, { desc = "low" }, { priority = 1 })
+
+      assert.equals("high", map_of(bufnr, "n", "q").desc)
+
+      a:dispose()
+      b:dispose()
+    end)
+  end)
+
+  describe("suspend and resume", function()
+    it("uninstalls and reinstalls suspendable mappings", function()
+      local bufnr = new_buf()
+      vim.keymap.set("n", "q", noop, { buffer = bufnr, desc = "user" })
+
+      local r = keymap.new("test")
+      r:claim(bufnr, "n", "q", noop, { desc = "codediff" })
+
+      r:suspend()
+      assert.equals("user", map_of(bufnr, "n", "q").desc, "suspend must hand the key back")
+
+      r:resume()
+      assert.equals("codediff", map_of(bufnr, "n", "q").desc, "resume must take it again")
+
+      r:dispose()
+      assert.equals("user", map_of(bufnr, "n", "q").desc)
+    end)
+
+    it("leaves non-suspendable mappings installed", function()
+      local bufnr = new_buf()
+      local r = keymap.new("test")
+      r:claim(bufnr, "n", "<CR>", noop, { desc = "panel" }, { suspendable = false })
+
+      r:suspend()
+      assert.is_not_nil(map_of(bufnr, "n", "<CR>"), "panel mappings must survive a tab switch")
+
+      r:dispose()
+      assert.is_nil(map_of(bufnr, "n", "<CR>"))
+    end)
+
+    it("is idempotent", function()
+      local bufnr = new_buf()
+      local r = keymap.new("test")
+      r:claim(bufnr, "n", "q", noop, { desc = "codediff" })
+
+      r:suspend()
+      r:suspend()
+      r:resume()
+      r:resume()
+      assert.equals("codediff", map_of(bufnr, "n", "q").desc)
+
+      r:dispose()
+      r:dispose()
+      assert.is_nil(map_of(bufnr, "n", "q"))
+    end)
+  end)
+
+  describe("buffer detach", function()
+    it("releases one buffer without disturbing the others", function()
+      local old_buf = new_buf()
+      local new_buffer = new_buf()
+      vim.keymap.set("n", "q", noop, { buffer = old_buf, desc = "user" })
+
+      local r = keymap.new("test")
+      r:claim(old_buf, "n", "q", noop, { desc = "codediff" })
+      r:claim(new_buffer, "n", "q", noop, { desc = "codediff" })
+
+      r:detach_buffer(old_buf)
+      assert.equals("user", map_of(old_buf, "n", "q").desc, "detached buffer must be restored")
+      assert.equals("codediff", map_of(new_buffer, "n", "q").desc, "other buffers stay mapped")
+
+      r:dispose()
+    end)
+
+    it("detach_buffers_except keeps only the listed buffers", function()
+      local keep_buf = new_buf()
+      local drop_buf = new_buf()
+
+      local r = keymap.new("test")
+      r:claim(keep_buf, "n", "q", noop, { desc = "codediff" })
+      r:claim(drop_buf, "n", "q", noop, { desc = "codediff" })
+
+      r:detach_buffers_except({ [keep_buf] = true })
+      assert.is_not_nil(map_of(keep_buf, "n", "q"))
+      assert.is_nil(map_of(drop_buf, "n", "q"))
+
+      r:dispose()
+    end)
+  end)
+
+  describe("foreign mappings", function()
+    it("does not clobber a mapping installed by someone else", function()
+      local bufnr = new_buf()
+      local r = keymap.new("test")
+      r:claim(bufnr, "n", "q", noop, { desc = "codediff" })
+
+      -- Another plugin takes the key while the session is live.
+      vim.keymap.set("n", "q", function() end, { buffer = bufnr, desc = "other-plugin" })
+
+      r:dispose()
+      local current = map_of(bufnr, "n", "q")
+      assert.is_not_nil(current, "a foreign mapping must survive codediff teardown")
+      assert.equals("other-plugin", current.desc, "a foreign mapping must survive codediff teardown")
+    end)
+
+    it("does not reinstall over a foreign mapping on resume", function()
+      local bufnr = new_buf()
+      local r = keymap.new("test")
+      r:claim(bufnr, "n", "q", noop, { desc = "codediff" })
+
+      r:suspend()
+      vim.keymap.set("n", "q", function() end, { buffer = bufnr, desc = "other-plugin" })
+      r:resume()
+
+      local current = map_of(bufnr, "n", "q")
+      assert.is_not_nil(current, "foreign mapping should still be installed")
+      assert.equals("other-plugin", current.desc)
+      r:dispose()
+    end)
+  end)
+
+  describe("special keys", function()
+    -- Regression: the slot identity is the canonical byte sequence, but the
+    -- mapping APIs must be given the original spelling. Passing canonical
+    -- bytes back to vim.keymap.set re-encodes keys such as <2-LeftMouse> and
+    -- <Down>, leaving a mapping that the real key press can never reach.
+    local SPECIAL = { "q", "<CR>", "<Esc>", "<Tab>", "<leader>hs", "<2-LeftMouse>", "<Down>", "<Up>", "<S-Tab>", "<C-n>", "zo", "]c", "2do" }
+
+    it("installs a mapping the key press can actually reach", function()
+      for _, key in ipairs(SPECIAL) do
+        local bufnr = new_buf()
+        local r = keymap.new("test")
+        assert.is_true(r:claim(bufnr, "n", key, noop, { desc = "codediff" }), key .. " should be claimed")
+
+        local found = map_of(bufnr, "n", key)
+        assert.is_not_nil(found, string.format("%q is mapped but unreachable via maparg", key))
+        assert.equals("codediff", found.desc, key .. " should resolve to the codediff mapping")
+
+        r:dispose()
+      end
+    end)
+
+    it("releases special keys on dispose", function()
+      for _, key in ipairs(SPECIAL) do
+        local bufnr = new_buf()
+        local r = keymap.new("test")
+        r:claim(bufnr, "n", key, noop, { desc = "codediff" })
+        r:dispose()
+        assert.is_nil(map_of(bufnr, "n", key), string.format("%q should be released", key))
+      end
+    end)
+
+    it("restores a pre-existing mapping for special keys", function()
+      for _, key in ipairs({ "<2-LeftMouse>", "<Down>", "<CR>" }) do
+        local bufnr = new_buf()
+        vim.keymap.set("n", key, noop, { buffer = bufnr, desc = "user" })
+
+        local r = keymap.new("test")
+        r:claim(bufnr, "n", key, noop, { desc = "codediff" })
+        assert.equals("codediff", map_of(bufnr, "n", key).desc, key .. " should be taken over")
+
+        r:dispose()
+        local restored = map_of(bufnr, "n", key)
+        assert.is_not_nil(restored, key .. " should be restored")
+        assert.equals("user", restored.desc, key .. " should return to the user's mapping")
+      end
+    end)
+  end)
+
+  describe("invalid buffers", function()
+    it("ignores claims on an invalid buffer", function()
+      local bufnr = new_buf()
+      vim.api.nvim_buf_delete(bufnr, { force = true })
+
+      local r = keymap.new("test")
+      assert.is_false(r:claim(bufnr, "n", "q", noop, {}))
+      assert.equals(0, r:count())
+    end)
+
+    it("disposes cleanly when a buffer was wiped mid-session", function()
+      local bufnr = new_buf()
+      local r = keymap.new("test")
+      r:claim(bufnr, "n", "q", noop, { desc = "codediff" })
+
+      vim.api.nvim_buf_delete(bufnr, { force = true })
+      keymap.forget_buffer(bufnr)
+
+      assert.has_no.errors(function()
+        r:dispose()
+      end)
+      assert.equals(0, slots.count())
+    end)
+  end)
+end)

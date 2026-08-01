@@ -6,6 +6,9 @@ local config = require("codediff.config")
 local virtual_file = require("codediff.core.virtual_file")
 local accessors = require("codediff.ui.lifecycle.accessors")
 local welcome_window = require("codediff.ui.view.welcome_window")
+-- Eagerly loaded: sessions are created from scheduled callbacks that may run
+-- after the CWD changed, and a first-time require would fail there.
+local keymap = require("codediff.keymap")
 
 -- Track active diff sessions
 -- Structure: {
@@ -114,6 +117,9 @@ function M.create_session(
     result_win = nil,
     conflict_files = {}, -- Tracks files opened in conflict mode for unsaved warning
     reapply_keymaps = reapply_keymaps,
+    -- Owns every mapping this session installs, so teardown can hand each key
+    -- back to whatever owned it before codediff.
+    keymaps = keymap.new("codediff-session:" .. tostring(tabpage)),
   }
 
   welcome_window.capture_session_profiles(active_diffs[tabpage])
@@ -198,6 +204,7 @@ function M.create_session(
         local current_tab = vim.api.nvim_get_current_tabpage()
         if current_tab == tabpage and active_diffs[tabpage] then
           local sess = active_diffs[tabpage]
+          accessors.restore_tab_keymaps(tabpage)
           if sess.reapply_keymaps then
             pcall(sess.reapply_keymaps)
           end

@@ -47,8 +47,8 @@ local function cleanup_diff(tabpage)
   state.restore_buffer_state(diff.original_bufnr, diff.original_state)
   state.restore_buffer_state(diff.modified_bufnr, diff.modified_state)
 
-  -- Remove tab-scoped keymaps from all tracked buffers
-  accessors.clear_tab_keymaps(tabpage)
+  -- Hand every mapped key back to whatever owned it before codediff
+  accessors.dispose_keymaps(tabpage)
 
   -- Call explorer's cleanup function to stop file watchers
   if diff.explorer and diff.explorer._cleanup_auto_refresh then

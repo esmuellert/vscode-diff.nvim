@@ -65,7 +65,14 @@ M.set_conflict_blocks = accessors.set_conflict_blocks
 M.track_conflict_file = accessors.track_conflict_file
 M.confirm_close_with_unsaved = accessors.confirm_close_with_unsaved
 M.set_tab_keymap = accessors.set_tab_keymap
+M.set_buf_keymap = accessors.set_buf_keymap
+M.del_buf_keymap = accessors.del_buf_keymap
+M.owns_keymap = accessors.owns_keymap
+M.documented_keymaps = accessors.documented_keymaps
+M.detach_keymap_buffer = accessors.detach_keymap_buffer
 M.clear_tab_keymaps = accessors.clear_tab_keymaps
+M.restore_tab_keymaps = accessors.restore_tab_keymaps
+M.dispose_keymaps = accessors.dispose_keymaps
 M.setup_auto_sync_on_file_switch = accessors.setup_auto_sync_on_file_switch
 
 return M
