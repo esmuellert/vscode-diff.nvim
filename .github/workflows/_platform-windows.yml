@@ -1,0 +1,65 @@
+name: Build library (Windows)
+
+# Native Windows build using MSVC. MSVC has built-in OpenMP; nmake drives the
+# CMake-generated Makefile.win.
+#
+# Inputs:
+#   arch     - "x64" or "arm64"
+#   runs-on  - GitHub runner label (windows-latest or windows-11-arm)
+#   artifact - Name of the uploaded artifact (e.g. "windows-x64")
+
+on:
+  workflow_call:
+    inputs:
+      arch:
+        required: true
+        type: string
+      runs-on:
+        required: true
+        type: string
+      artifact:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: windows-${{ inputs.arch }}
+    runs-on: ${{ inputs.runs-on }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 'lts/*'
+
+      - name: Setup Neovim
+        uses: ./.github/actions/setup-neovim
+        with:
+          arch: ${{ inputs.arch }}
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Build library
+        run: nmake /f Makefile.win build
+
+      - name: Run C unit tests
+        run: nmake /f Makefile.win test-c
+
+      - name: Run Neovim tests
+        shell: bash
+        run: ./tests/run_tests.sh
+
+      - name: Upload build artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact }}
+          path: libvscode_diff.dll
+          if-no-files-found: ignore
+          retention-days: 7
