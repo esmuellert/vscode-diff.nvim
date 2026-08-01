@@ -80,7 +80,7 @@ M.defaults = {
       max_untracked_bytes = 1024 * 1024,
     },
     ellipsis = "…", -- Text appended to truncated Explorer regions
-    formatters = { -- nil = use the built-in from lua/codediff/ui/explorer/formatters.lua
+    formatters = { -- nil = use the built-in from lua/codediff/ui/explorer/formatters/
       file = nil, -- File rows: function(ctx) -> layout
       folder = nil, -- Directory rows in tree view: function(ctx) -> layout
       group = nil, -- Section headers such as Changes and Staged: function(ctx) -> layout
