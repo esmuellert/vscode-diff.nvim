@@ -331,7 +331,13 @@ function M.refresh(tabpage)
 
   -- Open in compact mode by default (config) once, when the first real diff is
   -- ready. Afterwards compact follows the user's gc toggle for the session.
-  if not session.compact_default_applied and session.stored_diff_result then
+  --
+  -- The `.changes` check is what encodes "real diff is ready" — an explorer/
+  -- history session starts life with `stored_diff_result = {}` as a placeholder,
+  -- and `setup_all_keymaps` calls `M.refresh` before any file has been picked
+  -- (#496). Without the extra clause, the truthy `{}` would burn the one-shot
+  -- latch there and no later file selection could ever apply the default.
+  if not session.compact_default_applied and session.stored_diff_result and session.stored_diff_result.changes then
     session.compact_default_applied = true
     local changes = session.stored_diff_result.changes
     local is_conflict = session.result_win ~= nil and vim.api.nvim_win_is_valid(session.result_win)
