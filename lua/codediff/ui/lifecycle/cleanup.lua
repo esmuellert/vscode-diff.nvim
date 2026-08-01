@@ -47,8 +47,8 @@ local function cleanup_diff(tabpage)
   state.restore_buffer_state(diff.original_bufnr, diff.original_state)
   state.restore_buffer_state(diff.modified_bufnr, diff.modified_state)
 
-  -- Remove tab-scoped keymaps from all tracked buffers
-  accessors.clear_tab_keymaps(tabpage)
+  -- Hand every mapped key back to whatever owned it before codediff
+  accessors.dispose_keymaps(tabpage)
 
   -- Call explorer's cleanup function to stop file watchers
   if diff.explorer and diff.explorer._cleanup_auto_refresh then
@@ -225,6 +225,22 @@ function M.setup_autocmds()
           end
         end
       end)
+    end,
+  })
+
+  -- A wiped buffer takes its mappings with it. Drop the bookkeeping so slots
+  -- do not accumulate for buffers that no longer exist.
+  vim.api.nvim_create_autocmd("BufWipeout", {
+    group = augroup,
+    callback = function(args)
+      if args.buf then
+        require("codediff.keymap").forget_buffer(args.buf)
+        for _, diff in pairs(session.get_active_diffs()) do
+          if diff.keymaps then
+            diff.keymaps:forget_buffer(args.buf)
+          end
+        end
+      end
     end,
   })
 

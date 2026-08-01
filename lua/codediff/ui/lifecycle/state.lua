@@ -119,8 +119,14 @@ local function resume_diff(tabpage)
     return
   end
 
-  -- Check if buffers still exist
+  -- Check if buffers still exist. Dropping the session here would otherwise
+  -- orphan its registry, leaving codediff's mappings installed on whichever
+  -- pane survived and its saved user mappings unreachable.
   if not vim.api.nvim_buf_is_valid(diff.original_bufnr) or not vim.api.nvim_buf_is_valid(diff.modified_bufnr) then
+    if diff.keymaps then
+      diff.keymaps:dispose()
+      diff.keymaps = nil
+    end
     active_diffs[tabpage] = nil
     return
   end

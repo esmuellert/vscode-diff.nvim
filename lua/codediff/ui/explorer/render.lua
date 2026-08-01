@@ -594,12 +594,13 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
       end
       explorer.on_file_select(node.data)
     end
+    local lifecycle = require("codediff.ui.lifecycle")
     for _, key in ipairs({ "j", "k", "<Down>", "<Up>" }) do
-      vim.keymap.set("n", key, function()
+      lifecycle.set_buf_keymap(explorer.tabpage, split.bufnr, "n", key, function()
         local motion = key == "<Down>" and "j" or key == "<Up>" and "k" or key
         vim.cmd("normal! " .. motion)
         open_under_cursor()
-      end, { buffer = split.bufnr, silent = true, desc = "codediff: move and auto-open file" })
+      end, { silent = true, desc = "codediff: move and auto-open file" }, { suspendable = false })
     end
   end
 
