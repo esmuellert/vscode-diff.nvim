@@ -27,7 +27,7 @@ permissions:
 
 jobs:
   build:
-    name: build
+    name: ${{ inputs.artifact }}
     runs-on: ${{ inputs.runs-on }}
     steps:
       - name: Checkout repository

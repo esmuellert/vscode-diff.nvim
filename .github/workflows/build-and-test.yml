@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   linux:
-    name: Build and Test (${{ matrix.runs-on }}-${{ matrix.arch }})
+    name: ${{ matrix.runs-on }}
     strategy:
       fail-fast: false
       matrix:
@@ -29,7 +29,7 @@ jobs:
       artifact: ${{ matrix.artifact }}
 
   macos:
-    name: Build and Test (${{ matrix.runs-on }}-${{ matrix.arch }})
+    name: ${{ matrix.runs-on }}
     strategy:
       fail-fast: false
       matrix:
@@ -43,7 +43,7 @@ jobs:
       artifact: ${{ matrix.artifact }}
 
   windows:
-    name: Build and Test (${{ matrix.runs-on }}-${{ matrix.arch }})
+    name: ${{ matrix.runs-on }}
     strategy:
       fail-fast: false
       matrix:
@@ -57,7 +57,7 @@ jobs:
       artifact: ${{ matrix.artifact }}
 
   android:
-    name: Build and Test (android-${{ matrix.arch }})
+    name: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:

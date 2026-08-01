@@ -31,7 +31,7 @@ permissions:
 
 jobs:
   build:
-    name: build
+    name: ${{ inputs.artifact }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
