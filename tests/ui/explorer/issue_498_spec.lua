@@ -22,10 +22,12 @@ describe("Issue #498 regression — unborn HEAD is treated as the empty tree", f
   local GIT_EMPTY_TREE_SHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
   local function make_unborn_repo()
+    -- `h.create_temp_git_repo()` already runs `git init` + `git config` + `git
+    -- branch -m main` but never commits, so the returned repo is in the
+    -- unborn-branch state we need. We rely on this rather than wiping and
+    -- reinitializing manually so the setup stays cross-platform (the previous
+    -- attempt used `rm -rf` and `cd &&` chains that don't work on Windows).
     repo = h.create_temp_git_repo()
-    vim.fn.system("rm -rf " .. repo.dir .. "/.git")
-    vim.fn.system("cd " .. repo.dir .. " && git init -q -b main")
-    vim.fn.system(string.format("cd %s && git config user.email test@test && git config user.name test", repo.dir))
   end
 
   before_each(function()
@@ -58,7 +60,7 @@ describe("Issue #498 regression — unborn HEAD is treated as the empty tree", f
     make_unborn_repo()
 
     -- Sanity: HEAD is genuinely unresolvable in this repo.
-    local head_check = vim.fn.system("cd " .. repo.dir .. " && git rev-parse --verify HEAD 2>&1")
+    local head_check = repo.git("rev-parse --verify HEAD 2>&1")
     assert.is_not_nil(
       head_check:find("Needed a single revision", 1, true) or head_check:find("unknown revision", 1, true),
       "precondition: HEAD should not resolve on unborn branch, got: " .. head_check
@@ -113,7 +115,7 @@ describe("Issue #498 regression — unborn HEAD is treated as the empty tree", f
     repo.git("add test.md")
     repo.write_file("test.md", { "foo", "bar" })
 
-    local status = vim.fn.system("cd " .. repo.dir .. " && git status --porcelain")
+    local status = repo.git("status --porcelain")
     assert.is_not_nil(status:find("AM test.md", 1, true), "precondition: file must be in AM state, got: " .. status)
 
     vim.cmd("edit " .. repo.dir .. "/test.md")
