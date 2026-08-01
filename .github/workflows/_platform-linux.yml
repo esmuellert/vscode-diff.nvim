@@ -27,7 +27,7 @@ permissions:
 
 jobs:
   build:
-    name: linux-${{ inputs.arch }}
+    name: build
     runs-on: ${{ inputs.runs-on }}
     steps:
       - name: Checkout repository
