@@ -33,6 +33,23 @@ function M.resolve(value)
   return value
 end
 
+--- Read a binding as the list of keys it asks for.
+---
+--- Bindings that come from config arrive already validated as a list (see
+--- codediff.keymap.resolve); a plain string is accepted too, for the handful
+--- of mappings that are not configurable, such as the explorer's double click.
+--- @param value string|string[]|false|nil
+--- @return string[]
+function M.key_list(value)
+  if type(value) == "table" then
+    return value
+  end
+  if type(value) ~= "string" or value == "" then
+    return {}
+  end
+  return { value }
+end
+
 --- Normalize a mode argument to a list of single-character modes.
 --- @param modes string|string[]
 --- @return string[]

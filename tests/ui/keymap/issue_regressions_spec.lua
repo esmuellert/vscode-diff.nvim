@@ -399,11 +399,75 @@ do
   -- older version -- must never take a key away from a real action.
   reset({ keymaps = { explorer = { refres = "R" } } })
   local resolve = require("codediff.keymap.resolve")
-  record("#357", "a typo'd config key does not disable a real default", resolve.keymaps_for("explorer").refresh == "R", tostring(resolve.keymaps_for("explorer").refresh))
+  record("#357", "a typo'd config key does not disable a real default", vim.deep_equal(resolve.keymaps_for("explorer").refresh, { "R" }), vim.inspect(resolve.keymaps_for("explorer").refresh))
 
   -- ...while a deprecated spelling the code still honours does take part.
   reset({ keymaps = { explorer = { toggle_stage = "q" } } })
   record("#357", "a deprecated but honoured key still wins its slot", resolve.keymaps_for("view").quit == false, tostring(resolve.keymaps_for("view").quit))
+  reset({})
+end
+
+do
+  -- #407: an action can answer to more than one key. A list used to bind
+  -- nothing at all -- not even the first key -- leaving no way to quit.
+  local tp, repo = open_explorer({ keymaps = { view = { quit = { "q", "<Esc>" } } } })
+  local s = lifecycle.get_session(tp)
+  local first = s.modified_bufnr
+
+  record("#407", "the first key of a list is bound", effective(first, "q") == "Close codediff tab", effective(first, "q"))
+  record("#407", "the second key of a list is bound", effective(first, "<Esc>") == "Close codediff tab", effective(first, "<Esc>"))
+  record("#407", "both keys reach the explorer panel", effective(s.explorer.bufnr, "<Esc>") == "Close codediff tab", effective(s.explorer.bufnr, "<Esc>"))
+
+  -- Switching files rebuilds the diff buffers. Codediff re-applies its own
+  -- mappings, which is exactly what a hand-rolled second key cannot do.
+  vim.api.nvim_set_current_tabpage(tp)
+  local win = vim.fn.bufwinid(first)
+  if win ~= -1 then
+    vim.api.nvim_set_current_win(win)
+  end
+  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("]f", true, false, true), "mx", false)
+  vim.wait(3000)
+
+  s = lifecycle.get_session(tp)
+  local second = s and s.modified_bufnr
+  record("#407", "a file switch really does rebuild the buffer", second ~= first, tostring(second) .. " vs " .. tostring(first))
+  record("#407", "both keys survive a file switch", effective(second, "q") == "Close codediff tab" and effective(second, "<Esc>") == "Close codediff tab", effective(second, "<Esc>"))
+
+  repo.cleanup()
+  lifecycle.cleanup_all()
+  h.close_extra_tabs()
+end
+
+do
+  -- #407: config values are read and validated in one place, so what reaches
+  -- the registry is always a list of keys, and an invalid value is reported
+  -- rather than silently dropped.
+  local resolve = require("codediff.keymap.resolve")
+
+  reset({})
+  record("#407", "a single key reads back as a one-item list", vim.deep_equal(resolve.keymaps_for("view").quit, { "q" }), vim.inspect(resolve.keymaps_for("view").quit))
+  record("#407", "a setting among the keymaps is left alone", resolve.keymaps_for("view").close_on_open_in_prev_tab == false, tostring(resolve.keymaps_for("view").close_on_open_in_prev_tab))
+
+  reset({ keymaps = { view = { quit = { "q", "q", "<Esc>" } } } })
+  record("#407", "duplicate keys collapse", vim.deep_equal(resolve.keymaps_for("view").quit, { "q", "<Esc>" }), vim.inspect(resolve.keymaps_for("view").quit))
+
+  reset({ keymaps = { view = { quit = {} } } })
+  record("#407", "an empty list means not bound", resolve.keymaps_for("view").quit == false, tostring(resolve.keymaps_for("view").quit))
+
+  local warned = {}
+  local real_notify = vim.notify
+  vim.notify = function(msg)
+    table.insert(warned, msg)
+  end
+  reset({ keymaps = { view = { quit = 42 } } })
+  resolve.forget_warnings()
+  resolve.keymaps_for("view")
+  vim.wait(200, function()
+    return #warned > 0
+  end)
+  vim.notify = real_notify
+  record("#407", "an invalid value is reported by config path", #warned > 0 and warned[1]:match("keymaps%.view%.quit") ~= nil, warned[1] or "no warning")
+
   reset({})
 end
 

@@ -27,11 +27,13 @@ local STILL_HONOURED = {
   ["explorer.toggle_stage"] = true,
 }
 
---- Does this config entry actually bind anything?
+--- Is this config entry a key binding at all?
+--- `keymaps.view` also carries plain settings such as
+--- `close_on_open_in_prev_tab`, which are not keys and must be left alone.
 --- @return boolean
-local function is_real_action(scope, name)
+local function is_key_binding(scope, name)
   local shipped = config.defaults.keymaps and config.defaults.keymaps[scope]
-  if type(shipped) == "table" and shipped[name] ~= nil then
+  if type(shipped) == "table" and type(shipped[name]) == "string" then
     return true
   end
   return STILL_HONOURED[scope .. "." .. name] == true
@@ -92,6 +94,84 @@ local function warn_user_keys_clash(key, action_names)
   end)
 end
 
+--- Report an invalid keymap value, named by config path -- which is what the
+--- user has to go and edit.
+local function warn_invalid(path, problem)
+  local this_warning = path .. "\0" .. problem
+  if already_warned[this_warning] then
+    return
+  end
+  already_warned[this_warning] = true
+
+  vim.schedule(function()
+    vim.notify(("[codediff] %s: %s. That action is not bound."):format(path, problem), vim.log.levels.WARN)
+  end)
+end
+
+--- The keys one configured entry asks for.
+---
+--- An action can answer to more than one key (`quit = { "q", "<Esc>" }`), so
+--- every binding is read as a list; a plain string is the one-key case.
+--- `false`, `nil`, `""` and `{}` all mean "not bound", the long-standing way
+--- to switch a mapping off.
+---
+--- Anything else is invalid, and invalid is worth saying out loud: the value
+--- would otherwise vanish and leave the action unreachable with no clue why.
+--- This is the one place that knows which config entry a value came from.
+--- @return string[]|nil keys nil when the entry binds nothing
+local function keys_of(scope, name, value)
+  if value == nil or value == false or value == "" then
+    return nil
+  end
+
+  if type(value) == "string" then
+    return { value }
+  end
+
+  local path = ("keymaps.%s.%s"):format(scope, name)
+
+  if type(value) ~= "table" then
+    warn_invalid(path, ('expected a key like "q", a list like { "q", "<Esc>" }, or false; got %s'):format(type(value)))
+    return nil
+  end
+
+  local keys, seen = {}, {}
+  for index, entry in ipairs(value) do
+    if type(entry) ~= "string" or entry == "" then
+      local wrong = type(entry) == "string" and "an empty string" or type(entry)
+      warn_invalid(path, ('entry %d of the list is %s; every entry must be a key like "<Esc>"'):format(index, wrong))
+      return nil
+    end
+    if not seen[entry] then
+      seen[entry] = true
+      table.insert(keys, entry)
+    end
+  end
+
+  if #keys == 0 then
+    -- An empty list switches the mapping off; a table with no list part at
+    -- all is a mistake worth naming.
+    if next(value) ~= nil then
+      warn_invalid(path, 'expected a list of keys like { "q", "<Esc>" }')
+    end
+    return nil
+  end
+
+  return keys
+end
+
+--- Two spellings of one key (`<Tab>` and `<C-i>`) land on the same slot. An
+--- action is recorded against a slot only once, or it would look like it were
+--- clashing with itself.
+local function already_recorded(actions, scope, name)
+  for _, action in ipairs(actions) do
+    if action.scope == scope and action.name == name then
+      return true
+    end
+  end
+  return false
+end
+
 --- Every action that wants each key, across every scope.
 --- Grouped across scopes on purpose: view mappings fan out to all session
 --- buffers, so a view key really can land on top of an explorer or history one.
@@ -102,14 +182,21 @@ local function group_actions_by_key()
   for scope, entries in pairs(config.options.keymaps or {}) do
     if type(entries) == "table" then
       for name, value in pairs(entries) do
-        local key = is_real_action(scope, name) and normalize.canonical(value) or nil
-        if key then
-          by_key[key] = by_key[key] or {}
-          table.insert(by_key[key], {
-            scope = scope,
-            name = name,
-            chosen = chosen_by_user(scope, name, value),
-          })
+        if is_key_binding(scope, name) then
+          -- Each key of a list is its own slot that another action may want.
+          for _, want in ipairs(keys_of(scope, name, value) or {}) do
+            local key = normalize.canonical(want)
+            if key then
+              by_key[key] = by_key[key] or {}
+              if not already_recorded(by_key[key], scope, name) then
+                table.insert(by_key[key], {
+                  scope = scope,
+                  name = name,
+                  chosen = chosen_by_user(scope, name, value),
+                })
+              end
+            end
+          end
         end
       end
     end
@@ -154,27 +241,29 @@ local function find_defaults_that_lose()
   return losers
 end
 
---- The keymaps for one scope, with any key lost to a user's choice set to
---- `false` -- which every caller already reads as "not bound".
+--- The keymaps for one scope: every binding as the list of keys it asks for,
+--- or `false` when it binds nothing -- which every caller already reads as
+--- "not bound". Values are read and validated here, once, so nothing
+--- downstream has to work out what a configured value meant.
 --- @param scope string "view", "explorer", "conflict" or "history"
---- @return table name -> key, or false where the key was lost
+--- @return table name -> string[] of keys, or false
 function M.keymaps_for(scope)
   local entries = config.options.keymaps and config.options.keymaps[scope]
   if type(entries) ~= "table" then
     return {}
   end
 
-  local lost = find_defaults_that_lose()[scope]
-  if not lost then
-    return entries
-  end
+  local lost = find_defaults_that_lose()[scope] or {}
 
   local resolved = {}
   for name, value in pairs(entries) do
-    if lost[name] then
+    if not is_key_binding(scope, name) then
+      -- A plain setting living among the keymaps; pass it through untouched.
+      resolved[name] = value
+    elseif lost[name] then
       resolved[name] = false
     else
-      resolved[name] = value
+      resolved[name] = keys_of(scope, name, value) or false
     end
   end
   return resolved
