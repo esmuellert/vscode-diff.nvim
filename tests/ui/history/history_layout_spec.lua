@@ -5,8 +5,11 @@ h.ensure_plugin_loaded()
 
 describe("History layout", function()
   local repo
+  local original_statuscolumn
 
   before_each(function()
+    original_statuscolumn = vim.o.statuscolumn
+    vim.o.statuscolumn = "%s%=%l %C "
     require("codediff").setup({})
     repo = h.create_temp_git_repo()
     repo.write_file("file.txt", { "version 1" })
@@ -22,6 +25,7 @@ describe("History layout", function()
   end)
 
   after_each(function()
+    vim.o.statuscolumn = original_statuscolumn
     h.close_extra_tabs()
     if repo then
       repo.cleanup()
@@ -40,6 +44,10 @@ describe("History layout", function()
     local history_win, history_buf = h.find_window_by_filetype("codediff-history")
     assert.is_not_nil(history_win)
     assert.is_not_nil(history_buf)
+    assert.equal("", vim.wo[history_win].statuscolumn,
+      "history should not inherit the user's status column")
+    assert.equal(0, vim.fn.getwininfo(history_win)[1].textoff,
+      "history rows should use the full window width")
 
     local content = h.get_buffer_content(history_buf)
     local lines = h.get_buffer_lines(history_buf)

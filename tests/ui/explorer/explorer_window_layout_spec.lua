@@ -7,8 +7,11 @@ h.ensure_plugin_loaded()
 
 describe("Explorer window layout", function()
   local repo
+  local original_statuscolumn
 
   before_each(function()
+    original_statuscolumn = vim.o.statuscolumn
+    vim.o.statuscolumn = "%s%=%l %C "
     require("codediff").setup({})
     repo = h.create_temp_git_repo()
     repo.write_file("file1.txt", { "line 1", "line 2" })
@@ -21,6 +24,7 @@ describe("Explorer window layout", function()
   end)
 
   after_each(function()
+    vim.o.statuscolumn = original_statuscolumn
     h.close_extra_tabs()
     if repo then
       repo.cleanup()
@@ -34,6 +38,10 @@ describe("Explorer window layout", function()
 
     local explorer_win = h.find_window_by_filetype("codediff-explorer")
     assert.is_not_nil(explorer_win, "explorer window not found")
+    assert.equal("", vim.wo[explorer_win].statuscolumn,
+      "explorer should not inherit the user's status column")
+    assert.equal(0, vim.fn.getwininfo(explorer_win)[1].textoff,
+      "explorer rows should use the full window width")
 
     local wins = vim.api.nvim_tabpage_list_wins(0)
     assert.is_true(#wins >= 3, "expected at least 3 windows (explorer + 2 diff panes), got " .. #wins)
