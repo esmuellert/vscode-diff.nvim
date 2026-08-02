@@ -66,10 +66,14 @@ describe("compact mode (#344)", function()
     while vim.fn.tabpagenr("$") > 1 do
       vim.cmd("tabclose")
     end
-    -- The two scratch buffers backing create_session persist across tests
-    -- because their on-disk paths are the same; delete them so each test
-    -- starts with a fresh keymap state.
-    for _, name in ipairs({ "compact_spec_left.txt", "compact_spec_right.txt" }) do
+    -- Scratch buffers persist across tests because their on-disk paths are
+    -- reused; delete them so each test starts with fresh window/keymap state.
+    for _, name in ipairs({
+      "compact_spec_left.txt",
+      "compact_spec_right.txt",
+      "compact_spec_swap_left.txt",
+      "compact_spec_swap_right.txt",
+    }) do
       local path = get_temp_path(name)
       local bufnr = vim.fn.bufnr(path)
       if bufnr ~= -1 and vim.api.nvim_buf_is_valid(bufnr) then
@@ -268,6 +272,62 @@ describe("compact mode (#344)", function()
       assert.is_true(compact.enable(tabpage))
       assert.equal(saved_state_first, session.compact_saved_fold_state,
         "second enable must not overwrite the saved fold state")
+    end)
+
+    it("does not apply the previous file's folds while update swaps buffers", function()
+      local original = {}
+      local modified = {}
+      for i = 1, 100 do
+        original[i] = "line " .. i
+        modified[i] = "line " .. i
+      end
+      modified[83] = "line 83 CHANGED"
+
+      local tabpage, session = create_session(original, modified)
+      assert.is_true(compact.enable(tabpage))
+      assert.equal(1, vim.api.nvim_win_call(session.modified_win, function()
+        return vim.fn.foldclosed(1)
+      end))
+
+      local left = get_temp_path("compact_spec_swap_left.txt")
+      local right = get_temp_path("compact_spec_swap_right.txt")
+      vim.fn.writefile({ "one" }, left)
+      vim.fn.writefile({ "one", "two", "three" }, right)
+
+      local foldenable_during_swap
+      local group = vim.api.nvim_create_augroup("CodeDiffCompactSwapSpec", { clear = true })
+      vim.api.nvim_create_autocmd("BufWinEnter", {
+        group = group,
+        pattern = "compact_spec_swap_right.txt",
+        callback = function()
+          local current = lifecycle.get_session(tabpage)
+          local current_name = current and vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(current.modified_win)) or ""
+          if vim.fn.fnamemodify(current_name, ":t") == "compact_spec_swap_right.txt" then
+            foldenable_during_swap = vim.wo[current.modified_win].foldenable
+          end
+        end,
+      })
+
+      assert.is_true(view.update(tabpage, {
+        mode = "standalone",
+        git_root = nil,
+        original = path.make_ref(left, nil),
+        modified = path.make_ref(right, nil),
+      }, false))
+      assert.is_true(vim.wait(5000, function()
+        local current = lifecycle.get_session(tabpage)
+        return foldenable_during_swap ~= nil and current
+          and vim.fn.fnamemodify(vim.api.nvim_buf_get_name(current.modified_bufnr), ":t") == "compact_spec_swap_right.txt"
+          and current.stored_diff_result and current.stored_diff_result.changes
+      end, 20))
+
+      session = lifecycle.get_session(tabpage)
+      assert.is_false(foldenable_during_swap, "stale compact folds were enabled during the buffer swap")
+      assert.is_true(vim.wo[session.modified_win].foldenable, "new compact folds were not restored after render")
+      assert.equal(-1, vim.api.nvim_win_call(session.modified_win, function()
+        return vim.fn.foldclosed(2)
+      end), "new changed line was hidden after render")
+      vim.api.nvim_del_augroup_by_id(group)
     end)
 
     it("returns false when there are no changes to compact", function()

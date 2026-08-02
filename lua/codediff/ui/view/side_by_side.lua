@@ -21,6 +21,7 @@ local view_keymaps = require("codediff.ui.view.keymaps")
 local conflict_window = require("codediff.ui.view.conflict_window")
 local panel = require("codediff.ui.view.panel")
 local welcome_window = require("codediff.ui.view.welcome_window")
+local compact = require("codediff.ui.view.compact")
 
 local is_virtual_revision = helpers.is_virtual_revision
 local prepare_buffer = helpers.prepare_buffer
@@ -427,6 +428,12 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
   if not original_win and not modified_win then
     return false
   end
+
+  -- The windows still carry the previous file's compact fold expression and
+  -- visible-line table. Disable fold evaluation until the new diff render
+  -- refreshes those tables, otherwise the replacement buffers can briefly be
+  -- displayed using stale folds.
+  compact.suspend(tabpage)
 
   -- Disable auto-refresh temporarily
   auto_refresh.disable(old_original_buf)
