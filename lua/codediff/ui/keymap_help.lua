@@ -1,5 +1,6 @@
 -- Floating help window showing available keymaps (g?)
 local config = require("codediff.config")
+local normalize = require("codediff.keymap.normalize")
 local resolve = require("codediff.keymap.resolve")
 local lifecycle = require("codediff.ui.lifecycle")
 
@@ -30,11 +31,14 @@ end
 -- has mapped. `is_bound` is what stops this list from drifting: an entry that
 -- is disabled in config, or not applicable to the current session shape, is
 -- simply not installed and therefore not advertised.
+--
+-- An action can answer to several keys, so every key really bound is listed.
 local function section(title, entries, is_bound)
   local items = {}
   for _, e in ipairs(entries) do
-    if e[1] and is_bound(e[1]) then
-      table.insert(items, e)
+    local bound = vim.tbl_filter(is_bound, normalize.key_list(e[1]))
+    if #bound > 0 then
+      table.insert(items, { table.concat(bound, " / "), e[2] })
     end
   end
   if #items == 0 then
@@ -340,9 +344,10 @@ function M.toggle(tabpage)
     session._help_win = win
   end
 
-  -- Close keymaps
-  local show_help_key = keymaps.view.show_help or "g?"
-  for _, key in ipairs({ "q", "<Esc>", show_help_key }) do
+  -- The popup takes focus, so it carries its own close keys: q, Esc, and
+  -- whatever opened it, so that key toggles it shut again.
+  local close_keys = vim.list_extend({ "q", "<Esc>" }, normalize.key_list(keymaps.view.show_help))
+  for _, key in ipairs(close_keys) do
     vim.keymap.set("n", key, function()
       if vim.api.nvim_win_is_valid(win) then
         vim.api.nvim_win_close(win, true)
