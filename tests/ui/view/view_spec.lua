@@ -241,11 +241,21 @@ describe("Render View", function()
     vim.fn.writefile(original, left_path)
     vim.fn.writefile(modified, right_path)
 
-    local success = pcall(function()
-      local result, tabpage = create_test_diff_view(original, modified, left_path, right_path)
+    local pre_tabs = vim.fn.tabpagenr("$")
+    local success, tabpage
+    success = pcall(function()
+      _, tabpage = create_test_diff_view(original, modified, left_path, right_path)
     end)
-
     assert.is_true(success, "Should handle empty files without error")
+
+    -- A side-by-side view was actually created: new tab + registered session.
+    assert.equal(pre_tabs + 1, vim.fn.tabpagenr("$"), "a new tab should exist for the diff view")
+    assert.is_not_nil(tabpage)
+    vim.wait(2000, function() return lifecycle.get_session(tabpage) ~= nil end, 25)
+    local sess = lifecycle.get_session(tabpage)
+    assert.is_not_nil(sess, "empty-file diff view must still register a session")
+    assert.is_true(vim.api.nvim_buf_is_valid(sess.original_bufnr))
+    assert.is_true(vim.api.nvim_buf_is_valid(sess.modified_bufnr))
 
     vim.fn.delete(left_path)
     vim.fn.delete(right_path)
@@ -293,12 +303,20 @@ describe("Render View", function()
     vim.fn.writefile(lines, left_path)
     vim.fn.writefile(lines, right_path)
 
+    local result, tabpage
     local success = pcall(function()
-      local result, tabpage = create_test_diff_view(lines, lines, left_path, right_path)
-      return result ~= nil
+      result, tabpage = create_test_diff_view(lines, lines, left_path, right_path)
     end)
-
     assert.is_true(success, "Should create view even with no changes")
+    assert.is_not_nil(result, "view.create should return non-nil for identical files")
+    -- Session exists and both panes show the shared content.
+    vim.wait(2000, function() return lifecycle.get_session(tabpage) ~= nil end, 25)
+    local sess = lifecycle.get_session(tabpage)
+    assert.is_not_nil(sess)
+    local orig = table.concat(vim.api.nvim_buf_get_lines(sess.original_bufnr, 0, -1, false), "\n")
+    local mod = table.concat(vim.api.nvim_buf_get_lines(sess.modified_bufnr, 0, -1, false), "\n")
+    assert.equal(orig, mod, "identical files must render identical content in both panes")
+    assert.is_true(orig:find("line 1", 1, true) ~= nil, "expected content missing from original pane")
 
     vim.fn.delete(left_path)
     vim.fn.delete(right_path)
@@ -375,11 +393,20 @@ describe("Render View", function()
     vim.fn.writefile(original, left_path)
     vim.fn.writefile(modified, right_path)
 
+    local tabpage
     local success = pcall(function()
-      local result, tabpage = create_test_diff_view(original, modified, left_path, right_path)
+      _, tabpage = create_test_diff_view(original, modified, left_path, right_path)
     end)
-
     assert.is_true(success, "Should handle single-line files")
+
+    -- The rendered content on each pane matches the source lines.
+    vim.wait(2000, function() return lifecycle.get_session(tabpage) ~= nil end, 25)
+    local sess = lifecycle.get_session(tabpage)
+    assert.is_not_nil(sess)
+    assert.equal("single line",
+      table.concat(vim.api.nvim_buf_get_lines(sess.original_bufnr, 0, -1, false), "\n"))
+    assert.equal("different line",
+      table.concat(vim.api.nvim_buf_get_lines(sess.modified_bufnr, 0, -1, false), "\n"))
 
     vim.fn.delete(left_path)
     vim.fn.delete(right_path)
@@ -396,11 +423,23 @@ describe("Render View", function()
     vim.fn.writefile(original, left_path)
     vim.fn.writefile(modified, right_path)
 
+    local tabpage
     local success = pcall(function()
-      local result, tabpage = create_test_diff_view(original, modified, left_path, right_path)
+      _, tabpage = create_test_diff_view(original, modified, left_path, right_path)
     end)
-
     assert.is_true(success, "Should handle special characters")
+
+    -- Each special character survives round-tripping through the diff render
+    -- into the pane buffers (regression guard for shell-escape / quote-eating).
+    vim.wait(2000, function() return lifecycle.get_session(tabpage) ~= nil end, 25)
+    local sess = lifecycle.get_session(tabpage)
+    assert.is_not_nil(sess)
+    local orig = table.concat(vim.api.nvim_buf_get_lines(sess.original_bufnr, 0, -1, false), "\n")
+    local mod = table.concat(vim.api.nvim_buf_get_lines(sess.modified_bufnr, 0, -1, false), "\n")
+    assert.is_true(orig:find("'quotes'", 1, true) ~= nil, "single quotes must survive")
+    assert.is_true(orig:find('"double quotes"', 1, true) ~= nil, "double quotes must survive")
+    assert.is_true(mod:find("$dollar", 1, true) ~= nil, "dollar sign must survive")
+    assert.is_true(mod:find("`backtick`", 1, true) ~= nil, "backticks must survive")
 
     vim.fn.delete(left_path)
     vim.fn.delete(right_path)
@@ -454,11 +493,22 @@ describe("Render View", function()
     vim.fn.writefile(original, left_path)
     vim.fn.writefile(modified, right_path)
 
+    local tabpage
     local success = pcall(function()
-      local result, tabpage = create_test_diff_view(original, modified, left_path, right_path)
+      _, tabpage = create_test_diff_view(original, modified, left_path, right_path)
     end)
-
     assert.is_true(success, "Should handle many hunks")
+
+    -- The rendered diff carries at least as many hunks as we injected — the
+    -- upstream diff engine can merge adjacent changes, so accept "many" (>= 10)
+    -- rather than exactly 25.
+    vim.wait(2000, function() return lifecycle.get_session(tabpage) ~= nil end, 25)
+    local sess = lifecycle.get_session(tabpage)
+    assert.is_not_nil(sess)
+    assert.is_not_nil(sess.stored_diff_result)
+    local changes = sess.stored_diff_result.changes or {}
+    assert.is_true(#changes >= 10,
+      "expected many change hunks in a 25-mod file; got " .. tostring(#changes))
 
     vim.fn.delete(left_path)
     vim.fn.delete(right_path)
@@ -476,11 +526,20 @@ describe("Render View", function()
       vim.fn.writefile(original, left_path)
       vim.fn.writefile(modified, right_path)
 
+      local tabpage
       local success = pcall(function()
-        local result, tabpage = create_test_diff_view(original, modified, left_path, right_path)
+        _, tabpage = create_test_diff_view(original, modified, left_path, right_path)
       end)
-
       assert.is_true(success, "Iteration " .. i .. " should succeed")
+
+      -- Each iteration must produce its OWN session (not silently reuse a stale
+      -- one) — check that the session's content matches THIS iteration's input.
+      vim.wait(2000, function() return lifecycle.get_session(tabpage) ~= nil end, 25)
+      local sess = lifecycle.get_session(tabpage)
+      assert.is_not_nil(sess, "iteration " .. i .. " should register its own session")
+      local mod = table.concat(vim.api.nvim_buf_get_lines(sess.modified_bufnr, 0, -1, false), "\n")
+      assert.is_true(mod:find("changed " .. i, 1, true) ~= nil,
+        "iteration " .. i .. " modified pane should show 'changed " .. i .. "', got: " .. mod)
 
       vim.fn.delete(left_path)
       vim.fn.delete(right_path)

@@ -433,9 +433,16 @@ describe("Render Core", function()
 
     assert.is_true(success, "Should handle empty file vs content without error")
 
-    -- Verify buffers are still valid after rendering
+    -- Buffers must still be valid AND still hold the source data — a defensive
+    -- render for the "one side is empty" case must not clobber the caller's
+    -- content or destroy the buffers.
     assert.is_true(vim.api.nvim_buf_is_valid(left_buf), "Left buffer should remain valid")
     assert.is_true(vim.api.nvim_buf_is_valid(right_buf), "Right buffer should remain valid")
+    assert.equal(0, vim.api.nvim_buf_line_count(left_buf) == 1 and #vim.api.nvim_buf_get_lines(left_buf, 0, 1, false)[1] or 1,
+      "left buffer must still be empty (an empty buffer reads as {\"\"}, line_count=1)")
+    assert.equal("line 1\nline 2\nline 3",
+      table.concat(vim.api.nvim_buf_get_lines(right_buf, 0, -1, false), "\n"),
+      "right buffer must still hold its source content")
 
     vim.api.nvim_buf_delete(left_buf, {force = true})
     vim.api.nvim_buf_delete(right_buf, {force = true})
