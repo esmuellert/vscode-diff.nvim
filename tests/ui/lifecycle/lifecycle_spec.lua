@@ -164,12 +164,16 @@ describe("Render Lifecycle", function()
                                left_buf, right_buf, left_win, right_win, lines_diff)
     end
 
-    -- Should cleanup all without error
+    -- Should cleanup all without error AND leave no session registered.
     local success = pcall(function()
       lifecycle.cleanup_all()
     end)
 
     assert.is_true(success, "Should cleanup all sessions without error")
+    for _, tp in ipairs(tabs) do
+      assert.is_nil(lifecycle.get_session(tp),
+        "cleanup_all must remove every registered session, but tab " .. tostring(tp) .. " still has one")
+    end
 
     -- Cleanup tabs and buffers
     for _, tab in ipairs(tabs) do
@@ -225,6 +229,15 @@ describe("Render Lifecycle", function()
     end)
 
     assert.is_true(success, "Should handle re-registration without error")
+    -- Re-registration must overwrite: the session for this tab reflects the
+    -- new paths, not the initial ones. Without this check a re-register that
+    -- silently no-ops would slip through.
+    local sess = lifecycle.get_session(tabpage)
+    assert.is_not_nil(sess, "session must still exist after re-registration")
+    assert.equal("test_file3.txt", sess.original,
+      "re-registration must overwrite `original` with the new value; got " .. tostring(sess.original))
+    assert.equal("test_file4.txt", sess.modified,
+      "re-registration must overwrite `modified` with the new value; got " .. tostring(sess.modified))
 
     vim.cmd('tabclose')
     vim.api.nvim_buf_delete(left_buf, {force = true})
@@ -233,14 +246,37 @@ describe("Render Lifecycle", function()
 
   -- Test 7: Cleanup invalid tabpage
   it("Handles cleanup of non-existent tabpage gracefully", function()
+    -- Register a real session first so we can assert cleanup with a bogus
+    -- tabpage doesn't accidentally wipe other sessions.
+    local left_buf = vim.api.nvim_create_buf(false, true)
+    local right_buf = vim.api.nvim_create_buf(false, true)
+    vim.cmd('tabnew')
+    local real_tab = vim.api.nvim_get_current_tabpage()
+    vim.cmd('vsplit')
+    local lw = vim.api.nvim_get_current_win()
+    vim.cmd('wincmd l')
+    local rw = vim.api.nvim_get_current_win()
+    vim.api.nvim_win_set_buf(lw, left_buf)
+    vim.api.nvim_win_set_buf(rw, right_buf)
+    local ld = diff.compute_diff({ "a" }, { "b" })
+    lifecycle.create_session(real_tab, "standalone", nil, "a.txt", "b.txt", "WORKING", "WORKING",
+                             left_buf, right_buf, lw, rw, ld)
+    assert.is_not_nil(lifecycle.get_session(real_tab))
+
     local fake_tabpage = 99999
 
-    -- Should not crash
+    -- Should not crash AND must not clobber the real session.
     local success = pcall(function()
       lifecycle.cleanup(fake_tabpage)
     end)
 
     assert.is_true(success, "Should handle invalid tabpage cleanup gracefully")
+    assert.is_not_nil(lifecycle.get_session(real_tab),
+      "cleanup(bogus_tabpage) must not remove sessions belonging to other tabs")
+
+    vim.cmd('tabclose')
+    vim.api.nvim_buf_delete(left_buf, { force = true })
+    vim.api.nvim_buf_delete(right_buf, { force = true })
   end)
 
   -- Test 8: Cleanup with invalid buffers
@@ -269,12 +305,14 @@ describe("Render Lifecycle", function()
     vim.api.nvim_buf_delete(left_buf, {force = true})
     vim.api.nvim_buf_delete(right_buf, {force = true})
 
-    -- Cleanup should not crash
+    -- Cleanup should not crash AND must remove the entry from the registry.
     local success = pcall(function()
       lifecycle.cleanup(tabpage)
     end)
 
     assert.is_true(success, "Should handle cleanup with deleted buffers gracefully")
+    assert.is_nil(lifecycle.get_session(tabpage),
+      "cleanup must remove the session even when its buffers are already gone")
 
     -- Close tab manually (don't use tabclose which might fail if it's the last tab)
     if vim.api.nvim_tabpage_is_valid(tabpage) then
@@ -427,6 +465,12 @@ describe("Render Lifecycle", function()
     end)
 
     assert.is_true(success, "Should handle empty lines without error")
+    -- Empty-diff sessions must still be registered — the plugin never treats
+    -- "no diff" as "no session" (that would defeat the welcome-page path).
+    local sess = lifecycle.get_session(tabpage)
+    assert.is_not_nil(sess, "session must be created even when the diff is empty")
+    assert.equal(left_buf, sess.original_bufnr)
+    assert.equal(right_buf, sess.modified_bufnr)
 
     vim.cmd('tabclose')
     vim.api.nvim_buf_delete(left_buf, {force = true})
@@ -508,12 +552,14 @@ describe("Render Lifecycle", function()
     -- Close one window
     vim.api.nvim_win_close(left_win, true)
 
-    -- Cleanup should not crash
+    -- Cleanup should not crash AND must remove the entry from the registry.
     local success = pcall(function()
       lifecycle.cleanup(tabpage)
     end)
 
     assert.is_true(success, "Should handle cleanup with closed windows gracefully")
+    assert.is_nil(lifecycle.get_session(tabpage),
+      "cleanup must remove the session even when one of its windows was already closed")
 
     vim.cmd('tabclose')
     vim.api.nvim_buf_delete(left_buf, {force = true})

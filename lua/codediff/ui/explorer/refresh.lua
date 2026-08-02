@@ -52,6 +52,34 @@ function M.setup_auto_refresh(explorer, tabpage)
     if explorer.is_hidden then
       return
     end
+    -- Skip ticks whose target directory is gone or not yet a git repo.
+    -- This closes two race windows that used to emit a noisy
+    -- `vim.notify("Failed to refresh: fatal: not a git repository ...", ERROR)`
+    -- to the user (and to test stderr):
+    --   1. A tab is closing but the timer is still scheduled between the
+    --      `after_each`-triggered `rm -rf repo` and the TabClosed autocmd
+    --      running the cleanup — a stale tick fires against the deleted
+    --      directory.
+    --   2. First tick after :CodeDiff on a slow filesystem (Windows CI):
+    --      the explorer opens before `git init` has finished writing
+    --      `.git/`, and the first 500ms tick beats the initialization.
+    -- Either way, a poll aimed at a directory that isn't a git repo now is
+    -- correctly a no-op — the next tick (500ms later) either finds the repo
+    -- or the tab is gone. A user who `rm -rf`s their own repo behind the
+    -- explorer gets silence, not an error dialog.
+    local git_root = explorer.git_root
+    if git_root and git_root ~= "" then
+      if vim.fn.isdirectory(git_root) == 0 then
+        return
+      end
+      -- `.git` may be either a directory (normal repo) or a file (worktrees,
+      -- submodules — `gitdir: <path>` pointer). Missing on both counts means
+      -- the directory exists but isn't a repo yet.
+      local dot_git = git_root .. "/.git"
+      if vim.fn.isdirectory(dot_git) == 0 and vim.fn.filereadable(dot_git) == 0 then
+        return
+      end
+    end
     M.refresh(explorer)
     local auto_refresh = require("codediff.ui.auto_refresh")
     auto_refresh.sync_mutable_buffers(tabpage)
