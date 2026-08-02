@@ -79,11 +79,9 @@ function M.compute_visible_lines(changes, side, line_count, context_lines)
     local range_start = range.start_line
     local range_end = range.end_line -- exclusive
 
-    -- For zero-width ranges (pure insertion/deletion), use start_line as anchor
-    if range_start == range_end then
-      range_end = range_start + 1
-    end
-
+    -- A zero-width range is a boundary between unchanged lines. The formula
+    -- below therefore selects `context_lines` real lines on either side
+    -- without inventing a changed anchor line on the empty side.
     local ctx_start = math.max(1, range_start - context_lines)
     local ctx_end = math.min(line_count, range_end - 1 + context_lines)
     for l = ctx_start, ctx_end do
