@@ -11,6 +11,7 @@ local lifecycle = require("codediff.ui.lifecycle")
 local diff = require("codediff.core.diff")
 local highlights = require("codediff.ui.highlights")
 local path = require("codediff.core.path")
+local side_by_side = require("codediff.ui.view.side_by_side")
 
 local function get_temp_path(name)
   local is_win = vim.fn.has("win32") == 1 or vim.fn.has("win64") == 1
@@ -73,6 +74,7 @@ describe("compact mode (#344)", function()
       "compact_spec_right.txt",
       "compact_spec_swap_left.txt",
       "compact_spec_swap_right.txt",
+      "compact_spec_empty.txt",
     }) do
       local path = get_temp_path(name)
       local bufnr = vim.fn.bufnr(path)
@@ -328,6 +330,49 @@ describe("compact mode (#344)", function()
         return vim.fn.foldclosed(2)
       end), "new changed line was hidden after render")
       vim.api.nvim_del_augroup_by_id(group)
+    end)
+
+    it("restores compact folds after displaying an empty single-file view", function()
+      local original = {}
+      local modified = {}
+      for i = 1, 100 do
+        original[i] = "line " .. i
+        modified[i] = "line " .. i
+      end
+      modified[83] = "line 83 CHANGED"
+
+      local tabpage, session, left, right = create_session(original, modified)
+      assert.is_true(compact.enable(tabpage))
+      assert.equal(1, vim.api.nvim_win_call(session.modified_win, function()
+        return vim.fn.foldclosed(1)
+      end))
+
+      local empty = get_temp_path("compact_spec_empty.txt")
+      vim.fn.writefile({}, empty)
+      side_by_side.show_untracked_file(tabpage, empty)
+
+      session = lifecycle.get_session(tabpage)
+      assert.is_true(session.compact_mode, "empty view should preserve the compact-mode choice")
+      assert.is_false(vim.wo[session.modified_win].foldenable, "empty view should suspend compact folds")
+
+      assert.is_true(view.update(tabpage, {
+        mode = "standalone",
+        git_root = nil,
+        original = path.make_ref(left, nil),
+        modified = path.make_ref(right, nil),
+      }, false))
+      assert.is_true(vim.wait(5000, function()
+        local current = lifecycle.get_session(tabpage)
+        return current and not current.single_pane and current.stored_diff_result
+          and current.stored_diff_result.changes and #current.stored_diff_result.changes > 0
+      end, 20))
+
+      session = lifecycle.get_session(tabpage)
+      assert.is_true(session.compact_mode)
+      assert.is_true(vim.wo[session.modified_win].foldenable, "compact folds were not restored")
+      assert.equal(1, vim.api.nvim_win_call(session.modified_win, function()
+        return vim.fn.foldclosed(1)
+      end), "unchanged region was not folded after leaving the empty view")
     end)
 
     it("returns false when there are no changes to compact", function()

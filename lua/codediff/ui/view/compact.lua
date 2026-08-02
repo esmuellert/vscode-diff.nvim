@@ -338,7 +338,8 @@ end
 ---   * applies the configured "open in compact mode" default once, when the
 ---     first real diff is ready;
 ---   * re-folds the current diff while compact is active;
----   * exits compact if the diff no longer has any changes.
+---   * suspends folds while the current view has no changes, preserving the
+---     user's compact-mode choice for the next file.
 --- gc uses toggle()/enable()/disable() directly.
 --- @param tabpage number
 function M.refresh(tabpage)
@@ -371,7 +372,7 @@ function M.refresh(tabpage)
 
   local changes = session.stored_diff_result and session.stored_diff_result.changes
   if not changes or #changes == 0 then
-    M.disable(tabpage)
+    M.suspend(tabpage)
     return
   end
 
