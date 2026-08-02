@@ -8,6 +8,7 @@ local M = {}
 
 local lifecycle = require("codediff.ui.lifecycle")
 local config = require("codediff.config")
+local resolve = require("codediff.keymap.resolve")
 local navigation = require("codediff.ui.view.navigation")
 local compact = require("codediff.ui.view.compact")
 
@@ -34,7 +35,7 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
   -- rather than left installed alongside the new ones.
   lifecycle.begin_keymap_scope(tabpage, "view")
 
-  local keymaps = config.options.keymaps.view
+  local keymaps = resolve.keymaps_for("view")
 
   -- Check mode context
   local session = lifecycle.get_session(tabpage)
@@ -118,7 +119,7 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
   -- Support legacy config: keymaps.explorer.toggle_stage (deprecated)
   if is_explorer_mode then
     local toggle_stage_key = keymaps.toggle_stage
-    local explorer_keymaps = config.options.keymaps.explorer or {}
+    local explorer_keymaps = resolve.keymaps_for("explorer")
 
     -- Fallback to deprecated explorer.toggle_stage if view.toggle_stage not set
     if not toggle_stage_key and explorer_keymaps.toggle_stage then

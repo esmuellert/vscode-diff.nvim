@@ -1,5 +1,6 @@
 -- Floating help window showing available keymaps (g?)
 local config = require("codediff.config")
+local resolve = require("codediff.keymap.resolve")
 local lifecycle = require("codediff.ui.lifecycle")
 
 local M = {}
@@ -277,7 +278,7 @@ function M.toggle(tabpage)
 
   setup_highlights()
 
-  local keymaps = config.options.keymaps
+  local keymaps = resolve.all_keymaps()
   local function is_bound(key)
     return lifecycle.owns_keymap(tabpage, key)
   end

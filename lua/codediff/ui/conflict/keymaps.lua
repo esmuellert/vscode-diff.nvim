@@ -3,6 +3,7 @@ local M = {}
 
 local lifecycle = require("codediff.ui.lifecycle")
 local config = require("codediff.config")
+local resolve = require("codediff.keymap.resolve")
 local tracking = require("codediff.ui.conflict.tracking")
 local actions = require("codediff.ui.conflict.actions")
 local diffget = require("codediff.ui.conflict.diffget")
@@ -45,7 +46,7 @@ function M.setup_keymaps(tabpage)
 
   lifecycle.begin_keymap_scope(tabpage, "conflict")
 
-  local keymaps = config.options.keymaps.conflict or {}
+  local keymaps = resolve.keymaps_for("conflict")
 
   -- Bind to incoming (left), current (right), AND result buffers
   local buffers = { session.original_bufnr, session.modified_bufnr, session.result_bufnr }

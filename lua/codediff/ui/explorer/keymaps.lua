@@ -1,5 +1,6 @@
 -- Keymaps for explorer panel
 local config = require("codediff.config")
+local resolve = require("codediff.keymap.resolve")
 local actions_module = require("codediff.ui.explorer.actions")
 local refresh_module = require("codediff.ui.explorer.refresh")
 local tree_utils = require("codediff.ui.lib.tree_utils")
@@ -14,7 +15,7 @@ function M.setup(explorer)
   local git_root = explorer.git_root
 
   local map_options = { noremap = true, silent = true, nowait = true }
-  local explorer_keymaps = config.options.keymaps.explorer or {}
+  local explorer_keymaps = resolve.keymaps_for("explorer")
 
   -- Panel mappings live on a codediff-owned scratch buffer, so they cannot
   -- leak into user buffers and must survive tab switches (suspendable=false).
