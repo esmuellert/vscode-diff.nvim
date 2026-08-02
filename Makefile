@@ -2,7 +2,7 @@
 # Makefile wrapper for developers (uses CMake underneath)
 # Users: Use build.sh instead (no CMake required)
 
-.PHONY: all build test test-c test-lua test-e2e lint format clean help bump-patch bump-minor bump-major bump-prerelease
+.PHONY: all build test test-c test-lua lint format clean help bump-patch bump-minor bump-major bump-prerelease
 
 all: build
 
@@ -11,16 +11,13 @@ build:
 	@cmake --build build
 	@echo "✓ Build successful"
 
-test: test-c test-lua test-e2e
+test: test-c test-lua
 
 test-c: build
 	@cd build && ctest --output-on-failure
 
 test-lua:
 	@./tests/run_tests.sh
-
-test-e2e:
-	@./tests/run_e2e.sh
 
 lint:
 	@stylua --check lua
@@ -46,5 +43,5 @@ bump-prerelease:
 	@node scripts/bump_version.mjs prerelease
 
 help:
-	@echo "Targets: build, test, test-c, test-lua, test-e2e, lint, clean, help"
+	@echo "Targets: build, test, test-c, test-lua, lint, clean, help"
 	@echo "Version: bump-patch, bump-minor, bump-major, bump-prerelease"

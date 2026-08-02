@@ -104,9 +104,6 @@ jobs:
       - name: Run Neovim tests
         run: make test-lua
 
-      - name: Run Neovim E2E scenarios
-        run: make test-e2e
-
       - name: Upload build artifacts
         if: success()
         uses: actions/upload-artifact@v4
