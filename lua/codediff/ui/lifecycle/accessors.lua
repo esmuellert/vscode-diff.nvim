@@ -559,11 +559,15 @@ function M.set_buf_keymap(tabpage, bufnr, mode, lhs, rhs, opts, meta)
     -- No session to own the mapping (a panel built outside a diff tab, for
     -- example). Fall back to a plain buffer-local mapping so behavior matches
     -- the pre-registry implementation rather than silently binding nothing.
-    local resolved = keymap.resolve(lhs)
-    if not resolved or not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+    if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
       return false
     end
-    return pcall(vim.keymap.set, mode, resolved, rhs, vim.tbl_extend("force", opts or {}, { buffer = bufnr }))
+    local bound = false
+    for _, resolved in ipairs(keymap.keys(lhs)) do
+      local ok = pcall(vim.keymap.set, mode, resolved, rhs, vim.tbl_extend("force", opts or {}, { buffer = bufnr }))
+      bound = bound or ok
+    end
+    return bound
   end
   return registry_for(sess):claim(bufnr, mode, lhs, rhs, opts, meta)
 end

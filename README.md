@@ -237,6 +237,16 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
 }
 ```
 
+#### Binding an action to more than one key
+
+Any keymap accepts a list, and the action answers to every key in it:
+
+```lua
+keymaps = { view = { quit = { "q", "<Esc>" } } }
+```
+
+Set a keymap to `false` (or `{}`) to switch it off.
+
 #### Reusing a key another action already uses
 
 Assigning a key that is another action's default hands the key to the one you asked for. The action that shipped with it is left unmapped rather than binding over the top:

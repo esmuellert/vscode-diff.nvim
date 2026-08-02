@@ -128,7 +128,8 @@ end
 --- Install a mapping owned by this registry.
 --- @param bufnr number
 --- @param modes string|string[]
---- @param lhs string|false|nil Configured binding; false/nil silently disables
+--- @param lhs string|string[]|false|nil Configured binding; a list binds the
+---   action to every key in it. false/nil silently disables.
 --- @param rhs function|string
 --- @param opts table|nil Forwarded verbatim to vim.keymap.set (minus buffer)
 --- @param meta table|nil { suspendable = boolean, priority = integer, help = boolean }
@@ -138,12 +139,8 @@ function Registry:claim(bufnr, modes, lhs, rhs, opts, meta)
     return false
   end
 
-  local resolved = normalize.resolve(lhs)
-  if not resolved then
-    return false
-  end
-  local canonical = normalize.canonical(resolved)
-  if not canonical then
+  local bindings = normalize.keys(lhs)
+  if #bindings == 0 then
     return false
   end
   if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
@@ -157,28 +154,33 @@ function Registry:claim(bufnr, modes, lhs, rhs, opts, meta)
   local documented = meta.help ~= false
   local claimed = false
 
-  for _, mode in ipairs(normalize.modes(modes)) do
+  for _, resolved in ipairs(bindings) do
     -- `canonical` identifies the slot; `resolved` is the spelling the mapping
     -- APIs accept. Passing the canonical bytes to vim.keymap.set would encode
     -- keys like <2-LeftMouse> and <Down> a second time, leaving a mapping the
     -- real key press can never reach.
-    local scope = current_scope(self)
-    if slots.claim(self, bufnr, mode, canonical, resolved, rhs, opts, meta.priority, scope) then
-      local key = entry_key(bufnr, mode, canonical, scope)
-      self.entries[key] = {
-        bufnr = bufnr,
-        mode = mode,
-        lhs = canonical,
-        suspendable = suspendable,
-        documented = documented,
-        scope = scope,
-        generation = scope and self.scope_gen[scope] or nil,
-      }
-      -- A claim added while suspended must not be installed yet.
-      if self.suspended and suspendable then
-        slots.set_active(self, bufnr, mode, canonical, false, scope)
+    local canonical = normalize.canonical(resolved)
+    if canonical then
+      for _, mode in ipairs(normalize.modes(modes)) do
+        local scope = current_scope(self)
+        if slots.claim(self, bufnr, mode, canonical, resolved, rhs, opts, meta.priority, scope) then
+          local key = entry_key(bufnr, mode, canonical, scope)
+          self.entries[key] = {
+            bufnr = bufnr,
+            mode = mode,
+            lhs = canonical,
+            suspendable = suspendable,
+            documented = documented,
+            scope = scope,
+            generation = scope and self.scope_gen[scope] or nil,
+          }
+          -- A claim added while suspended must not be installed yet.
+          if self.suspended and suspendable then
+            slots.set_active(self, bufnr, mode, canonical, false, scope)
+          end
+          claimed = true
+        end
       end
-      claimed = true
     end
   end
 
@@ -203,18 +205,15 @@ end
 --- @param bufnr number|nil Restrict to one buffer; any buffer when omitted
 --- @return boolean
 function Registry:owns(lhs, mode, bufnr)
-  local resolved = normalize.resolve(lhs)
-  if not resolved then
-    return false
-  end
-  local canonical = normalize.canonical(resolved)
-  if not canonical then
-    return false
-  end
-  for _, entry in pairs(self.entries) do
-    if entry.lhs == canonical and (mode == nil or entry.mode == mode) and (bufnr == nil or entry.bufnr == bufnr) then
-      if slots.is_live(self, entry.bufnr, entry.mode, entry.lhs, entry.scope) then
-        return true
+  for _, resolved in ipairs(normalize.keys(lhs)) do
+    local canonical = normalize.canonical(resolved)
+    if canonical then
+      for _, entry in pairs(self.entries) do
+        if entry.lhs == canonical and (mode == nil or entry.mode == mode) and (bufnr == nil or entry.bufnr == bufnr) then
+          if slots.is_live(self, entry.bufnr, entry.mode, entry.lhs, entry.scope) then
+            return true
+          end
+        end
       end
     end
   end
@@ -224,23 +223,24 @@ end
 --- Release a specific mapping this registry installed.
 --- @param bufnr number
 --- @param modes string|string[]
---- @param lhs string|false|nil
+--- @param lhs string|string[]|false|nil
 function Registry:release(bufnr, modes, lhs)
-  local resolved = normalize.resolve(lhs)
-  if not resolved or not bufnr then
+  if not bufnr then
     return
   end
-  local canonical = normalize.canonical(resolved)
-  if not canonical then
-    return
-  end
-  for _, mode in ipairs(normalize.modes(modes)) do
-    -- Release every scope's claim on this key, since the caller names a
-    -- mapping rather than a particular setup pass.
-    for key, entry in pairs(self.entries) do
-      if entry.bufnr == bufnr and entry.mode == mode and entry.lhs == canonical then
-        slots.release(self, bufnr, mode, canonical, entry.scope)
-        self.entries[key] = nil
+
+  for _, resolved in ipairs(normalize.keys(lhs)) do
+    local canonical = normalize.canonical(resolved)
+    if canonical then
+      for _, mode in ipairs(normalize.modes(modes)) do
+        -- Release every scope's claim on this key, since the caller names a
+        -- mapping rather than a particular setup pass.
+        for key, entry in pairs(self.entries) do
+          if entry.bufnr == bufnr and entry.mode == mode and entry.lhs == canonical then
+            slots.release(self, bufnr, mode, canonical, entry.scope)
+            self.entries[key] = nil
+          end
+        end
       end
     end
   end

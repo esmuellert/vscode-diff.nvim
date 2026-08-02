@@ -92,6 +92,22 @@ local function warn_user_keys_clash(key, action_names)
   end)
 end
 
+--- Tell the user about a keymap value codediff cannot use.
+--- Named by config path, since that is what they have to go and edit.
+--- @param path string e.g. "keymaps.view.quit"
+--- @param problem string
+local function warn_unusable(path, problem)
+  local token = "unusable\0" .. path .. "\0" .. problem
+  if already_warned[token] then
+    return
+  end
+  already_warned[token] = true
+
+  vim.schedule(function()
+    vim.notify(("[codediff] %s: %s. That action is not bound."):format(path, problem), vim.log.levels.WARN)
+  end)
+end
+
 --- Every action that wants each key, across every scope.
 --- Grouped across scopes on purpose: view mappings fan out to all session
 --- buffers, so a view key really can land on top of an explorer or history one.
@@ -102,14 +118,36 @@ local function group_actions_by_key()
   for scope, entries in pairs(config.options.keymaps or {}) do
     if type(entries) == "table" then
       for name, value in pairs(entries) do
-        local key = is_real_action(scope, name) and normalize.canonical(value) or nil
-        if key then
-          by_key[key] = by_key[key] or {}
-          table.insert(by_key[key], {
-            scope = scope,
-            name = name,
-            chosen = chosen_by_user(scope, name, value),
-          })
+        if is_real_action(scope, name) then
+          local wanted, problem = normalize.keys(value)
+          if problem then
+            warn_unusable(("keymaps.%s.%s"):format(scope, name), problem)
+          end
+
+          -- One action can hold several keys (`quit = { "q", "<Esc>" }`), and
+          -- each is its own slot that another action might also want. Two
+          -- spellings of one key (`<Tab>` and `<C-i>`) collapse to a single
+          -- slot, so the action is only listed against it once.
+          for _, want in ipairs(wanted) do
+            local key = normalize.canonical(want)
+            if key then
+              by_key[key] = by_key[key] or {}
+              local already = false
+              for _, listed in ipairs(by_key[key]) do
+                if listed.scope == scope and listed.name == name then
+                  already = true
+                  break
+                end
+              end
+              if not already then
+                table.insert(by_key[key], {
+                  scope = scope,
+                  name = name,
+                  chosen = chosen_by_user(scope, name, value),
+                })
+              end
+            end
+          end
         end
       end
     end

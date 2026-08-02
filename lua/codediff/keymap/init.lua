@@ -27,6 +27,7 @@ end
 
 M.canonical = normalize.canonical
 M.resolve = normalize.resolve
+M.keys = normalize.keys
 
 --- Live slot count. Test/diagnostic helper.
 M.slot_count = slots.count

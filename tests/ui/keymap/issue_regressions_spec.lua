@@ -407,6 +407,58 @@ do
   reset({})
 end
 
+do
+  -- #407: an action can be reached by more than one key. A list used to bind
+  -- nothing at all -- not even the first key -- leaving no way to quit.
+  local tp, repo = open_explorer({ keymaps = { view = { quit = { "q", "<Esc>" } } } })
+  local s = lifecycle.get_session(tp)
+  local first = s.modified_bufnr
+
+  record("#407", "the first key of a list is bound", effective(first, "q") == "Close codediff tab", effective(first, "q"))
+  record("#407", "the second key of a list is bound", effective(first, "<Esc>") == "Close codediff tab", effective(first, "<Esc>"))
+  record("#407", "both keys reach the explorer panel", effective(s.explorer.bufnr, "<Esc>") == "Close codediff tab", effective(s.explorer.bufnr, "<Esc>"))
+
+  -- Switching files rebuilds the diff buffers. Codediff re-applies its own
+  -- mappings, which is exactly what a hand-rolled second key cannot do.
+  vim.api.nvim_set_current_tabpage(tp)
+  local win = vim.fn.bufwinid(first)
+  if win ~= -1 then
+    vim.api.nvim_set_current_win(win)
+  end
+  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("]f", true, false, true), "mx", false)
+  vim.wait(3000)
+
+  s = lifecycle.get_session(tp)
+  local second = s and s.modified_bufnr
+  record("#407", "a file switch really does rebuild the buffer", second ~= first, tostring(second) .. " vs " .. tostring(first))
+  record("#407", "both keys survive a file switch", effective(second, "q") == "Close codediff tab" and effective(second, "<Esc>") == "Close codediff tab", effective(second, "<Esc>"))
+
+  repo.cleanup()
+  lifecycle.cleanup_all()
+  h.close_extra_tabs()
+end
+
+do
+  -- #407: a keymap value codediff cannot use must say so rather than vanish.
+  local normalize = require("codediff.keymap.normalize")
+
+  local keys, problem = normalize.keys(42)
+  record("#407", "a non-key value reports a problem", #keys == 0 and problem ~= nil, tostring(problem))
+
+  keys, problem = normalize.keys({ "q", 5 })
+  record("#407", "a bad list entry reports which one", problem ~= nil and problem:match("entry 2") ~= nil, tostring(problem))
+
+  keys, problem = normalize.keys({ "q", "q", "<Esc>" })
+  record("#407", "duplicate keys collapse", #keys == 2 and problem == nil, vim.inspect(keys))
+
+  for _, off in ipairs({ { false, "false" }, { nil, "nil" }, { "", "an empty string" }, { {}, "an empty list" } }) do
+    keys, problem = normalize.keys(off[1])
+    record("#407", "disabling with " .. off[2] .. " stays silent", #keys == 0 and problem == nil, tostring(problem))
+  end
+
+  reset({})
+end
+
 describe("keymap issue regressions", function()
   after_each(function()
     lifecycle.cleanup_all()
