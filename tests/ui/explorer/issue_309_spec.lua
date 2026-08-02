@@ -1,10 +1,10 @@
--- E2E: tab cycling with an untracked file must not crash (PR #309)
--- Converted from tests/e2e/tab_cycle_untracked.lua.
+-- Regression test for https://github.com/esmuellert/codediff.nvim/pull/309
+-- Tab cycling with an untracked file selected must not crash.
 --
--- Root cause the scenario was guarding: show_untracked_file() used to store
--- `{}` as stored_diff_result instead of `{changes={}, moves={}}`. When
--- resume_diff() later reused that value (no recompute needed on tab reentry),
--- render_diff() crashed on ipairs(nil) because {}.changes is nil.
+-- Root cause: show_untracked_file() used to store `{}` as stored_diff_result
+-- instead of `{changes={}, moves={}}`. When resume_diff() later reused that
+-- value (no recompute needed on tab reentry), render_diff() crashed on
+-- ipairs(nil) because {}.changes is nil.
 --
 -- The spec first asserts the invariant directly (stored_diff_result.changes
 -- must be a table right after selecting the untracked file), then exercises
@@ -13,7 +13,7 @@
 local h = dofile("tests/helpers.lua")
 h.ensure_plugin_loaded()
 
-describe("Tab cycle with an untracked file (E2E, PR #309)", function()
+describe("PR #309 regression — tab cycle with an untracked file", function()
   local repo
   local lifecycle = require("codediff.ui.lifecycle")
 

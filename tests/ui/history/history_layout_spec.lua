@@ -1,10 +1,9 @@
--- E2E: history panel layout and content
--- Converted from tests/e2e/history_layout.lua.
+-- History panel layout and content.
 
 local h = dofile("tests/helpers.lua")
 h.ensure_plugin_loaded()
 
-describe("History layout (E2E)", function()
+describe("History layout", function()
   local repo
 
   before_each(function()

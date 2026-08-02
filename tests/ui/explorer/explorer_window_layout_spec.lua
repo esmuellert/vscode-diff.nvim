@@ -1,13 +1,11 @@
--- E2E: explorer window position and layout
--- Converted from tests/e2e/explorer_layout.lua.
---
+-- Explorer window position and layout.
 -- Verifies that :CodeDiff opens the explorer at the LEFTMOST column (not
 -- between the diff panes) and that the diff panes appear to its right.
 
 local h = dofile("tests/helpers.lua")
 h.ensure_plugin_loaded()
 
-describe("Explorer layout (E2E)", function()
+describe("Explorer window layout", function()
   local repo
 
   before_each(function()

@@ -1,10 +1,9 @@
--- E2E: explorer tree content and file navigation
--- Converted from tests/e2e/explorer_tree.lua.
+-- Explorer tree content and file navigation.
 
 local h = dofile("tests/helpers.lua")
 h.ensure_plugin_loaded()
 
-describe("Explorer tree (E2E)", function()
+describe("Explorer tree render", function()
   local repo
 
   before_each(function()

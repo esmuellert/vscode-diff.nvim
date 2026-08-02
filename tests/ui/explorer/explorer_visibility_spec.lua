@@ -1,10 +1,9 @@
--- E2E: explorer hide/show (toggle visibility)
--- Converted from tests/e2e/explorer_toggle.lua.
+-- Explorer hide/show (toggle visibility).
 
 local h = dofile("tests/helpers.lua")
 h.ensure_plugin_loaded()
 
-describe("Explorer toggle visibility (E2E)", function()
+describe("Explorer toggle visibility", function()
   local repo
 
   before_each(function()
