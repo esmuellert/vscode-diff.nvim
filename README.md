@@ -237,6 +237,19 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
 }
 ```
 
+#### Reusing a key another action already uses
+
+Assigning a key that is another action's default hands the key to the one you asked for. The action that shipped with it is left unmapped rather than binding over the top:
+
+```lua
+keymaps = { view = { toggle_explorer = "<leader>e" } }
+-- <leader>e  toggles the explorer, as asked
+-- <leader>b  unmapped (toggle_explorer moved away from it)
+-- focus_explorer  unmapped (it shipped with <leader>e and gave it up)
+```
+
+Assign `focus_explorer` a free key of your own if you want to keep it. Setting two actions to the same key yourself leaves the outcome undefined, and codediff warns when it sees it.
+
 `diff.filler_text` accepts any non-empty text pattern and repeats it across filler rows. Set it to `""` to hide the decoration while preserving the rows that keep side-by-side and conflict panes aligned. Non-empty patterns use the `CodeDiffFiller` highlight group.
 
 Explorer line statistics are disabled by default because they require extra Git queries and consume space in the default 40-column Explorer. Set `explorer.line_stats.enabled = true` to show per-file Git numstat counts and group totals in status, one-revision, and two-revision modes. Untracked files have no stats unless `count_untracked = true`; files larger than `max_untracked_bytes` are not read (1 MiB by default).

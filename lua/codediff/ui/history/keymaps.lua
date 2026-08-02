@@ -1,5 +1,6 @@
 -- Keymaps for history panel
 local config = require("codediff.config")
+local resolve = require("codediff.keymap.resolve")
 local tree_utils = require("codediff.ui.lib.tree_utils")
 
 local M = {}
@@ -14,7 +15,7 @@ function M.setup(history, opts)
   local load_commit_files = opts.load_commit_files
 
   local map_options = { noremap = true, silent = true, nowait = true }
-  local history_keymaps = config.options.keymaps.history or {}
+  local history_keymaps = resolve.keymaps_for("history")
 
   -- Panel mappings live on a codediff-owned scratch buffer, so they cannot
   -- leak into user buffers and must survive tab switches (suspendable=false).

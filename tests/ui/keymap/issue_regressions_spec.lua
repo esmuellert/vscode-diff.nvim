@@ -343,6 +343,70 @@ do
   h.close_extra_tabs()
 end
 
+do
+  -- #357: remapping an action onto another action's default must not lose.
+  -- The user asks for toggle_explorer on <leader>e, which ships as the default
+  -- for focus_explorer. The key the user chose wins; the displaced default is
+  -- dropped rather than left to bind second and silently take the key.
+  --
+  -- The config is the reporter's, verbatim -- including `explorer.toggle_explorer`,
+  -- which is not a real option. A key that binds nothing must not sway the
+  -- outcome, in either direction.
+  local tp, repo = open_explorer({
+    keymaps = {
+      view = { toggle_explorer = "<leader>e" },
+      explorer = { toggle_explorer = "<leader>e" },
+    },
+  })
+  local s = lifecycle.get_session(tp)
+  local panel = s.explorer.bufnr
+  local resolve = require("codediff.keymap.resolve")
+  local leader_e = vim.api.nvim_replace_termcodes("<leader>e", true, true, true)
+  local leader_b = vim.api.nvim_replace_termcodes("<leader>b", true, true, true)
+
+  record(
+    "#357",
+    "the user's key runs the action they asked for",
+    effective(panel, leader_e) == "Toggle explorer visibility",
+    effective(panel, leader_e)
+  )
+  record("#357", "the displaced default is not bound", effective(panel, leader_b) == "NONE", effective(panel, leader_b))
+  record(
+    "#357",
+    "g? no longer advertises the action that lost the key",
+    resolve.keymaps_for("view").focus_explorer == false,
+    tostring(resolve.keymaps_for("view").focus_explorer)
+  )
+  repo.cleanup()
+  lifecycle.cleanup_all()
+  h.close_extra_tabs()
+end
+
+do
+  -- #357, across scopes: view mappings fan out to every session buffer, so a
+  -- chosen view key really does collide with an explorer default on the panel.
+  local tp, repo = open_explorer({ keymaps = { view = { quit = "R" } } })
+  local s = lifecycle.get_session(tp)
+  local panel = s.explorer.bufnr
+  record("#357", "a chosen view key beats an explorer default on the panel", effective(panel, "R") == "Close codediff tab", effective(panel, "R"))
+  repo.cleanup()
+  lifecycle.cleanup_all()
+  h.close_extra_tabs()
+end
+
+do
+  -- #357: a config key that binds nothing -- a typo, or an option from an
+  -- older version -- must never take a key away from a real action.
+  reset({ keymaps = { explorer = { refres = "R" } } })
+  local resolve = require("codediff.keymap.resolve")
+  record("#357", "a typo'd config key does not disable a real default", resolve.keymaps_for("explorer").refresh == "R", tostring(resolve.keymaps_for("explorer").refresh))
+
+  -- ...while a deprecated spelling the code still honours does take part.
+  reset({ keymaps = { explorer = { toggle_stage = "q" } } })
+  record("#357", "a deprecated but honoured key still wins its slot", resolve.keymaps_for("view").quit == false, tostring(resolve.keymaps_for("view").quit))
+  reset({})
+end
+
 describe("keymap issue regressions", function()
   after_each(function()
     lifecycle.cleanup_all()
