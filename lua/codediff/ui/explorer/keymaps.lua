@@ -28,22 +28,14 @@ local function custom_keymap_context(explorer, node)
   }
 end
 
-local function setup_custom_keymaps(explorer, custom_keymaps, map_options)
+local function setup_custom_keymaps(explorer, custom_keymaps, panel_map)
   for _, keymap in ipairs(custom_keymaps or {}) do
-    vim.keymap.set(
-      "n",
-      keymap.key,
-      function()
-        local node = explorer.tree:get_node()
-        if node then
-          keymap.callback(custom_keymap_context(explorer, node))
-        end
-      end,
-      vim.tbl_extend("force", map_options, {
-        buffer = explorer.bufnr,
-        desc = keymap.desc,
-      })
-    )
+    panel_map(keymap.key, function()
+      local node = explorer.tree:get_node()
+      if node then
+        keymap.callback(custom_keymap_context(explorer, node))
+      end
+    end, keymap.desc, { priority = 1 })
   end
 end
 
@@ -61,8 +53,9 @@ function M.setup(explorer)
   -- leak into user buffers and must survive tab switches (suspendable=false).
   -- Required lazily to avoid a module cycle through the lifecycle package.
   local lifecycle = require("codediff.ui.lifecycle")
-  local function panel_map(lhs, rhs, desc)
-    lifecycle.set_buf_keymap(explorer.tabpage, split.bufnr, "n", lhs, rhs, vim.tbl_extend("force", map_options, { desc = desc }), { suspendable = false })
+  local function panel_map(lhs, rhs, desc, meta)
+    local claim = vim.tbl_extend("force", { suspendable = false }, meta or {})
+    lifecycle.set_buf_keymap(explorer.tabpage, split.bufnr, "n", lhs, rhs, vim.tbl_extend("force", map_options, { desc = desc }), claim)
   end
 
   -- Toggle expand/collapse or select file
@@ -229,7 +222,9 @@ function M.setup(explorer)
     tabpage = explorer.tabpage,
   })
 
-  setup_custom_keymaps(explorer, explorer_keymaps.custom, map_options)
+  lifecycle.begin_keymap_scope(explorer.tabpage, "explorer-custom")
+  setup_custom_keymaps(explorer, explorer_keymaps.custom, panel_map)
+  lifecycle.end_keymap_scope(explorer.tabpage, "explorer-custom")
 
   -- Note: next_file/prev_file keymaps are set via view/keymaps.lua:setup_all_keymaps()
   -- which uses set_tab_keymap to set them on all buffers including explorer

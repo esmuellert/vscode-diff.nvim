@@ -47,6 +47,59 @@ local function section(title, entries, is_bound)
   return { title = title, items = items }
 end
 
+local function explorer_entries(keymaps)
+  local custom = type(keymaps.custom) == "table" and keymaps.custom or {}
+  local overridden = {}
+  for index, mapping in ipairs(custom) do
+    local key = normalize.canonical(mapping.key)
+    if key then
+      overridden[key] = index
+    end
+  end
+
+  local builtins = {
+    { keymaps.select, "Select / toggle expand" },
+    { MOUSE_SELECT, "Select file (double click)" },
+    { "j", "Move down / auto-open file" },
+    { "k", "Move up / auto-open file" },
+    { "<Down>", "Move down / auto-open file" },
+    { "<Up>", "Move up / auto-open file" },
+    { keymaps.hover, "Show full path" },
+    { keymaps.refresh, "Refresh explorer" },
+    { keymaps.toggle_view_mode, "Toggle list/tree view" },
+    { keymaps.stage_all, "Stage all files" },
+    { keymaps.unstage_all, "Unstage all files" },
+    { keymaps.restore, "Discard changes to file" },
+    { keymaps.toggle_changes, "Toggle Changes visibility" },
+    { keymaps.toggle_staged, "Toggle Staged visibility" },
+    { keymaps.fold_open, "Open fold" },
+    { keymaps.fold_open_recursive, "Open fold recursively" },
+    { keymaps.fold_close, "Close fold" },
+    { keymaps.fold_close_recursive, "Close fold recursively" },
+    { keymaps.fold_toggle, "Toggle fold" },
+    { keymaps.fold_toggle_recursive, "Toggle fold recursively" },
+    { keymaps.fold_open_all, "Open all folds" },
+    { keymaps.fold_close_all, "Close all folds" },
+  }
+
+  local entries = {}
+  for _, entry in ipairs(builtins) do
+    local keys = vim.tbl_filter(function(key)
+      return overridden[normalize.canonical(key)] == nil
+    end, normalize.key_list(entry[1]))
+    if #keys > 0 then
+      table.insert(entries, { keys, entry[2] })
+    end
+  end
+  for index, mapping in ipairs(custom) do
+    local key = normalize.canonical(mapping.key)
+    if key and overridden[key] == index then
+      table.insert(entries, { mapping.key, mapping.desc })
+    end
+  end
+  return entries
+end
+
 -- Build sections for the current session.
 --
 -- Section inclusion follows the session shape (a standalone diff has no
@@ -85,33 +138,7 @@ local function build_sections(keymaps, is_bound, shape)
 
   if shape.explorer then
     local ekm = keymaps.explorer
-    table.insert(
-      sections,
-      section("EXPLORER", {
-        { ekm.select, "Select / toggle expand" },
-        { MOUSE_SELECT, "Select file (double click)" },
-        { "j", "Move down / auto-open file" },
-        { "k", "Move up / auto-open file" },
-        { "<Down>", "Move down / auto-open file" },
-        { "<Up>", "Move up / auto-open file" },
-        { ekm.hover, "Show full path" },
-        { ekm.refresh, "Refresh explorer" },
-        { ekm.toggle_view_mode, "Toggle list/tree view" },
-        { ekm.stage_all, "Stage all files" },
-        { ekm.unstage_all, "Unstage all files" },
-        { ekm.restore, "Discard changes to file" },
-        { ekm.toggle_changes, "Toggle Changes visibility" },
-        { ekm.toggle_staged, "Toggle Staged visibility" },
-        { ekm.fold_open, "Open fold" },
-        { ekm.fold_open_recursive, "Open fold recursively" },
-        { ekm.fold_close, "Close fold" },
-        { ekm.fold_close_recursive, "Close fold recursively" },
-        { ekm.fold_toggle, "Toggle fold" },
-        { ekm.fold_toggle_recursive, "Toggle fold recursively" },
-        { ekm.fold_open_all, "Open all folds" },
-        { ekm.fold_close_all, "Close all folds" },
-      }, is_bound)
-    )
+    table.insert(sections, section("EXPLORER", explorer_entries(ekm), is_bound))
   end
 
   if shape.history then

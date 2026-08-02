@@ -480,8 +480,9 @@ Directory and group `files` use the normalized
 statistics are disabled. `ctx.redraw()` renders the existing tree again without
 rebuilding nodes, changing selection or fold state, or running Git.
 `ctx.refresh()` starts the normal asynchronous Explorer refresh. Both functions
-become no-ops after the Explorer closes. Custom mappings are installed after
-built-in Explorer mappings, so matching keys intentionally override them.
+become no-ops after the Explorer closes. Custom mappings override matching
+built-ins, appear in the `g?` keymap help, and are restored or removed with the
+Explorer lifecycle.
 
 ==============================================================================
 HIGHLIGHT GROUPS                                     *codediff-highlight-groups*

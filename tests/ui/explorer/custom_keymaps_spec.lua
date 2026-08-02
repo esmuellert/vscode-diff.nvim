@@ -2,6 +2,7 @@ local Tree = require("codediff.ui.lib.tree")
 local Line = require("codediff.ui.lib.line")
 local config = require("codediff.config")
 local keymaps = require("codediff.ui.explorer.keymaps")
+local lifecycle = require("codediff.ui.lifecycle")
 local nodes = require("codediff.ui.explorer.nodes")
 local refresh = require("codediff.ui.explorer.refresh")
 local explorer_tree = require("codediff.ui.explorer.tree")
@@ -43,22 +44,30 @@ local create_explorer = function(prepare_node)
   roots[1]:expand()
   roots[1]._children[1]:expand()
   tree:render()
+  local tabpage = vim.api.nvim_get_current_tabpage()
+  local winid = vim.api.nvim_get_current_win()
+  local explorer = {
+    bufnr = bufnr,
+    winid = winid,
+    tabpage = tabpage,
+    split = { bufnr = bufnr },
+    tree = tree,
+  }
+  local empty_ref = { relative = "" }
+  lifecycle.create_session(tabpage, "explorer", nil, empty_ref, empty_ref, nil, nil, previous_bufnr, previous_bufnr, winid, winid, {})
+  lifecycle.set_explorer(tabpage, explorer)
+
   return {
     previous_bufnr = previous_bufnr,
     root = roots[1],
     directory = roots[1]._children[1],
     file = roots[1]._children[1]._children[2],
-    explorer = {
-      bufnr = bufnr,
-      winid = vim.api.nvim_get_current_win(),
-      tabpage = vim.api.nvim_get_current_tabpage(),
-      split = { bufnr = bufnr },
-      tree = tree,
-    },
+    explorer = explorer,
   }
 end
 
 local cleanup_explorer = function(fixture)
+  lifecycle.cleanup(fixture.explorer.tabpage)
   if vim.api.nvim_buf_is_valid(fixture.previous_bufnr) then
     vim.api.nvim_win_set_buf(0, fixture.previous_bufnr)
   end
@@ -162,6 +171,14 @@ describe("Explorer custom keymaps", function()
     }
 
     keymaps.setup(fixture.explorer)
+    lifecycle.begin_keymap_scope(fixture.explorer.tabpage, "view")
+    lifecycle.set_tab_keymap(fixture.explorer.tabpage, "n", "R", function()
+      refresh_calls = refresh_calls + 1
+    end, { desc = "Later built-in action" })
+    lifecycle.end_keymap_scope(fixture.explorer.tabpage, "view")
+    lifecycle.set_buf_keymap(fixture.explorer.tabpage, fixture.explorer.bufnr, "n", "R", function()
+      refresh_calls = refresh_calls + 1
+    end, { desc = "Later panel action" }, { suspendable = false })
     local mapping = vim.fn.maparg("R", "n", false, true)
     mapping.callback()
 
@@ -169,6 +186,29 @@ describe("Explorer custom keymaps", function()
     assert.equals(1, mapping.buffer)
     assert.equals(1, calls)
     assert.equals(0, refresh_calls)
+    cleanup_explorer(fixture)
+  end)
+
+  it("keeps panel ownership through suspension and restores the previous mapping on teardown", function()
+    local fixture = create_explorer()
+    vim.keymap.set("n", "x", function() end, { buffer = fixture.explorer.bufnr, desc = "Previous mapping" })
+    config.options.keymaps.explorer.custom = {
+      {
+        key = "x",
+        desc = "Custom panel action",
+        callback = function() end,
+      },
+    }
+
+    keymaps.setup(fixture.explorer)
+    assert.is_true(lifecycle.owns_keymap(fixture.explorer.tabpage, "x", "n", fixture.explorer.bufnr))
+    assert.equals("Custom panel action", vim.fn.maparg("x", "n", false, true).desc)
+
+    lifecycle.clear_tab_keymaps(fixture.explorer.tabpage)
+    assert.equals("Custom panel action", vim.fn.maparg("x", "n", false, true).desc)
+
+    lifecycle.dispose_keymaps(fixture.explorer.tabpage)
+    assert.equals("Previous mapping", vim.fn.maparg("x", "n", false, true).desc)
     cleanup_explorer(fixture)
   end)
 
