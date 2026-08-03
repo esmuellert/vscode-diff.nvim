@@ -188,9 +188,23 @@ function Group:_is_member(w)
   return false
 end
 
+function Group:_restore_scrolloff(w)
+  local saved = self.saved_scrolloff[w]
+  if saved == nil then
+    return
+  end
+  self.saved_scrolloff[w] = nil
+  if api.nvim_win_is_valid(w) then
+    api.nvim_set_option_value("scrolloff", saved, { win = w, scope = "local" })
+  end
+end
+
 --- Rebuild the per-window fill tables from current buffer fillers. Call after
 --- the diff/fillers are re-rendered.
 function Group:refresh()
+  for w in pairs(self.saved_scrolloff) do
+    self:_restore_scrolloff(w)
+  end
   self.ft = {}
   for _, w in ipairs(self:_valid_wins()) do
     self.ft[w] = build_fill_table(api.nvim_win_get_buf(w))
@@ -213,6 +227,7 @@ function Group:_apply(leader, jump)
     return
   end
   self.pending_echo[leader] = nil
+  self:_restore_scrolloff(leader)
   local lv = win_view(leader)
   local vrow = view_to_vrow(ftl, lv.topline, lv.topfill)
   self.vrow = vrow
@@ -253,8 +268,13 @@ function Group:_apply(leader, jump)
           -- scroll fell short (e.g. near the top/bottom of the buffer).
           local after = win_view(w)
           if jump or after.topline ~= target_tl or (after.topfill or 0) ~= target_tf then
+            local scrolloff = api.nvim_get_option_value("scrolloff", { win = w })
+            if scrolloff > 0 and self.saved_scrolloff[w] == nil then
+              self.saved_scrolloff[w] = api.nvim_get_option_value("scrolloff", { win = w, scope = "local" })
+              api.nvim_set_option_value("scrolloff", 0, { win = w, scope = "local" })
+            end
             api.nvim_win_call(w, function()
-              vim.fn.winrestview({ topline = target_tl, topfill = target_tf })
+              vim.fn.winrestview({ topline = target_tl, topfill = target_tf, lnum = target_tl })
             end)
           end
         end
@@ -328,6 +348,7 @@ function Group:_consume_pending_echoes(changed)
   for w in pairs(changed) do
     if w ~= current and self.pending_echo[w] then
       self.pending_echo[w] = nil
+      self:_restore_scrolloff(w)
       self.expected[w] = view_fp(win_view(w))
     end
   end
@@ -372,6 +393,9 @@ function Group:unbind()
     pcall(api.nvim_del_augroup_by_id, self.augroup)
     self.augroup = nil
   end
+  for w in pairs(self.saved_scrolloff) do
+    self:_restore_scrolloff(w)
+  end
   self.active = false
 end
 
@@ -391,6 +415,7 @@ function M.bind(opts)
     ft = {},
     expected = {},
     pending_echo = {},
+    saved_scrolloff = {},
     syncing = false,
     paused = false,
     active = true,

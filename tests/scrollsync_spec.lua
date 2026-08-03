@@ -76,19 +76,20 @@ describe("scrollsync manager alignment", function()
     pcall(vim.cmd, "tabclose")
   end)
 
-  local function setup_pair()
+  local function setup_pair(insert_count)
+    insert_count = insert_count or 30
     -- left = "delete" side (30 real lines + a 30-filler block replaced), right normal
     local left = {}
     for i = 1, 60 do
       left[i] = string.format("C%03d", i)
     end
-    local win_left = make_win(left, { { after = 20, count = 30 } })
+    local win_left = make_win(left, { { after = 20, count = insert_count } })
     vim.cmd("rightbelow vsplit")
     local right = {}
     for i = 1, 20 do
       right[i] = string.format("C%03d", i)
     end
-    for k = 0, 29 do
+    for k = 0, insert_count - 1 do
       right[20 + k + 1] = string.format("I%03d", k)
     end
     for i = 21, 60 do
@@ -236,6 +237,29 @@ describe("scrollsync manager alignment", function()
       leader_after.topfill,
       "follower redraw must not change the leader's filler offset"
     )
+  end)
+
+  it("keeps the follower on the aligned baseline after leaving a full-screen filler", function()
+    local follower, leader = setup_pair(214)
+    local group = scroll.bind(tab, { follower, leader })
+    vim.api.nvim_set_current_win(leader)
+    vim.wo[follower].scrolloff = 8
+    set_view(follower, 21, 21)
+    set_view(leader, 21, 25)
+    group:resync(leader)
+    fire_win_scrolled(group, follower)
+
+    set_view(leader, 20, 24)
+    fire_win_scrolled(group, leader)
+    local follower_view = view(follower)
+    local follower_cursor = vim.api.nvim_win_get_cursor(follower)[1]
+
+    assert.is_true(follower_cursor >= follower_view.topline, "the follower cursor must remain in the aligned view")
+    assert.equals(0, vim.wo[follower].scrolloff, "the follower view must remain stable until its redraw")
+    fire_win_scrolled(group, follower)
+    vim.cmd("redraw")
+    assert.equals(8, vim.wo[follower].scrolloff, "the follower's scrolloff must be restored after its redraw")
+    assert.equals(20, view(follower).topline, "the follower must not flash unrelated baseline text")
   end)
 
   it("treats a later non-focused follower scroll as user input", function()
