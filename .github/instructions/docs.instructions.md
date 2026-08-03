@@ -1,5 +1,5 @@
-applyTo:
-  - docs/**
+---
+applyTo: "docs/**"
 ---
 
 # Documentation Guidelines

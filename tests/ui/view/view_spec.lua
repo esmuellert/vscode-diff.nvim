@@ -171,6 +171,65 @@ describe("Render View", function()
     vim.fn.delete(right_path)
   end)
 
+  -- Test 4b: Regression (#254) - duplicating a diff window must not carry the
+  -- scroll mirroring into the copy. scrollbind/cursorbind/diff are window-local
+  -- options that :split copies, so leaving any of them on a diff pane made the
+  -- duplicate scroll in lockstep with its sibling.
+  it("Does not scroll-mirror a window split off a diff pane", function()
+    local original = {}
+    local modified = {}
+    for i = 1, 200 do
+      original[i] = string.format("line %03d", i)
+      modified[i] = original[i]
+    end
+    modified[50] = "CHANGED 050"
+
+    local left_path = get_temp_path("test_view_left_254.txt")
+    local right_path = get_temp_path("test_view_right_254.txt")
+    vim.fn.writefile(original, left_path)
+    vim.fn.writefile(modified, right_path)
+
+    local _, tabpage = create_test_diff_view(original, modified, left_path, right_path)
+    vim.cmd("redraw")
+    vim.wait(200)
+
+    local session = lifecycle.get_session(tabpage)
+    assert.is_not_nil(session, "diff session should exist")
+    local mod_win = session.modified_win
+
+    for _, win in ipairs({ session.original_win, mod_win }) do
+      assert.is_false(vim.wo[win].scrollbind, "scrollbind must stay off on diff windows")
+      assert.is_false(vim.wo[win].cursorbind, "cursorbind must stay off on diff windows")
+      assert.is_false(vim.wo[win].diff, "diff must stay off on diff windows")
+    end
+
+    -- Duplicate the modified pane the way a user would (<C-w>s).
+    vim.api.nvim_set_current_win(mod_win)
+    vim.cmd("split")
+    local clone = vim.api.nvim_get_current_win()
+    assert.is_false(vim.wo[clone].scrollbind, "the split window must not inherit scrollbind")
+
+    local function topline(win)
+      return vim.api.nvim_win_call(win, function()
+        return vim.fn.line("w0")
+      end)
+    end
+    local clone_top = topline(clone)
+
+    vim.api.nvim_set_current_win(mod_win)
+    for _ = 1, 30 do
+      vim.cmd("normal! \5") -- <C-e>
+    end
+    -- Headless has no UI, so WinScrolled does not fire on its own.
+    vim.api.nvim_exec_autocmds("WinScrolled", {})
+
+    assert.is_true(topline(mod_win) > 1, "the diff pane should have scrolled")
+    assert.are.equal(clone_top, topline(clone), "the split window must stay put")
+
+    vim.fn.delete(left_path)
+    vim.fn.delete(right_path)
+  end)
+
   -- Test 5: Empty files are handled correctly
   it("Handles empty files without error", function()
     local original = {}
@@ -182,11 +241,21 @@ describe("Render View", function()
     vim.fn.writefile(original, left_path)
     vim.fn.writefile(modified, right_path)
 
-    local success = pcall(function()
-      local result, tabpage = create_test_diff_view(original, modified, left_path, right_path)
+    local pre_tabs = vim.fn.tabpagenr("$")
+    local success, tabpage
+    success = pcall(function()
+      _, tabpage = create_test_diff_view(original, modified, left_path, right_path)
     end)
-
     assert.is_true(success, "Should handle empty files without error")
+
+    -- A side-by-side view was actually created: new tab + registered session.
+    assert.equal(pre_tabs + 1, vim.fn.tabpagenr("$"), "a new tab should exist for the diff view")
+    assert.is_not_nil(tabpage)
+    vim.wait(2000, function() return lifecycle.get_session(tabpage) ~= nil end, 25)
+    local sess = lifecycle.get_session(tabpage)
+    assert.is_not_nil(sess, "empty-file diff view must still register a session")
+    assert.is_true(vim.api.nvim_buf_is_valid(sess.original_bufnr))
+    assert.is_true(vim.api.nvim_buf_is_valid(sess.modified_bufnr))
 
     vim.fn.delete(left_path)
     vim.fn.delete(right_path)
@@ -234,12 +303,20 @@ describe("Render View", function()
     vim.fn.writefile(lines, left_path)
     vim.fn.writefile(lines, right_path)
 
+    local result, tabpage
     local success = pcall(function()
-      local result, tabpage = create_test_diff_view(lines, lines, left_path, right_path)
-      return result ~= nil
+      result, tabpage = create_test_diff_view(lines, lines, left_path, right_path)
     end)
-
     assert.is_true(success, "Should create view even with no changes")
+    assert.is_not_nil(result, "view.create should return non-nil for identical files")
+    -- Session exists and both panes show the shared content.
+    vim.wait(2000, function() return lifecycle.get_session(tabpage) ~= nil end, 25)
+    local sess = lifecycle.get_session(tabpage)
+    assert.is_not_nil(sess)
+    local orig = table.concat(vim.api.nvim_buf_get_lines(sess.original_bufnr, 0, -1, false), "\n")
+    local mod = table.concat(vim.api.nvim_buf_get_lines(sess.modified_bufnr, 0, -1, false), "\n")
+    assert.equal(orig, mod, "identical files must render identical content in both panes")
+    assert.is_true(orig:find("line 1", 1, true) ~= nil, "expected content missing from original pane")
 
     vim.fn.delete(left_path)
     vim.fn.delete(right_path)
@@ -316,11 +393,20 @@ describe("Render View", function()
     vim.fn.writefile(original, left_path)
     vim.fn.writefile(modified, right_path)
 
+    local tabpage
     local success = pcall(function()
-      local result, tabpage = create_test_diff_view(original, modified, left_path, right_path)
+      _, tabpage = create_test_diff_view(original, modified, left_path, right_path)
     end)
-
     assert.is_true(success, "Should handle single-line files")
+
+    -- The rendered content on each pane matches the source lines.
+    vim.wait(2000, function() return lifecycle.get_session(tabpage) ~= nil end, 25)
+    local sess = lifecycle.get_session(tabpage)
+    assert.is_not_nil(sess)
+    assert.equal("single line",
+      table.concat(vim.api.nvim_buf_get_lines(sess.original_bufnr, 0, -1, false), "\n"))
+    assert.equal("different line",
+      table.concat(vim.api.nvim_buf_get_lines(sess.modified_bufnr, 0, -1, false), "\n"))
 
     vim.fn.delete(left_path)
     vim.fn.delete(right_path)
@@ -337,11 +423,23 @@ describe("Render View", function()
     vim.fn.writefile(original, left_path)
     vim.fn.writefile(modified, right_path)
 
+    local tabpage
     local success = pcall(function()
-      local result, tabpage = create_test_diff_view(original, modified, left_path, right_path)
+      _, tabpage = create_test_diff_view(original, modified, left_path, right_path)
     end)
-
     assert.is_true(success, "Should handle special characters")
+
+    -- Each special character survives round-tripping through the diff render
+    -- into the pane buffers (regression guard for shell-escape / quote-eating).
+    vim.wait(2000, function() return lifecycle.get_session(tabpage) ~= nil end, 25)
+    local sess = lifecycle.get_session(tabpage)
+    assert.is_not_nil(sess)
+    local orig = table.concat(vim.api.nvim_buf_get_lines(sess.original_bufnr, 0, -1, false), "\n")
+    local mod = table.concat(vim.api.nvim_buf_get_lines(sess.modified_bufnr, 0, -1, false), "\n")
+    assert.is_true(orig:find("'quotes'", 1, true) ~= nil, "single quotes must survive")
+    assert.is_true(orig:find('"double quotes"', 1, true) ~= nil, "double quotes must survive")
+    assert.is_true(mod:find("$dollar", 1, true) ~= nil, "dollar sign must survive")
+    assert.is_true(mod:find("`backtick`", 1, true) ~= nil, "backticks must survive")
 
     vim.fn.delete(left_path)
     vim.fn.delete(right_path)
@@ -395,11 +493,22 @@ describe("Render View", function()
     vim.fn.writefile(original, left_path)
     vim.fn.writefile(modified, right_path)
 
+    local tabpage
     local success = pcall(function()
-      local result, tabpage = create_test_diff_view(original, modified, left_path, right_path)
+      _, tabpage = create_test_diff_view(original, modified, left_path, right_path)
     end)
-
     assert.is_true(success, "Should handle many hunks")
+
+    -- The rendered diff carries at least as many hunks as we injected — the
+    -- upstream diff engine can merge adjacent changes, so accept "many" (>= 10)
+    -- rather than exactly 25.
+    vim.wait(2000, function() return lifecycle.get_session(tabpage) ~= nil end, 25)
+    local sess = lifecycle.get_session(tabpage)
+    assert.is_not_nil(sess)
+    assert.is_not_nil(sess.stored_diff_result)
+    local changes = sess.stored_diff_result.changes or {}
+    assert.is_true(#changes >= 10,
+      "expected many change hunks in a 25-mod file; got " .. tostring(#changes))
 
     vim.fn.delete(left_path)
     vim.fn.delete(right_path)
@@ -417,14 +526,88 @@ describe("Render View", function()
       vim.fn.writefile(original, left_path)
       vim.fn.writefile(modified, right_path)
 
+      local tabpage
       local success = pcall(function()
-        local result, tabpage = create_test_diff_view(original, modified, left_path, right_path)
+        _, tabpage = create_test_diff_view(original, modified, left_path, right_path)
       end)
-
       assert.is_true(success, "Iteration " .. i .. " should succeed")
+
+      -- Each iteration must produce its OWN session (not silently reuse a stale
+      -- one) — check that the session's content matches THIS iteration's input.
+      vim.wait(2000, function() return lifecycle.get_session(tabpage) ~= nil end, 25)
+      local sess = lifecycle.get_session(tabpage)
+      assert.is_not_nil(sess, "iteration " .. i .. " should register its own session")
+      local mod = table.concat(vim.api.nvim_buf_get_lines(sess.modified_bufnr, 0, -1, false), "\n")
+      assert.is_true(mod:find("changed " .. i, 1, true) ~= nil,
+        "iteration " .. i .. " modified pane should show 'changed " .. i .. "', got: " .. mod)
 
       vim.fn.delete(left_path)
       vim.fn.delete(right_path)
     end
+  end)
+
+  -- Test 16: Re-opening a diff whose file was deleted behind our back must stay
+  -- quiet. Neovim timestamp-checks a buffer whenever it becomes visible, and
+  -- both `:edit` and displaying an already-loaded buffer surface that as
+  -- `E211: File ... no longer available` — a bare `pcall` does not suppress it,
+  -- and on some platforms it aborts view construction outright.
+  it("Does not report E211 when a diffed file is deleted behind the view", function()
+    local original = { "line 1", "line 2" }
+    local modified = { "line 1", "changed" }
+
+    local left_path = get_temp_path("test_view_left_16.txt")
+    local right_path = get_temp_path("test_view_right_16.txt")
+    vim.fn.writefile(original, left_path)
+    vim.fn.writefile(modified, right_path)
+
+    -- First create loads both real files into buffers displayed in windows.
+    create_test_diff_view(original, modified, left_path, right_path)
+    vim.wait(200)
+
+    -- Both files vanish (external `rm`, `git stash`, branch switch, ...).
+    vim.fn.delete(left_path)
+    vim.fn.delete(right_path)
+
+    -- Second create finds those buffers by name and re-displays them.
+    vim.cmd("messages clear")
+    create_test_diff_view(original, modified, left_path, right_path)
+    vim.wait(200)
+
+    local messages = vim.fn.execute("messages")
+    assert.is_nil(messages:find("E211", 1, true), "Re-displaying a loaded buffer for a deleted file should not report E211, got: " .. messages)
+  end)
+
+  -- Test 17: Same situation, but reached through the "no buffer found, load it"
+  -- branch. A path that is spelled differently from the buffer's name (here an
+  -- extra "." segment; on macOS the real trigger is /tmp being a symlink to
+  -- /private/tmp) misses the by-name lookup, yet still resolves to the very
+  -- same buffer once loaded.
+  it("Does not report E211 when loading a deleted file whose buffer is already open", function()
+    local original = { "line 1", "line 2" }
+    local modified = { "line 1", "changed" }
+
+    local left_path = get_temp_path("test_view_left_17.txt")
+    local right_path = get_temp_path("test_view_right_17.txt")
+    vim.fn.writefile(original, left_path)
+    vim.fn.writefile(modified, right_path)
+
+    create_test_diff_view(original, modified, left_path, right_path)
+    vim.wait(200)
+
+    vim.fn.delete(left_path)
+    vim.fn.delete(right_path)
+
+    local sep = package.config:sub(1, 1)
+    local function indirect(p)
+      local dir, name = p:match("^(.*)[/\\]([^/\\]+)$")
+      return dir .. sep .. "." .. sep .. name
+    end
+
+    vim.cmd("messages clear")
+    create_test_diff_view(original, modified, indirect(left_path), indirect(right_path))
+    vim.wait(200)
+
+    local messages = vim.fn.execute("messages")
+    assert.is_nil(messages:find("E211", 1, true), "Loading a deleted file that is already open should not report E211, got: " .. messages)
   end)
 end)

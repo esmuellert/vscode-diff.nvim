@@ -23,6 +23,19 @@ end
 describe("highlights.lua color derivation", function()
   before_each(reset_codediff)
 
+  it("defines semantic explorer stat highlights", function()
+    highlights.setup()
+
+    local files = vim.api.nvim_get_hl(0, { name = "CodeDiffExplorerStatFiles", link = true })
+    local insertions = vim.api.nvim_get_hl(0, { name = "CodeDiffExplorerStatInsertions", link = true })
+    local deletions = vim.api.nvim_get_hl(0, { name = "CodeDiffExplorerStatDeletions", link = true })
+    local binary = vim.api.nvim_get_hl(0, { name = "CodeDiffExplorerStatBinary", link = true })
+    assert.equals("Number", files.link)
+    assert.is_true(insertions.link == "Added" or insertions.link == "DiagnosticOk")
+    assert.is_true(deletions.link == "Removed" or deletions.link == "DiagnosticError")
+    assert.equals("NonText", binary.link)
+  end)
+
   it("reads bg directly for colorschemes that use bg-based diff highlights", function()
     -- Mimic the default convention: DiffAdd uses bg + (optional) fg, no reverse
     vim.api.nvim_set_hl(0, "DiffAdd", { bg = 0x123456 })

@@ -5,6 +5,8 @@ codediff	codediff.txt	/*codediff*
 codediff-commands	codediff.txt	/*codediff-commands*
 codediff-configuration	codediff.txt	/*codediff-configuration*
 codediff-events	codediff.txt	/*codediff-events*
+codediff-explorer-line-formatters	codediff.txt	/*codediff-explorer-line-formatters*
+codediff-explorer-line-statistics	codediff.txt	/*codediff-explorer-line-statistics*
 codediff-filler-text	codediff.txt	/*codediff-filler-text*
 codediff-gutter-signs	codediff.txt	/*codediff-gutter-signs*
 codediff-highlight-groups	codediff.txt	/*codediff-highlight-groups*

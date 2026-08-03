@@ -70,10 +70,22 @@ M.defaults = {
     file_filter = {
       ignore = { ".git/**", ".jj/**" }, -- Glob patterns to hide (e.g., {"*.lock", "dist/*"})
     },
+    untracked = "all", -- Untracked file scan: "all" (-uall), "normal" (-unormal, collapse dirs), or "no" (-uno, skip; use for huge work trees like GIT_WORK_TREE=$HOME that hang, #389)
     focus_on_select = false, -- Jump to modified pane after selecting a file (default: stay in explorer)
     auto_open_on_cursor = false, -- Rebind j/k/Down/Up in the explorer to also open the file under the cursor
     flatten_dirs = true, -- Flatten single-child directory chains in tree view (e.g., src/components/ui/)
     status_right_margin = 1, -- Trailing cells between the status symbol (M/A/D) and the right edge; increase if Nerd Font icons clip it
+    line_stats = {
+      enabled = false,
+      count_untracked = false,
+      max_untracked_bytes = 1024 * 1024,
+    },
+    ellipsis = "…", -- Text appended to truncated Explorer regions
+    formatters = { -- nil = use the built-in from lua/codediff/ui/explorer/formatters/
+      file = nil, -- File rows: function(ctx) -> layout
+      folder = nil, -- Directory rows in tree view: function(ctx) -> layout
+      group = nil, -- Section headers such as Changes and Staged: function(ctx) -> layout
+    },
     visible_groups = { -- Which groups to show in explorer (can be toggled at runtime)
       staged = true,
       unstaged = true,
@@ -88,6 +100,7 @@ M.defaults = {
     height = 15, -- Height when position is "bottom" (lines)
     initial_focus = "history", -- Initial focus: "history", "original", or "modified"
     view_mode = "list", -- "list" or "tree" for files under commits
+    date_format = "%ar", -- Commit date rendering: "%ar" (default, git's relative like "3 days ago"), "%ai" (ISO), "%ad" (git's default), or any strftime string (e.g. "%Y/%m/%d %H:%M:%S")
   },
 
   -- Keymaps
@@ -105,6 +118,7 @@ M.defaults = {
       open_in_prev_tab = "gf", -- Open current buffer in previous tab (or new tab before current)
       close_on_open_in_prev_tab = false, -- Close codediff tab after opening in previous tab
       toggle_stage = "-", -- Stage/unstage current file (works in explorer and diff buffers)
+      toggle_staged_view = "gS", -- Swap between staged/unstaged view of current file (#352)
       stage_hunk = "<leader>hs", -- Stage the hunk under cursor to git index
       unstage_hunk = "<leader>hu", -- Unstage the hunk under cursor from git index
       discard_hunk = "<leader>hr", -- Discard the hunk under cursor (working tree only)

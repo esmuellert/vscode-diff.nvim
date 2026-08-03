@@ -253,6 +253,13 @@ function M.setup()
     return ok and hl and (hl.fg or hl.foreground)
   end
 
+  local insertion_highlight = hl_exists("Added") and "Added" or "DiagnosticOk"
+  local deletion_highlight = hl_exists("Removed") and "Removed" or "DiagnosticError"
+  vim.api.nvim_set_hl(0, "CodeDiffExplorerStatFiles", { link = "Number", default = true })
+  vim.api.nvim_set_hl(0, "CodeDiffExplorerStatInsertions", { link = insertion_highlight, default = true })
+  vim.api.nvim_set_hl(0, "CodeDiffExplorerStatDeletions", { link = deletion_highlight, default = true })
+  vim.api.nvim_set_hl(0, "CodeDiffExplorerStatBinary", { link = "NonText", default = true })
+
   -- Helper to set conflict sign highlight with user config as priority 0
   -- @param hl_name string The highlight group name to set
   -- @param user_value string|nil User config value (highlight group or hex color)
