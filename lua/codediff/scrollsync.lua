@@ -385,6 +385,9 @@ end
 function Group:resume()
   self.paused = false
   self:resync()
+  for w in pairs(self.saved_scrolloff) do
+    self:_restore_scrolloff(w)
+  end
 end
 
 --- Tear down: remove autocmds and mark inactive.
