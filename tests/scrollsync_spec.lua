@@ -37,6 +37,11 @@ describe("scrollsync virtual-row mapping", function()
     assert.equals(6, internal.vrow_of_line(ft, 4))
   end)
 
+  it("collects changed window IDs from WinScrolled data", function()
+    assert.same({ [12] = true, [13] = true, [14] = true }, internal.changed_windows({ all = {}, ["12"] = {}, [13] = {} }, "14"))
+    assert.is_nil(internal.changed_windows({}, ""))
+  end)
+
   it("vrow_to_view is the inverse of view_to_vrow", function()
     local _, buf = make_win({ "a", "b", "c", "d", "e", "f" }, { { after = 3, count = 4 } })
     local ft = internal.build_fill_table(buf)
@@ -91,6 +96,26 @@ describe("scrollsync manager alignment", function()
     end
     local win_right = make_win(right, {})
     return win_left, win_right
+  end
+
+  local function set_view(win, topline, cursor_line)
+    vim.api.nvim_win_call(win, function()
+      vim.fn.winrestview({ topline = topline, lnum = cursor_line })
+    end)
+  end
+
+  local function fire_win_scrolled(group, win)
+    group:_on_scroll({ [win] = true })
+  end
+
+  local function setup_pending_follower_echo()
+    local follower, leader = setup_pair()
+    local group = scroll.bind(tab, { follower, leader })
+    vim.api.nvim_set_current_win(leader)
+    set_view(leader, 35, 40)
+    group:resync(leader)
+    group.pending_echo[follower] = true
+    return { group = group, leader = leader, follower = follower }
   end
 
   it("binds windows and keeps native scrollbind off", function()
@@ -179,6 +204,58 @@ describe("scrollsync manager alignment", function()
     -- Follower topline must be (weakly) monotonic while scrolling down; any
     -- large backwards jump would be the scrollbind oscillation.
     assert.is_true(max_backjump <= 1, "follower topline should not oscillate; max backward jump was " .. max_backjump)
+  end)
+
+  it("waits for the pending follower's own WinScrolled event", function()
+    local scenario = setup_pending_follower_echo()
+
+    fire_win_scrolled(scenario.group, scenario.leader)
+    assert.is_true(
+      scenario.group.pending_echo[scenario.follower],
+      "another window must not consume the follower's echo"
+    )
+
+    fire_win_scrolled(scenario.group, scenario.follower)
+    assert.is_nil(
+      scenario.group.pending_echo[scenario.follower],
+      "the follower's own event must consume its echo"
+    )
+  end)
+
+  it("keeps the active leader fixed when a follower redraw corrects its view", function()
+    local scenario = setup_pending_follower_echo()
+    local leader_before = view(scenario.leader)
+    set_view(scenario.follower, 10, 20)
+
+    fire_win_scrolled(scenario.group, scenario.follower)
+
+    local leader_after = view(scenario.leader)
+    assert.equals(leader_before.topline, leader_after.topline, "follower redraw must not move the leader")
+    assert.equals(
+      leader_before.topfill,
+      leader_after.topfill,
+      "follower redraw must not change the leader's filler offset"
+    )
+  end)
+
+  it("treats a later non-focused follower scroll as user input", function()
+    local scenario = setup_pending_follower_echo()
+    fire_win_scrolled(scenario.group, scenario.follower)
+    assert.is_nil(
+      scenario.group.pending_echo[scenario.follower],
+      "the programmatic echo must be consumed first"
+    )
+    local leader_before = view(scenario.leader)
+    set_view(scenario.follower, 10, 20)
+
+    fire_win_scrolled(scenario.group, scenario.follower)
+
+    local leader_after = view(scenario.leader)
+    assert.not_equal(
+      leader_before.topline,
+      leader_after.topline,
+      "later user scrolling in the follower must move the leader"
+    )
   end)
 
   it("syncs three panes together (conflict/merge view)", function()

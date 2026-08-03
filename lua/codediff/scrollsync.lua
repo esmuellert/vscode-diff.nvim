@@ -154,6 +154,21 @@ local function win_view(w)
   return api.nvim_win_call(w, vim.fn.winsaveview)
 end
 
+local function changed_windows(event, first)
+  local changed = {}
+  for key in pairs(event or {}) do
+    local win = tonumber(key)
+    if win then
+      changed[win] = true
+    end
+  end
+  local first_win = tonumber(first)
+  if first_win then
+    changed[first_win] = true
+  end
+  return next(changed) and changed or nil
+end
+
 function Group:_valid_wins()
   local out = {}
   for _, w in ipairs(self.wins) do
@@ -182,6 +197,7 @@ function Group:refresh()
   end
   -- Fill tables changed; stored fingerprints are stale.
   self.expected = {}
+  self.pending_echo = {}
 end
 
 --- Align every window other than `leader` to `leader`'s virtual-row position.
@@ -196,6 +212,7 @@ function Group:_apply(leader, jump)
   if not ftl then
     return
   end
+  self.pending_echo[leader] = nil
   local lv = win_view(leader)
   local vrow = view_to_vrow(ftl, lv.topline, lv.topfill)
   self.vrow = vrow
@@ -222,6 +239,7 @@ function Group:_apply(leader, jump)
         local delta = target_top_vrow - cur_top_vrow
 
         if delta ~= 0 then
+          self.pending_echo[w] = true
           if not jump then
             -- Relative scroll (<C-e>/<C-y>) preserves the grid_scroll
             -- optimization so the follower is not fully repainted.
@@ -244,6 +262,7 @@ function Group:_apply(leader, jump)
         -- Mirror horizontal scroll (leftcol) without disturbing the vertical view.
         local fv = win_view(w)
         if (fv.leftcol or 0) ~= leftcol then
+          self.pending_echo[w] = true
           api.nvim_win_call(w, function()
             local v = vim.fn.winsaveview()
             v.leftcol = leftcol
@@ -284,26 +303,45 @@ end
 --- topfill-only scrolls and mouse scrolls of a non-focused window, and it
 --- ignores the echo scroll events produced by our own winrestview (their
 --- fingerprint matches `expected`).
-function Group:_detect_leader()
+function Group:_detect_leader(changed)
   local cur = api.nvim_get_current_win()
   local candidate
   for _, w in ipairs(self:_valid_wins()) do
-    local fp = view_fp(win_view(w))
-    if fp ~= self.expected[w] then
-      if w == cur then
-        return w -- prefer the focused window when it moved
+    if not changed or changed[w] then
+      local fp = view_fp(win_view(w))
+      if fp ~= self.expected[w] then
+        if w == cur then
+          return w -- prefer the focused window when it moved
+        end
+        candidate = candidate or w
       end
-      candidate = candidate or w
     end
   end
   return candidate
 end
 
-function Group:_on_scroll()
-  if self.syncing or self.paused then
+function Group:_consume_pending_echoes(changed)
+  if not changed then
     return
   end
-  local leader = self:_detect_leader()
+  local current = api.nvim_get_current_win()
+  for w in pairs(changed) do
+    if w ~= current and self.pending_echo[w] then
+      self.pending_echo[w] = nil
+      self.expected[w] = view_fp(win_view(w))
+    end
+  end
+end
+
+function Group:_on_scroll(changed)
+  if self.syncing then
+    return
+  end
+  self:_consume_pending_echoes(changed)
+  if self.paused then
+    return
+  end
+  local leader = self:_detect_leader(changed)
   if not leader then
     return
   end
@@ -352,6 +390,7 @@ function M.bind(opts)
     wins = vim.deepcopy(opts.wins),
     ft = {},
     expected = {},
+    pending_echo = {},
     syncing = false,
     paused = false,
     active = true,
@@ -368,12 +407,12 @@ function M.bind(opts)
   self.augroup = api.nvim_create_augroup("codediff_scrollsync_" .. tostring(self):gsub("%W", ""), { clear = true })
   api.nvim_create_autocmd("WinScrolled", {
     group = self.augroup,
-    callback = function()
+    callback = function(args)
       if not self.active then
         return
       end
       -- Only react when a member window is involved.
-      self:_on_scroll()
+      self:_on_scroll(changed_windows(vim.v.event, args.match))
     end,
   })
   -- A height change alters the topfill clamp; re-align to stay consistent.
@@ -407,6 +446,7 @@ end
 -- Exposed for tests.
 M._internal = {
   build_fill_table = build_fill_table,
+  changed_windows = changed_windows,
   vrow_of_line = vrow_of_line,
   view_to_vrow = view_to_vrow,
   vrow_to_view = vrow_to_view,
