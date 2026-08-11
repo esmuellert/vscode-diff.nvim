@@ -736,10 +736,16 @@ describe("Layout toggle", function()
     assert.is_true(s and s.modified_revision == nil, "Unstaging a hunk should still work after toggling back")
   end)
 
-  -- SKIPPED: requires two back-to-back async git operations (apply + status)
-  -- which is unreliable on Windows CI. Re-enable when test helper API supports
-  -- deterministic async chains.
-  pending("keeps discard hunk working after toggle", function()
+  it("keeps discard hunk working after toggle", function()
+    -- Regression: after `t` toggles layout to inline, the discard-hunk
+    -- callback (bound to `K` by the outer describe's before_each) must still
+    -- fire against the correct buffer AND the follow-up refresh must observe
+    -- that the file now matches HEAD (no diff → welcome page). The prior
+    -- `pending(...)` marked this out because the assertion used
+    -- `vim.wait(10000, function() return false end)` — an unconditional 10s
+    -- sleep that raced with the two-step async chain (git apply → status
+    -- refresh → re-render). This version uses a real predicate on the
+    -- welcome buffer, so it terminates as soon as the chain lands.
     repo = h.create_temp_git_repo()
     repo.write_file("file.txt", { "line 1", "line 2", "line 3" })
     repo.git("add file.txt")
@@ -781,23 +787,38 @@ describe("Layout toggle", function()
     local session = lifecycle.get_session(tabpage)
     move_cursor_to_hunk(session.modified_win, session.modified_bufnr, session.stored_diff_result.changes[1].modified)
 
-    local old_select = vim.ui.select
-    vim.ui.select = function(items, _, on_choice)
-      on_choice(items[1])
-    end
+    -- discard_hunk pops a confirm dialog via `vim.fn.confirm`; in headless
+    -- that returns 0 (no user input). Stub it to auto-select "Discard" (the
+    -- 1st option in "&Discard\n&Cancel") so the async chain proceeds unattended.
+    local old_confirm = vim.fn.confirm
+    vim.fn.confirm = function() return 1 end
 
     local discard_cb = get_buffer_mapping_callback(vim.api.nvim_win_get_buf(session.modified_win), "K")
     assert.is_function(discard_cb, "discard_hunk mapping should exist after toggle")
     discard_cb()
 
-    vim.wait(10000, function()
-      return false
-    end, 50)
+    -- Deterministic wait for the full chain: git apply --reverse writes the
+    -- working tree back to HEAD, the refresh callback re-runs `git status`,
+    -- the empty result triggers the welcome page. Poll for that terminal
+    -- state instead of sleeping a flat 10s (fixes the Windows-CI flake called
+    -- out in the previous `pending` comment).
+    local welcome_ready = vim.wait(15000, function()
+      local s = lifecycle.get_session(tabpage)
+      return s
+        and s.modified_bufnr
+        and vim.api.nvim_buf_is_valid(s.modified_bufnr)
+        and welcome.is_welcome_buffer(s.modified_bufnr)
+    end, 100)
 
-    vim.ui.select = old_select
+    vim.fn.confirm = old_confirm
 
-    local s = lifecycle.get_session(tabpage)
-    assert.is_true(s and welcome.is_welcome_buffer(s.modified_bufnr), "Discarding the last hunk after toggle should restore a clean welcome state")
+    assert.is_true(welcome_ready,
+      "discard_hunk after layout toggle should end in the welcome buffer once the async chain completes")
+    -- Sanity: the working tree really does match HEAD again (git-level check
+    -- so we don't confuse a stale UI with actual discard success).
+    local worktree = table.concat(vim.fn.readfile(repo.path("file.txt")), "\n")
+    assert.equal("line 1\nline 2\nline 3", worktree,
+      "working-tree file must be restored to its HEAD content after discard_hunk")
   end)
 
   it("does not persist the layout override across separate CodeDiff runs", function()

@@ -286,13 +286,6 @@ The following dependencies are not bundled but are required for full functionali
 **Source**: https://github.com/MunifTanjim/nui.nvim  
 **Purpose**: UI components for file explorer  
 
-### plenary.nvim
-
-**License**: MIT License  
-**Maintainers**: nvim-lua community  
-**Source**: https://github.com/nvim-lua/plenary.nvim  
-**Purpose**: Test framework (development only)  
-
 ---
 
 ## Architectural Inspiration

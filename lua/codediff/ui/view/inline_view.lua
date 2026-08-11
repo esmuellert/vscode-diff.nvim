@@ -17,6 +17,8 @@ local helpers = require("codediff.ui.view.helpers")
 local panel = require("codediff.ui.view.panel")
 local is_virtual_revision = helpers.is_virtual_revision
 local prepare_buffer = helpers.prepare_buffer
+local show_real_file_buffer = helpers.show_real_file_buffer
+local open_real_file = helpers.open_real_file
 
 local function disable_refresh_and_clear_highlights(session)
   for _, bufnr in pairs({ session.original_bufnr, session.modified_bufnr }) do
@@ -183,12 +185,17 @@ function M.create(session_config, filetype, on_ready)
   local modified_info = prepare_buffer(modified_is_virtual, session_config.git_root, session_config.modified_revision, session_config.modified)
 
   -- Load modified buffer into the visible window
-  if modified_info.needs_edit then
-    local cmd = modified_is_virtual and "edit! " or "edit "
-    vim.cmd(cmd .. vim.fn.fnameescape(modified_info.target))
-    modified_info.bufnr = vim.api.nvim_get_current_buf()
+  if modified_is_virtual then
+    if modified_info.needs_edit then
+      vim.cmd("edit! " .. vim.fn.fnameescape(modified_info.target))
+      modified_info.bufnr = vim.api.nvim_get_current_buf()
+    else
+      vim.api.nvim_win_set_buf(modified_win, modified_info.bufnr)
+    end
+  elseif modified_info.needs_edit then
+    modified_info.bufnr = open_real_file(modified_win, modified_info.target)
   else
-    vim.api.nvim_win_set_buf(modified_win, modified_info.bufnr)
+    show_real_file_buffer(modified_win, modified_info.bufnr)
   end
   welcome_window.sync(modified_win)
 
@@ -382,16 +389,11 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
   else
     local modified_info = prepare_buffer(false, session_config.git_root, nil, session_config.modified)
     if modified_info.needs_edit then
-      local bufnr = vim.fn.bufadd(modified_info.target)
-      vim.fn.bufload(bufnr)
-      mod_buf = bufnr
+      mod_buf = open_real_file(modified_win, modified_info.target)
     else
       mod_buf = modified_info.bufnr
-      vim.api.nvim_buf_call(mod_buf, function()
-        vim.cmd("checktime")
-      end)
+      show_real_file_buffer(modified_win, mod_buf)
     end
-    vim.api.nvim_win_set_buf(modified_win, mod_buf)
   end
   welcome_window.sync(modified_win)
 
@@ -577,9 +579,7 @@ function M.show_single_file(tabpage, file_path, opts)
     welcome_window.sync(mod_win)
   else
     -- Real file
-    file_bufnr = vim.fn.bufadd(file_path)
-    vim.fn.bufload(file_bufnr)
-    vim.api.nvim_win_set_buf(mod_win, file_bufnr)
+    file_bufnr = open_real_file(mod_win, file_path)
     welcome_window.sync(mod_win)
   end
 

@@ -1,161 +1,71 @@
 name: Build and Test
 
+# Thin orchestrator that fans out to one reusable workflow per build style.
+# The per-style workflows (`_platform-*.yml`) own the actual build steps, so
+# each style stays free of conditionals for platforms it doesn't apply to.
+# Adding a new native target = new matrix entry; adding a new build style =
+# new `_platform-*.yml` + new job here.
+
 on:
   workflow_call:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  build-and-test:
-    name: Build and Test (${{ matrix.os }}-${{ matrix.arch }})
-    runs-on: ${{ matrix.runs-on }}
+  linux:
+    name: ${{ matrix.runs-on }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Linux x64
-          - os: ubuntu-latest
-            arch: x64
-            runs-on: ubuntu-latest
-            artifact: linux-x64
-          # Linux ARM64 (Partner runner - in public beta)
-          - os: ubuntu-24.04-arm
-            arch: arm64
-            runs-on: ubuntu-24.04-arm
-            artifact: linux-arm64
-          # macOS x64 (Intel)
-          - os: macos-15-intel
-            arch: x64
-            runs-on: macos-15-intel
-            artifact: macos-x64
-          # macOS ARM64 (Apple Silicon M1)
-          - os: macos-latest
-            arch: arm64
-            runs-on: macos-latest
-            artifact: macos-arm64
-          # Windows x64
-          - os: windows-latest
-            arch: x64
-            runs-on: windows-latest
-            artifact: windows-x64
-          # Windows ARM64 (Partner runner - in public beta)
-          - os: windows-11-arm
-            arch: arm64
-            runs-on: windows-11-arm
-            artifact: windows-arm64
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+          - { arch: x64,   runs-on: ubuntu-latest,     artifact: linux-x64 }
+          - { arch: arm64, runs-on: ubuntu-24.04-arm, artifact: linux-arm64 }
+    uses: ./.github/workflows/_platform-linux.yml
+    with:
+      arch: ${{ matrix.arch }}
+      runs-on: ${{ matrix.runs-on }}
+      artifact: ${{ matrix.artifact }}
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 'lts/*'
+  macos:
+    name: ${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x64,   runs-on: macos-15-intel, artifact: macos-x64 }
+          - { arch: arm64, runs-on: macos-latest,   artifact: macos-arm64 }
+    uses: ./.github/workflows/_platform-macos.yml
+    with:
+      arch: ${{ matrix.arch }}
+      runs-on: ${{ matrix.runs-on }}
+      artifact: ${{ matrix.artifact }}
 
-      - name: Install build tools (Ubuntu)
-        if: startsWith(matrix.runs-on, 'ubuntu')
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake valgrind
+  windows:
+    name: ${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x64,   runs-on: windows-latest, artifact: windows-x64 }
+          - { arch: arm64, runs-on: windows-11-arm, artifact: windows-arm64 }
+    uses: ./.github/workflows/_platform-windows.yml
+    with:
+      arch: ${{ matrix.arch }}
+      runs-on: ${{ matrix.runs-on }}
+      artifact: ${{ matrix.artifact }}
 
-      - name: Setup Neovim
-        uses: ./.github/actions/setup-neovim
-        with:
-          arch: ${{ matrix.arch }}
-
-      - name: Set up MSVC (Windows)
-        if: startsWith(matrix.runs-on, 'windows')
-        uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Build library (Ubuntu in CentOS 7 Docker for GLIBC 2.17 compatibility)
-        if: startsWith(matrix.runs-on, 'ubuntu')
-        run: |
-          docker run --rm \
-            -v ${{ github.workspace }}:/workspace \
-            -w /workspace \
-            -e HOST_UID=$(id -u) \
-            -e HOST_GID=$(id -g) \
-            centos:7 \
-            bash -c "
-              set -e
-              # CentOS 7 is EOL, use vault archives (following c-ares approach)
-              sed -i -e 's/^mirrorlist/#mirrorlist/' -e 's/^#baseurl/baseurl/' -e 's/mirror.centos.org/vault.centos.org/' /etc/yum.repos.d/*.repo
-              yum clean all
-              yum install -y epel-release
-              yum install -y centos-release-scl
-              # Delete problematic centos-sclo-sclo repo (from Apache Gluten approach)
-              rm -f /etc/yum.repos.d/CentOS-SCLo-scl.repo
-              # ARM64: devtoolset-11 not available, use system GCC
-              # x86_64: use devtoolset-11 for modern GCC with old GLIBC
-              if [ \$(uname -m) = \"aarch64\" ]; then
-                # Remove SCL-RH repo (not needed for system GCC)
-                rm -f /etc/yum.repos.d/CentOS-SCLo-scl-rh.repo
-                yum install -y gcc gcc-c++ make curl
-                # ARM64 cmake3 in EPEL is 3.14.6, need 3.15+. Use CMake 3.20.0 (first with ARM64 support).
-                curl -LO https://github.com/Kitware/CMake/releases/download/v3.20.0/cmake-3.20.0-linux-aarch64.tar.gz
-                tar --strip-components=1 -xzf cmake-3.20.0-linux-aarch64.tar.gz -C /usr/local
-              else
-                sed -i -e 's/^mirrorlist/#mirrorlist/' -e 's/^#baseurl/baseurl/' -e 's/mirror\.centos\.org/vault.centos.org/' /etc/yum.repos.d/CentOS-SCLo-scl-rh.repo
-                yum install -y devtoolset-11-gcc devtoolset-11-gcc-c++ cmake3 make
-                source /opt/rh/devtoolset-11/enable
-                ln -s /usr/bin/cmake3 /usr/local/bin/cmake
-              fi
-              make build
-              # Copy libgomp.so.1 from CentOS 7 (old GLIBC 2.17 compatible)
-              cp /lib64/libgomp.so.1 ./ || cp /usr/lib64/libgomp.so.1 ./ || true
-              # Fix ownership of build artifacts for host user
-              chown -R \$HOST_UID:\$HOST_GID build/ libvscode_diff.so libgomp.so.1 2>/dev/null || true
-            "
-
-      - name: Build library (macOS)
-        if: startsWith(matrix.runs-on, 'macos')
-        run: make build
-
-      - name: Build library (Windows)
-        if: startsWith(matrix.runs-on, 'windows')
-        run: nmake /f Makefile.win build
-
-      - name: Run C unit tests (Ubuntu)
-        if: startsWith(matrix.runs-on, 'ubuntu')
-        run: |
-          # Run test executables directly (bypass ctest which has Docker paths)
-          cd build/libvscode-diff
-          for test in test_*; do
-            echo "Running $test..."
-            ./$test || exit 1
-          done
-
-      - name: Run C unit tests (macOS)
-        if: startsWith(matrix.runs-on, 'macos')
-        run: make test-c
-
-      - name: Run Valgrind memory leak test (Ubuntu only)
-        if: startsWith(matrix.runs-on, 'ubuntu')
-        run: |
-          cd build/libvscode-diff
-          ctest -R test_memory_leak_valgrind -V
-
-      - name: Run C unit tests (Windows)
-        if: startsWith(matrix.runs-on, 'windows')
-        run: nmake /f Makefile.win test-c
-
-      - name: Run Neovim tests (Ubuntu/macOS)
-        if: startsWith(matrix.runs-on, 'ubuntu') || startsWith(matrix.runs-on, 'macos')
-        run: make test-lua
-
-      - name: Run Neovim tests (Windows)
-        if: startsWith(matrix.runs-on, 'windows')
-        shell: bash
-        run: ./tests/run_plenary_tests.sh
-
-      - name: Upload build artifacts
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact }}
-          path: |
-            libvscode_diff.so
-            libvscode_diff.dylib
-            libvscode_diff.dll
-            libgomp.so.1
-          if-no-files-found: ignore
-          retention-days: 7
+  android:
+    name: ubuntu-latest (${{ matrix.android_abi }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: arm64, android_abi: arm64-v8a, artifact: android-arm64 }
+          - { arch: x64,   android_abi: x86_64,    artifact: android-x64 }
+    uses: ./.github/workflows/_platform-android.yml
+    with:
+      arch: ${{ matrix.arch }}
+      android_abi: ${{ matrix.android_abi }}
+      artifact: ${{ matrix.artifact }}

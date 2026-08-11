@@ -1,9 +1,5 @@
-applyTo:
-  - "**/CMakeLists.txt"
-  - Makefile
-  - Makefile.win
-  - build.cmd
-  - build.sh
+---
+applyTo: "**/CMakeLists.txt,Makefile,Makefile.win,build.cmd,build.sh"
 ---
 
 # Build System Files

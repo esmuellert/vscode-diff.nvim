@@ -1,0 +1,342 @@
+# codediff keymap golden matrix
+# role x mode x lhs x desc for each session shape.
+# Regenerate with CODEDIFF_WRITE_KEYMAP_GOLDEN=1 after an intended change.
+
+## standalone side-by-side
+original n  [c             Previous hunk
+original n  \hr            Discard hunk under cursor
+original n  \hs            Stage hunk under cursor
+original n  \hu            Unstage hunk under cursor
+original n  ]c             Next hunk
+original n  do             Get change from other buffer
+original n  dp             Put change to other buffer
+original n  g?             Show keymap help
+original n  gc             Toggle compact mode
+original n  gf             Open buffer in previous tab
+original n  q              Close codediff tab
+original n  t              Toggle diff layout
+original x  ih             Hunk textobject
+original o  ih             Hunk textobject
+original v  ih             Hunk textobject
+modified n  [c             Previous hunk
+modified n  \hr            Discard hunk under cursor
+modified n  \hs            Stage hunk under cursor
+modified n  \hu            Unstage hunk under cursor
+modified n  ]c             Next hunk
+modified n  do             Get change from other buffer
+modified n  dp             Put change to other buffer
+modified n  g?             Show keymap help
+modified n  gc             Toggle compact mode
+modified n  gf             Open buffer in previous tab
+modified n  q              Close codediff tab
+modified n  t              Toggle diff layout
+modified x  ih             Hunk textobject
+modified o  ih             Hunk textobject
+modified v  ih             Hunk textobject
+
+## standalone inline
+original n  [c             Previous hunk
+original n  \hr            Discard hunk under cursor
+original n  \hs            Stage hunk under cursor
+original n  \hu            Unstage hunk under cursor
+original n  ]c             Next hunk
+original n  do             Revert hunk to original
+original n  dp             Accept change (no-op in inline)
+original n  g?             Show keymap help
+original n  gc             Toggle compact mode
+original n  gf             Open buffer in previous tab
+original n  q              Close codediff tab
+original n  t              Toggle diff layout
+original x  ih             Hunk textobject
+original o  ih             Hunk textobject
+original v  ih             Hunk textobject
+modified n  [c             Previous hunk
+modified n  \hr            Discard hunk under cursor
+modified n  \hs            Stage hunk under cursor
+modified n  \hu            Unstage hunk under cursor
+modified n  ]c             Next hunk
+modified n  do             Revert hunk to original
+modified n  dp             Accept change (no-op in inline)
+modified n  g?             Show keymap help
+modified n  gc             Toggle compact mode
+modified n  gf             Open buffer in previous tab
+modified n  q              Close codediff tab
+modified n  t              Toggle diff layout
+modified x  ih             Hunk textobject
+modified o  ih             Hunk textobject
+modified v  ih             Hunk textobject
+
+## explorer side-by-side
+original n  -              Toggle stage/unstage
+original n  [c             Previous hunk
+original n  [f             Previous file
+original n  \b             Toggle explorer visibility
+original n  \e             Focus explorer panel
+original n  \hr            Discard hunk under cursor
+original n  \hs            Stage hunk under cursor
+original n  \hu            Unstage hunk under cursor
+original n  ]c             Next hunk
+original n  ]f             Next file
+original n  do             Get change from other buffer
+original n  dp             Put change to other buffer
+original n  g?             Show keymap help
+original n  gS             Toggle staged/unstaged view for current file
+original n  gc             Toggle compact mode
+original n  gf             Open buffer in previous tab
+original n  q              Close codediff tab
+original n  t              Toggle diff layout
+original x  ih             Hunk textobject
+original o  ih             Hunk textobject
+original v  ih             Hunk textobject
+modified n  -              Toggle stage/unstage
+modified n  [c             Previous hunk
+modified n  [f             Previous file
+modified n  \b             Toggle explorer visibility
+modified n  \e             Focus explorer panel
+modified n  \hr            Discard hunk under cursor
+modified n  \hs            Stage hunk under cursor
+modified n  \hu            Unstage hunk under cursor
+modified n  ]c             Next hunk
+modified n  ]f             Next file
+modified n  do             Get change from other buffer
+modified n  dp             Put change to other buffer
+modified n  g?             Show keymap help
+modified n  gS             Toggle staged/unstaged view for current file
+modified n  gc             Toggle compact mode
+modified n  gf             Open buffer in previous tab
+modified n  q              Close codediff tab
+modified n  t              Toggle diff layout
+modified x  ih             Hunk textobject
+modified o  ih             Hunk textobject
+modified v  ih             Hunk textobject
+panel    n  -              Toggle stage/unstage
+panel    n  <2-LeftMouse>  Select file
+panel    n  <CR>           Select/toggle entry
+panel    n  K              Show full path
+panel    n  R              Refresh explorer
+panel    n  S              Stage all files
+panel    n  U              Unstage all files
+panel    n  X              Restore/discard changes
+panel    n  [c             Previous hunk
+panel    n  [f             Previous file
+panel    n  \b             Toggle explorer visibility
+panel    n  \e             Focus explorer panel
+panel    n  ]c             Next hunk
+panel    n  ]f             Next file
+panel    n  do             Get change from other buffer
+panel    n  dp             Put change to other buffer
+panel    n  g?             Show keymap help
+panel    n  gS             Toggle staged/unstaged view for current file
+panel    n  gc             Toggle compact mode
+panel    n  gf             Open buffer in previous tab
+panel    n  gs             Toggle Staged Changes visibility
+panel    n  gu             Toggle Changes visibility
+panel    n  i              Toggle list/tree view
+panel    n  q              Close codediff tab
+panel    n  t              Toggle diff layout
+panel    n  zA             Toggle fold recursively
+panel    n  zC             Close fold recursively
+panel    n  zM             Close all folds
+panel    n  zO             Open fold recursively
+panel    n  zR             Open all folds
+panel    n  za             Toggle fold
+panel    n  zc             Close fold
+panel    n  zo             Open fold
+
+## explorer inline
+original n  -              Toggle stage/unstage
+original n  [c             Previous hunk
+original n  [f             Previous file
+original n  \b             Toggle explorer visibility
+original n  \e             Focus explorer panel
+original n  \hr            Discard hunk under cursor
+original n  \hs            Stage hunk under cursor
+original n  \hu            Unstage hunk under cursor
+original n  ]c             Next hunk
+original n  ]f             Next file
+original n  do             Revert hunk to original
+original n  dp             Accept change (no-op in inline)
+original n  g?             Show keymap help
+original n  gS             Toggle staged/unstaged view for current file
+original n  gc             Toggle compact mode
+original n  gf             Open buffer in previous tab
+original n  q              Close codediff tab
+original n  t              Toggle diff layout
+original x  ih             Hunk textobject
+original o  ih             Hunk textobject
+original v  ih             Hunk textobject
+modified n  -              Toggle stage/unstage
+modified n  [c             Previous hunk
+modified n  [f             Previous file
+modified n  \b             Toggle explorer visibility
+modified n  \e             Focus explorer panel
+modified n  \hr            Discard hunk under cursor
+modified n  \hs            Stage hunk under cursor
+modified n  \hu            Unstage hunk under cursor
+modified n  ]c             Next hunk
+modified n  ]f             Next file
+modified n  do             Revert hunk to original
+modified n  dp             Accept change (no-op in inline)
+modified n  g?             Show keymap help
+modified n  gS             Toggle staged/unstaged view for current file
+modified n  gc             Toggle compact mode
+modified n  gf             Open buffer in previous tab
+modified n  q              Close codediff tab
+modified n  t              Toggle diff layout
+modified x  ih             Hunk textobject
+modified o  ih             Hunk textobject
+modified v  ih             Hunk textobject
+panel    n  -              Toggle stage/unstage
+panel    n  <2-LeftMouse>  Select file
+panel    n  <CR>           Select/toggle entry
+panel    n  K              Show full path
+panel    n  R              Refresh explorer
+panel    n  S              Stage all files
+panel    n  U              Unstage all files
+panel    n  X              Restore/discard changes
+panel    n  [c             Previous hunk
+panel    n  [f             Previous file
+panel    n  \b             Toggle explorer visibility
+panel    n  \e             Focus explorer panel
+panel    n  ]c             Next hunk
+panel    n  ]f             Next file
+panel    n  do             Revert hunk to original
+panel    n  dp             Accept change (no-op in inline)
+panel    n  g?             Show keymap help
+panel    n  gS             Toggle staged/unstaged view for current file
+panel    n  gc             Toggle compact mode
+panel    n  gf             Open buffer in previous tab
+panel    n  gs             Toggle Staged Changes visibility
+panel    n  gu             Toggle Changes visibility
+panel    n  i              Toggle list/tree view
+panel    n  q              Close codediff tab
+panel    n  t              Toggle diff layout
+panel    n  zA             Toggle fold recursively
+panel    n  zC             Close fold recursively
+panel    n  zM             Close all folds
+panel    n  zO             Open fold recursively
+panel    n  zR             Open all folds
+panel    n  za             Toggle fold
+panel    n  zc             Close fold
+panel    n  zo             Open fold
+
+## conflict
+original n  [c             Previous hunk
+original n  [x             Previous conflict
+original n  \cB            Accept ALL both changes
+original n  \cO            Accept ALL current changes
+original n  \cT            Accept ALL incoming changes
+original n  \cX            Discard ALL, reset to base
+original n  \cb            Accept both changes
+original n  \co            Accept current change
+original n  \ct            Accept incoming change
+original n  \cx            Discard changes (keep base)
+original n  \hr            Discard hunk under cursor
+original n  \hs            Stage hunk under cursor
+original n  \hu            Unstage hunk under cursor
+original n  ]c             Next hunk
+original n  ]x             Next conflict
+original n  g?             Show keymap help
+original n  gc             Toggle compact mode
+original n  gf             Open buffer in previous tab
+original n  q              Close codediff tab
+original n  t              Toggle diff layout
+original x  ih             Hunk textobject
+original o  ih             Hunk textobject
+original v  ih             Hunk textobject
+modified n  [c             Previous hunk
+modified n  [x             Previous conflict
+modified n  \cB            Accept ALL both changes
+modified n  \cO            Accept ALL current changes
+modified n  \cT            Accept ALL incoming changes
+modified n  \cX            Discard ALL, reset to base
+modified n  \cb            Accept both changes
+modified n  \co            Accept current change
+modified n  \ct            Accept incoming change
+modified n  \cx            Discard changes (keep base)
+modified n  \hr            Discard hunk under cursor
+modified n  \hs            Stage hunk under cursor
+modified n  \hu            Unstage hunk under cursor
+modified n  ]c             Next hunk
+modified n  ]x             Next conflict
+modified n  g?             Show keymap help
+modified n  gc             Toggle compact mode
+modified n  gf             Open buffer in previous tab
+modified n  q              Close codediff tab
+modified n  t              Toggle diff layout
+modified x  ih             Hunk textobject
+modified o  ih             Hunk textobject
+modified v  ih             Hunk textobject
+result   n  2do            Get hunk from incoming (2do)
+result   n  3do            Get hunk from current (3do)
+result   n  [c             Previous hunk
+result   n  [x             Previous conflict
+result   n  \cB            Accept ALL both changes
+result   n  \cO            Accept ALL current changes
+result   n  \cT            Accept ALL incoming changes
+result   n  \cX            Discard ALL, reset to base
+result   n  \cb            Accept both changes
+result   n  \co            Accept current change
+result   n  \ct            Accept incoming change
+result   n  \cx            Discard changes (keep base)
+result   n  ]c             Next hunk
+result   n  ]x             Next conflict
+result   n  g?             Show keymap help
+result   n  gc             Toggle compact mode
+result   n  gf             Open buffer in previous tab
+result   n  q              Close codediff tab
+result   n  t              Toggle diff layout
+
+## compact side-by-side
+original n  [c             Previous hunk
+original n  \hr            Discard hunk under cursor
+original n  \hs            Stage hunk under cursor
+original n  \hu            Unstage hunk under cursor
+original n  ]c             Next hunk
+original n  do             Get change from other buffer
+original n  dp             Put change to other buffer
+original n  g?             Show keymap help
+original n  gc             Toggle compact mode
+original n  gf             Open buffer in previous tab
+original n  q              Close codediff tab
+original n  t              Toggle diff layout
+original n  zA             codediff: synced fold zA
+original n  zC             codediff: synced fold zC
+original n  zM             codediff: synced fold zM
+original n  zO             codediff: synced fold zO
+original n  zR             codediff: synced fold zR
+original n  zX             codediff: synced fold zX
+original n  za             codediff: synced fold za
+original n  zc             codediff: synced fold zc
+original n  zo             codediff: synced fold zo
+original n  zv             codediff: synced fold zv
+original n  zx             codediff: synced fold zx
+original x  ih             Hunk textobject
+original o  ih             Hunk textobject
+original v  ih             Hunk textobject
+modified n  [c             Previous hunk
+modified n  \hr            Discard hunk under cursor
+modified n  \hs            Stage hunk under cursor
+modified n  \hu            Unstage hunk under cursor
+modified n  ]c             Next hunk
+modified n  do             Get change from other buffer
+modified n  dp             Put change to other buffer
+modified n  g?             Show keymap help
+modified n  gc             Toggle compact mode
+modified n  gf             Open buffer in previous tab
+modified n  q              Close codediff tab
+modified n  t              Toggle diff layout
+modified n  zA             codediff: synced fold zA
+modified n  zC             codediff: synced fold zC
+modified n  zM             codediff: synced fold zM
+modified n  zO             codediff: synced fold zO
+modified n  zR             codediff: synced fold zR
+modified n  zX             codediff: synced fold zX
+modified n  za             codediff: synced fold za
+modified n  zc             codediff: synced fold zc
+modified n  zo             codediff: synced fold zo
+modified n  zv             codediff: synced fold zv
+modified n  zx             codediff: synced fold zx
+modified x  ih             Hunk textobject
+modified o  ih             Hunk textobject
+modified v  ih             Hunk textobject

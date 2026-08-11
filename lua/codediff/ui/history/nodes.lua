@@ -14,6 +14,35 @@ local STATUS_SYMBOLS = {
   R = { symbol = "R", color = "CodeDiffStatusRenamed" },
 }
 
+-- Render a commit date for display in the history view (#340).
+-- Presentation-layer concern; git already returns the raw `%at` timestamp AND a
+-- pre-formatted `%ar` relative string, so we consume those instead of asking
+-- git for anything new. Config value semantics mirror git's placeholders:
+--   "%ar" (default) → use git's own relative string ("6 months ago")
+--   "%ai"           → ISO 8601 like "2026-01-15 12:34:56 -0500"
+--   "%ad"           → git's baseline default ("Fri Feb 17 12:34:56 2023 -0500")
+--   any other       → treated as an os.date/strftime format string
+local function format_commit_date(timestamp, date_relative)
+  local fmt = (config.options.history and config.options.history.date_format) or "%ar"
+  if fmt == "%ar" then
+    return date_relative or ""
+  end
+  if not timestamp or timestamp == "" then
+    return date_relative or ""
+  end
+  local ts = tonumber(timestamp)
+  if not ts then
+    return date_relative or ""
+  end
+  if fmt == "%ai" then
+    return os.date("%Y-%m-%d %H:%M:%S %z", ts)
+  end
+  if fmt == "%ad" then
+    return os.date("%a %b %e %H:%M:%S %Y %z", ts)
+  end
+  return os.date(fmt, ts)
+end
+
 -- File icons (basic fallback)
 function M.get_file_icon(path)
   local has_devicons, devicons = pcall(require, "nvim-web-devicons")
@@ -301,8 +330,8 @@ function M.prepare_node(node, max_width, selected_commit, selected_file, is_sing
     end
     line:append(" " .. subject, get_hl("Normal"))
 
-    -- Author, date at end (dimmed)
-    line:append(" " .. data.author .. ", " .. data.date_relative, get_hl("Comment"))
+    -- Author, date at end (dimmed); date rendering honors history.date_format (#340)
+    line:append(" " .. data.author .. ", " .. format_commit_date(data.date, data.date_relative), get_hl("Comment"))
 
     -- Pad with spaces to fill full line width when selected
     if is_selected and max_width then

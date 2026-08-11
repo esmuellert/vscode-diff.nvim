@@ -4,6 +4,9 @@ on:
   workflow_call:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   standalone-build-test:
     name: Standalone Build (${{ matrix.os }}${{ matrix.openmp && ', OpenMP' || '' }})
@@ -39,7 +42,7 @@ jobs:
             openmp: true
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install OpenMP (Ubuntu)
         if: matrix.os == 'ubuntu-latest' && matrix.openmp
@@ -80,10 +83,10 @@ jobs:
         if: matrix.os != 'windows-latest'
         run: |
           nvim --headless --noplugin -u tests/init.lua \
-            -c "lua require('plenary.test_harness').test_file('tests/full_integration_spec.lua', { minimal_init = vim.fn.getcwd() .. '/tests/init.lua' })"
+            -c "lua require('tests.framework').run_and_exit('tests/full_integration_spec.lua')"
 
       - name: Run integration test (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          nvim --headless --noplugin -u tests/init.lua -c "lua require('plenary.test_harness').test_file('tests/full_integration_spec.lua', { minimal_init = vim.fn.getcwd() .. '/tests/init.lua' })"
+          nvim --headless --noplugin -u tests/init.lua -c "lua require('tests.framework').run_and_exit('tests/full_integration_spec.lua')"

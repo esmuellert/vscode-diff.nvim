@@ -68,7 +68,7 @@ test-c: build
 \t@cd build && ctest --output-on-failure
 
 test-lua:
-\t@./tests/run_plenary_tests.sh
+\t@./tests/run_tests.sh
 
 lint:
 \t@stylua --check lua
@@ -122,7 +122,7 @@ test-c: build
 \tctest --test-dir build --output-on-failure -C Release
 
 test-lua:
-\ttests\\run_plenary_tests.cmd
+\ttests\\run_tests.cmd
 
 lint:
 \tstylua --check lua

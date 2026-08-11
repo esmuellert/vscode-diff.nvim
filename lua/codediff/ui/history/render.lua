@@ -355,6 +355,7 @@ function M.create(commits, git_root, tabpage, width, opts)
     is_single_file_mode = is_single_file_mode,
     file_path = opts.file_path,
     git_root = git_root,
+    tabpage = tabpage,
     load_commit_files = load_commit_files,
     navigate_next = M.navigate_next,
     navigate_prev = M.navigate_prev,

@@ -47,8 +47,8 @@ local function cleanup_diff(tabpage)
   state.restore_buffer_state(diff.original_bufnr, diff.original_state)
   state.restore_buffer_state(diff.modified_bufnr, diff.modified_state)
 
-  -- Remove tab-scoped keymaps from all tracked buffers
-  accessors.clear_tab_keymaps(tabpage)
+  -- Hand every mapped key back to whatever owned it before codediff
+  accessors.dispose_keymaps(tabpage)
 
   -- Call explorer's cleanup function to stop file watchers
   if diff.explorer and diff.explorer._cleanup_auto_refresh then
@@ -120,6 +120,11 @@ local function cleanup_diff(tabpage)
   pcall(vim.api.nvim_del_augroup_by_name, "codediff_lifecycle_tab_" .. tabpage)
   pcall(vim.api.nvim_del_augroup_by_name, "codediff_working_sync_" .. tabpage)
   pcall(vim.api.nvim_del_augroup_by_name, "CodeDiffConflictSigns_" .. tabpage)
+
+  -- Tear down the scroll-sync group for this tab
+  pcall(function()
+    require("codediff.ui.scroll").teardown(tabpage)
+  end)
 
   -- Remove from tracking
   active_diffs[tabpage] = nil
@@ -199,16 +204,41 @@ function M.setup_autocmds()
   vim.api.nvim_create_autocmd("BufEnter", {
     group = augroup,
     callback = function()
-      local current_tab = vim.api.nvim_get_current_tabpage()
-      local active_diffs = session.get_active_diffs()
-      local diff = active_diffs[current_tab]
+      local tabpage = vim.api.nvim_get_current_tabpage()
+      -- Skip scheduling work when this tab has no diff session
+      if not session.get_active_diffs()[tabpage] then
+        return
+      end
+      -- Changing the window layout is not allowed inside BufEnter (E1312), so defer
+      vim.schedule(function()
+        -- Bail if the user switched tabs before this ran; cleanup targets the event's tab
+        if vim.api.nvim_get_current_tabpage() ~= tabpage then
+          return
+        end
+        local diff = session.get_active_diffs()[tabpage]
+        if diff then
+          local diff_win_count = count_diff_windows()
+          local is_single_window = diff.single_pane == true or diff.layout == "inline"
+          local threshold = is_single_window and 0 or 1
+          if diff_win_count <= threshold then
+            cleanup_diff(tabpage)
+          end
+        end
+      end)
+    end,
+  })
 
-      if diff then
-        local diff_win_count = count_diff_windows()
-        local is_single_window = diff.single_pane == true or diff.layout == "inline"
-        local threshold = is_single_window and 0 or 1
-        if diff_win_count <= threshold then
-          cleanup_diff(current_tab)
+  -- A wiped buffer takes its mappings with it. Drop the bookkeeping so slots
+  -- do not accumulate for buffers that no longer exist.
+  vim.api.nvim_create_autocmd("BufWipeout", {
+    group = augroup,
+    callback = function(args)
+      if args.buf then
+        require("codediff.keymap").forget_buffer(args.buf)
+        for _, diff in pairs(session.get_active_diffs()) do
+          if diff.keymaps then
+            diff.keymaps:forget_buffer(args.buf)
+          end
         end
       end
     end,

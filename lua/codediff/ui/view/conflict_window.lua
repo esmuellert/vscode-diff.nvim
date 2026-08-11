@@ -70,6 +70,19 @@ function M.setup_conflict_result_window(tabpage, session_config, original_win, m
   end
 
   -- Load real file buffer in result window
+  -- `:edit` acts on the current window and fails with E37 when the buffer it
+  -- would abandon has unsaved changes -- which the result buffer always has
+  -- once auto-merged content is applied. Window creation can also leave a
+  -- different window current (win_splitmove). Pin the result window and park a
+  -- throwaway scratch in it first, so the edit can never be refused. The real
+  -- buffer is only hidden, so in-progress merge edits survive.
+  if vim.api.nvim_win_is_valid(result_win) then
+    vim.api.nvim_set_current_win(result_win)
+    if vim.bo[vim.api.nvim_get_current_buf()].modified then
+      vim.api.nvim_win_set_buf(result_win, vim.api.nvim_create_buf(false, true))
+    end
+  end
+
   -- Use silent and swapfile handling to avoid prompts
   local old_shortmess = vim.o.shortmess
   vim.o.shortmess = old_shortmess .. "A"
@@ -109,9 +122,11 @@ function M.setup_conflict_result_window(tabpage, session_config, original_win, m
   vim.wo[result_win].wrap = false
   vim.wo[result_win].cursorline = true
 
-  -- Enable scrollbind for result window
+  -- Add the result window to the structural scroll-sync group (all 3 panes).
   vim.api.nvim_win_set_cursor(result_win, { 1, 0 })
-  vim.wo[result_win].scrollbind = true
+  local scroll = require("codediff.ui.scroll")
+  scroll.bind(tabpage, { original_win, modified_win, result_win })
+  scroll.resync(tabpage, modified_win)
 
   -- Update lifecycle with result buffer/window FIRST
   -- (This must happen before setting winbar so ensure_no_winbar knows we're in conflict mode)

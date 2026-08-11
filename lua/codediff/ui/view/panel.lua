@@ -32,6 +32,8 @@ function M.setup_explorer(tabpage, session_config, original_win, modified_win)
   if session_config.explorer_data.focus_file then
     explorer_opts.focus_file = session_config.explorer_data.focus_file
   end
+  -- Scope (#74): carry the pathspec so auto-refresh re-applies it (see refresh.lua).
+  explorer_opts.pathspec = session_config.explorer_data.pathspec
 
   local explorer_obj =
     explorer_module.create(status_result, session_config.git_root, tabpage, nil, session_config.original_revision, session_config.modified_revision, explorer_opts)
