@@ -43,11 +43,12 @@ function M.get_root_node(tree)
 end
 
 -- Setup all fold-related keymaps on a tree buffer.
--- @param opts table { tree, keymaps, bufnr }
+-- @param opts table { tree, keymaps, bufnr, tabpage }
 function M.setup_fold_keymaps(opts)
   local tree = opts.tree
   local keymaps = opts.keymaps
   local bufnr = opts.bufnr
+  local tabpage = opts.tabpage
 
   local function update_tree_view(node)
     tree:render()
@@ -148,10 +149,13 @@ function M.setup_fold_keymaps(opts)
     { key = "fold_close_all", fn = fold_close_all, desc = "Close all folds" },
   }
   local map_options = { noremap = true, silent = true, nowait = true }
+  local lifecycle = require("codediff.ui.lifecycle")
   for _, binding in ipairs(fold_bindings) do
     local key = keymaps[binding.key]
     if key then
-      vim.keymap.set("n", key, binding.fn, vim.tbl_extend("force", map_options, { buffer = bufnr, desc = binding.desc }))
+      -- Tree panels are codediff-owned scratch buffers: their mappings cannot
+      -- leak elsewhere, so they stay installed across tab switches.
+      lifecycle.set_buf_keymap(tabpage, bufnr, "n", key, binding.fn, vim.tbl_extend("force", map_options, { desc = binding.desc }), { suspendable = false })
     end
   end
 end

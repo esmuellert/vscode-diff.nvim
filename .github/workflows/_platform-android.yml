@@ -1,0 +1,85 @@
+name: Build library (Android via NDK)
+
+# Cross-compile for Android (Termux, #333) on a Linux runner using the
+# preinstalled Android NDK. No functional tests run here — the target runtime
+# is Android and the runner is Linux — so verification is limited to an ABI
+# sanity check via `readelf` (must link against bionic, not glibc).
+#
+# End-to-end verification is delegated to the issue reporter on a real device.
+#
+# Inputs:
+#   arch        - "arm64" or "x64" (used only for artifact naming; matches the
+#                 client-side detect_arch() convention in installer.lua)
+#   android_abi - NDK ABI string: "arm64-v8a" or "x86_64"
+#   artifact    - Name of the uploaded artifact (e.g. "android-arm64")
+
+on:
+  workflow_call:
+    inputs:
+      arch:
+        required: true
+        type: string
+      android_abi:
+        required: true
+        type: string
+      artifact:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ inputs.artifact }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Build library
+        env:
+          ANDROID_ABI: ${{ inputs.android_abi }}
+        run: |
+          set -euo pipefail
+          echo "Using NDK at: $ANDROID_NDK_ROOT"
+          echo "Target ABI:   $ANDROID_ABI"
+          test -d "$ANDROID_NDK_ROOT" || (echo "ANDROID_NDK_ROOT not present on runner" && exit 1)
+
+          # -DENABLE_OPENMP=OFF: Termux does not ship libgomp; the sequential
+          # fallback for character-level diff is documented in
+          # libvscode-diff/CMakeLists.txt.
+          # -DANDROID_PLATFORM=android-24: matches the Termux minimum for
+          # modern devices; older API levels are not supported by Neovim.
+          cmake -S . -B build-android \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI="$ANDROID_ABI" \
+            -DANDROID_PLATFORM=android-24 \
+            -DENABLE_OPENMP=OFF \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-android --target vscode_diff -j
+          # The CMake target's POST_BUILD command copies the .so to repo root
+          # (see libvscode-diff/CMakeLists.txt), so it's already at ./libvscode_diff.so.
+          ls -la ./libvscode_diff.so
+
+      - name: ABI sanity check (bionic-linked, no glibc SONAMEs)
+        run: |
+          set -euo pipefail
+          echo "=== NEEDED entries must be bionic (no libm.so.6 / libc.so.6) ==="
+          NEEDED=$(readelf -d ./libvscode_diff.so | grep NEEDED || true)
+          echo "$NEEDED"
+          # Any glibc SONAME (.so.<N>) is a red flag; bionic uses unversioned .so.
+          if echo "$NEEDED" | grep -qE '\.so\.[0-9]'; then
+            echo "ERROR: built .so links against versioned SONAMEs (glibc); expected bionic-only"
+            exit 1
+          fi
+          echo "$NEEDED" | grep -q "libc.so" || (echo "ERROR: missing libc.so NEEDED entry" && exit 1)
+
+      - name: Upload build artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact }}
+          path: libvscode_diff.so
+          if-no-files-found: ignore
+          retention-days: 7

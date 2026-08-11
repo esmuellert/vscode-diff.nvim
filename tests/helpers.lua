@@ -4,7 +4,7 @@
 local M = {}
 
 -- Ensure the plugin is loaded
--- This is needed because PlenaryBustedFile spawns a subprocess that may not have loaded our plugin
+-- This is needed because the test runner may not have auto-loaded plugin/codediff.lua
 function M.ensure_plugin_loaded()
   if not vim.g.loaded_codediff then
     local plugin_file = vim.fn.getcwd() .. '/plugin/codediff.lua'
@@ -12,7 +12,7 @@ function M.ensure_plugin_loaded()
       dofile(plugin_file)
     end
   end
-  -- Also ensure virtual_file autocmds are set up (plenary may clear them between tests)
+  -- Also ensure virtual_file autocmds are set up (the test runner may clear them between tests)
   local virtual_file = require('codediff.core.virtual_file')
   virtual_file.setup()
 end
@@ -245,6 +245,42 @@ function M.close_extra_tabs()
   while vim.fn.tabpagenr('$') > 1 do
     vim.cmd('tabclose')
   end
+end
+
+-- Find the first window in the current tab whose buffer has the given
+-- filetype. Returns (winid, bufnr) or (nil, nil).
+function M.find_window_by_filetype(filetype)
+  for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    local bufnr = vim.api.nvim_win_get_buf(winid)
+    if vim.bo[bufnr].filetype == filetype then
+      return winid, bufnr
+    end
+  end
+  return nil, nil
+end
+
+-- Wait for a codediff explorer window to appear in the current tab.
+-- Returns true if it appeared before the timeout.
+function M.wait_for_explorer(timeout_ms)
+  return vim.wait(timeout_ms or 5000, function()
+    return M.find_window_by_filetype("codediff-explorer") ~= nil
+  end, 50)
+end
+
+-- Wait until the current tab has a codediff session with valid buffers.
+-- Distinct from wait_for_session_ready (which polls stored_diff_result); this
+-- is the minimal readiness check the pre-conversion E2E scenarios used.
+function M.wait_for_diff_ready(timeout_ms)
+  local lifecycle = require("codediff.ui.lifecycle")
+  local tabpage = vim.api.nvim_get_current_tabpage()
+  return vim.wait(timeout_ms or 10000, function()
+    local session = lifecycle.get_session(tabpage)
+    if not session or not session.stored_diff_result then
+      return false
+    end
+    local orig, mod = lifecycle.get_buffers(tabpage)
+    return orig and mod and vim.api.nvim_buf_is_valid(orig) and vim.api.nvim_buf_is_valid(mod)
+  end, 100)
 end
 
 -- Assert that a string contains a substring

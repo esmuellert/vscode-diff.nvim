@@ -9,6 +9,7 @@ local lifecycle = require("codediff.ui.lifecycle")
 local config = require("codediff.config")
 local view = require("codediff.ui.view")
 local path = require("codediff.core.path")
+local ap = require("codediff.core.argparse")
 
 --- Parse triple-dot syntax for merge-base comparisons.
 -- @param arg string: The argument to parse
@@ -22,6 +23,57 @@ local function parse_triple_dot(arg)
     return base, target ~= "" and target or nil
   end
   return nil, nil
+end
+
+-- Resolve the git root for "working repo" modes (explorer, history) and call
+-- on_ok(git_root, is_override). Resolution order: the --repo/-C override, else
+-- the current buffer's file, else cwd. This is the single place the --repo/-C
+-- override is applied for these modes.
+local function resolve_working_root(global_opts, on_ok)
+  local override = global_opts and global_opts.repo
+  if override then
+    git.get_git_root(override, function(err, git_root)
+      if err then
+        vim.schedule(function()
+          vim.notify("Not a git repository: " .. override, vim.log.levels.ERROR)
+        end)
+        return
+      end
+      on_ok(git_root, true)
+    end)
+    return
+  end
+
+  local current_file = vim.api.nvim_buf_get_name(0)
+  local cwd = vim.fn.getcwd()
+  if current_file ~= "" then
+    git.get_git_root(current_file, function(err_file, git_root_file)
+      if not err_file then
+        on_ok(git_root_file, false)
+        return
+      end
+      -- Buffer path failed, fall back to cwd
+      git.get_git_root(cwd, function(err_cwd, git_root_cwd)
+        if not err_cwd then
+          on_ok(git_root_cwd, false)
+          return
+        end
+        vim.schedule(function()
+          vim.notify("Not in a git repository", vim.log.levels.ERROR)
+        end)
+      end)
+    end)
+  else
+    git.get_git_root(cwd, function(err_cwd, git_root)
+      if err_cwd then
+        vim.schedule(function()
+          vim.notify(err_cwd, vim.log.levels.ERROR)
+        end)
+        return
+      end
+      on_ok(git_root, false)
+    end)
+  end
 end
 
 --- Handles diffing the current buffer against a given git revision.
@@ -220,9 +272,6 @@ end
 -- line_range: optional {start, end} for line-range history (git log -L)
 local function handle_history(range, file_path, flags, line_range, global_opts)
   flags = flags or {} -- Default to empty table for backward compat
-  local current_buf = vim.api.nvim_get_current_buf()
-  local current_file = vim.api.nvim_buf_get_name(current_buf)
-  local cwd = vim.fn.getcwd()
 
   -- Expand file_path before async context (vim.fn.expand can't be called in fast event)
   local expanded_file_path = nil
@@ -299,47 +348,18 @@ local function handle_history(range, file_path, flags, line_range, global_opts)
     end)
   end
 
-  -- Try buffer path first if available
-  if current_file ~= "" then
-    git.get_git_root(current_file, function(err_file, git_root_file)
-      if not err_file then
-        open_history(git_root_file)
-        return
-      end
-
-      git.get_git_root(cwd, function(err_cwd, git_root_cwd)
-        if not err_cwd then
-          open_history(git_root_cwd)
-          return
-        end
-        vim.schedule(function()
-          vim.notify("Not in a git repository", vim.log.levels.ERROR)
-        end)
-      end)
-    end)
-  else
-    git.get_git_root(cwd, function(err_cwd, git_root)
-      if err_cwd then
-        vim.schedule(function()
-          vim.notify(err_cwd, vim.log.levels.ERROR)
-        end)
-        return
-      end
-      open_history(git_root)
-    end)
-  end
+  -- Resolve the working repo (honors --repo/-C) and open the history view.
+  resolve_working_root(global_opts, open_history)
 end
 
-local function handle_explorer(revision, revision2, global_opts)
-  -- Try buffer path first (consistent with original behavior), fallback to cwd
-  local current_buf = vim.api.nvim_get_current_buf()
-  local current_file = vim.api.nvim_buf_get_name(current_buf)
-  local cwd = vim.fn.getcwd()
+local function handle_explorer(revision, revision2, global_opts, pathspec)
+  local current_file = vim.api.nvim_buf_get_name(0)
 
-  local function open_explorer(git_root)
-    -- Compute focus_file (relative path to current buffer) for focusing in explorer
+  local function open_explorer(git_root, is_override)
+    -- Compute focus_file (relative path to current buffer) for focusing in explorer.
+    -- Skip when --repo/-C targets a different repo: the current buffer isn't in it.
     local focus_file = nil
-    if current_file ~= "" then
+    if current_file ~= "" and not is_override then
       focus_file = git.get_relative_path(current_file, git_root)
     end
 
@@ -372,6 +392,7 @@ local function handle_explorer(revision, revision2, global_opts)
           explorer_data = {
             status_result = status_result,
             focus_file = focus_file, -- Focus on current file if changed
+            pathspec = pathspec, -- Scope (#74): preserved so refresh re-applies it
           },
         }
 
@@ -399,9 +420,9 @@ local function handle_explorer(revision, revision2, global_opts)
             return
           end
 
-          git.get_diff_revisions(commit_hash, commit_hash2, git_root, function(err_status, status_result)
+          git.get_diff_revisions_with_line_stats(commit_hash, commit_hash2, git_root, function(err_status, status_result)
             process_status(err_status, status_result, commit_hash, commit_hash2)
-          end)
+          end, pathspec)
         end)
       end)
     elseif revision then
@@ -415,61 +436,96 @@ local function handle_explorer(revision, revision2, global_opts)
         end
 
         -- Get diff between revision and working tree
-        git.get_diff_revision(commit_hash, git_root, function(err_status, status_result)
+        git.get_diff_revision_with_line_stats(commit_hash, git_root, function(err_status, status_result)
           process_status(err_status, status_result, commit_hash, "WORKING")
-        end)
+        end, pathspec)
       end)
     else
       -- Get git status (current changes)
-      git.get_status(git_root, function(err_status, status_result)
+      git.get_status_with_line_stats(git_root, function(err_status, status_result)
         -- Pass nil for revisions to enable "Status Mode" in explorer (separate Staged/Unstaged groups)
         process_status(err_status, status_result, nil, nil)
-      end)
+      end, pathspec)
     end
   end
 
-  -- Try buffer path first if available
-  if current_file ~= "" then
-    git.get_git_root(current_file, function(err_file, git_root_file)
-      if not err_file then
-        open_explorer(git_root_file)
+  -- Resolve the working repo (honors --repo/-C) and open the explorer.
+  resolve_working_root(global_opts, open_explorer)
+end
+
+-- Handle explorer for staged-only view (--staged / --cached flag).
+-- Matches diffview.nvim's `--staged`: compare the index against the given
+-- revision (defaulting to HEAD). Only files whose index differs from that
+-- revision are shown; opening a file diffs `<revision>` vs `:0` (the index).
+--
+-- revision: git revision to compare the index against (nil defaults to "HEAD")
+-- global_opts: layout / exit_on_close / repo overrides
+-- pathspec: optional trailing pathspec (#74)
+local function handle_explorer_staged(revision, global_opts, pathspec)
+  local current_file = vim.api.nvim_buf_get_name(0)
+  local rev = revision or "HEAD"
+
+  local function open_explorer(git_root, is_override)
+    local focus_file = nil
+    if current_file ~= "" and not is_override then
+      focus_file = git.get_relative_path(current_file, git_root)
+    end
+
+    git.resolve_revision(rev, git_root, function(err_resolve, commit_hash)
+      if err_resolve then
+        vim.schedule(function()
+          vim.notify(err_resolve, vim.log.levels.ERROR)
+        end)
         return
       end
 
-      -- Buffer path failed, try cwd as fallback
-      git.get_git_root(cwd, function(err_cwd, git_root_cwd)
-        if not err_cwd then
-          open_explorer(git_root_cwd)
-          return
-        end
-        -- Both failed
+      git.get_diff_staged(commit_hash, git_root, function(err_status, status_result)
         vim.schedule(function()
-          vim.notify("Not in a git repository", vim.log.levels.ERROR)
+          if err_status then
+            vim.notify(err_status, vim.log.levels.ERROR)
+            return
+          end
+
+          if #status_result.staged == 0 then
+            vim.notify("No staged changes to show", vim.log.levels.INFO)
+            return
+          end
+
+          ---@type SessionConfig
+          local session_config = {
+            mode = "explorer",
+            git_root = git_root,
+            original = path.empty(),
+            modified = path.empty(),
+            original_revision = commit_hash,
+            modified_revision = ":0", -- Index; tree.lua/refresh.lua key off this to render as staged-only mode
+            layout = global_opts.layout,
+            exit_on_close = global_opts.exit_on_close,
+            explorer_data = {
+              status_result = status_result,
+              focus_file = focus_file,
+              pathspec = pathspec,
+            },
+          }
+
+          view.create(session_config, "")
         end)
-      end)
-    end)
-  else
-    -- No buffer, try cwd directly
-    git.get_git_root(cwd, function(err_cwd, git_root)
-      if err_cwd then
-        vim.schedule(function()
-          vim.notify(err_cwd, vim.log.levels.ERROR)
-        end)
-        return
-      end
-      open_explorer(git_root)
+      end, pathspec)
     end)
   end
+
+  resolve_working_root(global_opts, open_explorer)
 end
 
 -- Wrapper for merge-base explorer mode: computes merge-base first, then opens explorer
-local function handle_explorer_merge_base(base_rev, target_rev, global_opts)
+local function handle_explorer_merge_base(base_rev, target_rev, global_opts, pathspec)
   local current_buf = vim.api.nvim_get_current_buf()
   local current_file = vim.api.nvim_buf_get_name(current_buf)
   local cwd = vim.fn.getcwd()
   local buftype = vim.api.nvim_get_option_value("buftype", { buf = current_buf })
-  -- A file usually has a buftype of "" so filter out `nofile` or dashboards etc
-  local path_for_root = buftype == "" and current_file ~= "" and current_file or cwd
+  -- A file usually has a buftype of "" so filter out `nofile` or dashboards etc.
+  -- --repo/-C overrides the seed so the merge base is computed in that repo.
+  local path_for_root = (global_opts and global_opts.repo) or (buftype == "" and current_file ~= "" and current_file or cwd)
 
   git.get_git_root(path_for_root, function(err_root, git_root)
     if err_root then
@@ -491,9 +547,9 @@ local function handle_explorer_merge_base(base_rev, target_rev, global_opts)
       -- Schedule the explorer call to run in main context (handle_explorer uses nvim_get_current_buf)
       vim.schedule(function()
         if target_rev then
-          handle_explorer(merge_base_hash, target_rev, global_opts)
+          handle_explorer(merge_base_hash, target_rev, global_opts, pathspec)
         else
-          handle_explorer(merge_base_hash, nil, global_opts)
+          handle_explorer(merge_base_hash, nil, global_opts, pathspec)
         end
       end)
     end)
@@ -621,193 +677,277 @@ function M.vscode_merge(opts, global_opts)
   end
 end
 
+-- ── Command tree (argparse) ────────────────────────────────────────────────
+-- The :CodeDiff grammar is declared once as an argparse Command tree. The
+-- handlers reproduce the previous dispatch exactly; revision/file/dir and
+-- triple-dot detection stays in the handlers because it touches the filesystem.
+
+-- Translate global flags into the { layout, exit_on_close } table handlers expect.
+local function to_global_opts(m)
+  local layout
+  if m:get_flag("inline") then
+    layout = "inline"
+  elseif m:get_flag("side_by_side") then
+    layout = "side-by-side"
+  end
+  -- Expand ~ and env vars in the --repo/-C path once, here at the boundary, so
+  -- every consumer gets a filesystem-ready seed for git-root resolution.
+  local repo = m:get_one("repo")
+  repo = repo and repo ~= "" and vim.fn.expand(repo) or nil
+  return { layout = layout, exit_on_close = m:get_flag("exit_on_close") or nil, repo = repo }
+end
+
+-- Expand % (current file) and ~/env in a path argument.
+local function expand_arg_path(p)
+  if p == "%" then
+    return vim.api.nvim_buf_get_name(0)
+  end
+  return vim.fn.expand(p)
+end
+
+-- Cached git revision candidates (completion fires on every keystroke).
+local rev_cache = { candidates = nil, git_root = nil, timestamp = 0 }
+local function rev_candidates()
+  local now = vim.loop.now() / 1000
+  local git_root = git.get_git_root_sync(vim.fn.getcwd())
+  if rev_cache.candidates and rev_cache.git_root == git_root and (now - rev_cache.timestamp) < 5 then
+    return rev_cache.candidates
+  end
+  local cands = git.get_rev_candidates(git_root)
+  rev_cache.candidates, rev_cache.git_root, rev_cache.timestamp = cands, git_root, now
+  return cands
+end
+
+-- Completor: git refs, plus their `ref...` merge-base variants.
+local function complete_revisions(ctx)
+  local lead = ctx.arg_lead or ""
+  local base = lead:match("^(.+)%.%.%.$")
+  local out = {}
+  for _, r in ipairs(rev_candidates()) do
+    if base then
+      table.insert(out, base .. "..." .. r)
+    else
+      table.insert(out, r)
+      table.insert(out, r .. "...")
+    end
+  end
+  return out
+end
+
+-- Completor: file paths.
+local function complete_files(ctx)
+  return vim.fn.getcompletion(ctx.arg_lead or "", "file")
+end
+
+-- Completor: directory paths (for --repo/-C).
+local function complete_dirs(ctx)
+  return vim.fn.getcompletion(ctx.arg_lead or "", "dir")
+end
+
+-- Build the :CodeDiff command tree.
+local function build_app()
+  local Arg = ap.Arg
+
+  local app = ap
+    .Command
+    .new("CodeDiff")
+    :about("VSCode-style diff view")
+    :arg(Arg.flag("inline"):long("--inline"):global(true))
+    :arg(Arg.flag("side_by_side"):long("--side-by-side"):global(true))
+    :arg(Arg.flag("exit_on_close"):long("--exit-on-close"):global(true))
+    -- --repo/-C <path>: operate on the repo containing <path> (root or any subdir)
+    -- instead of the current buffer/cwd. Applies to explorer and history modes.
+    :arg(
+      Arg.new("repo"):long("--repo"):short("-C"):global(true):completor(complete_dirs)
+    )
+    -- --staged / --cached: show only the diff between the index and [rev1]
+    -- (defaulting to HEAD). Mirrors :DiffviewOpen --staged (#352).
+    :arg(
+      Arg.flag("staged"):long("--staged")
+    )
+    :arg(Arg.flag("cached"):long("--cached"))
+    -- Default action: explorer for the working tree, a revision, or two revisions.
+    :arg(Arg.new("rev1"):completor(complete_revisions))
+    :arg(Arg.new("rev2"):completor(complete_revisions))
+    -- Operands after `--` are git pathspecs (#74); complete them as file paths.
+    :trailing(Arg.new("pathspec"):completor(complete_files))
+    :handler(function(m)
+      local go = to_global_opts(m)
+      -- Tokens after `--` are git pathspecs that scope the file list (issue #74).
+      local trailing = m:trailing()
+      local pathspec = #trailing > 0 and trailing or nil
+      local a, b = m:get_one("rev1"), m:get_one("rev2")
+      local staged = m:get_flag("staged") or m:get_flag("cached")
+      if staged then
+        -- Parity with diffview: `--staged` accepts a single optional revision.
+        if b then
+          vim.notify("--staged accepts at most one revision", vim.log.levels.ERROR)
+          return
+        end
+        if a and parse_triple_dot(a) then
+          vim.notify("--staged does not support triple-dot merge-base ranges", vim.log.levels.ERROR)
+          return
+        end
+        handle_explorer_staged(a, go, pathspec)
+        return
+      end
+      if not a then
+        handle_explorer(nil, nil, go, pathspec)
+        return
+      end
+      if b and not pathspec then
+        local e1, e2 = vim.fn.expand(a), vim.fn.expand(b)
+        if vim.fn.isdirectory(e1) == 1 and vim.fn.isdirectory(e2) == 1 then
+          handle_dir_diff(e1, e2, go)
+          return
+        end
+      end
+      local base, target = parse_triple_dot(a)
+      if base then
+        handle_explorer_merge_base(base, target, go, pathspec)
+      elseif b then
+        handle_explorer(a, b, go, pathspec)
+      else
+        handle_explorer(a, nil, go, pathspec)
+      end
+    end)
+
+  app:subcommand(ap.Command.new("file"):arg(Arg.new("a"):completor(complete_revisions)):arg(Arg.new("b"):completor(complete_files)):handler(function(m)
+    local go = to_global_opts(m)
+    local a, b = m:get_one("a"), m:get_one("b")
+    if a and b then
+      if vim.fn.filereadable(a) == 1 and vim.fn.filereadable(b) == 1 then
+        handle_file_diff(a, b, go)
+      else
+        handle_git_diff(a, b, go)
+      end
+    elseif a then
+      local base, target = parse_triple_dot(a)
+      if base then
+        handle_git_diff_merge_base(base, target, go)
+      else
+        handle_git_diff(a, nil, go)
+      end
+    else
+      vim.notify("Usage: :CodeDiff file <revision> [revision2] OR :CodeDiff file <file_a> <file_b>", vim.log.levels.ERROR)
+    end
+  end))
+
+  app:subcommand(ap.Command.new("dir"):arg(Arg.new("d1"):completor(complete_files)):arg(Arg.new("d2"):completor(complete_files)):handler(function(m)
+    local d1, d2 = m:get_one("d1"), m:get_one("d2")
+    if d1 and d2 then
+      handle_dir_diff(d1, d2, to_global_opts(m))
+    else
+      vim.notify("Usage: :CodeDiff dir <dir1> <dir2>", vim.log.levels.ERROR)
+    end
+  end))
+
+  app:subcommand(
+    ap.Command
+      .new("history")
+      :arg(Arg.new("arg1"):completor(complete_revisions))
+      :arg(Arg.new("arg2"):completor(complete_files))
+      :arg(Arg.flag("reverse"):long("--reverse"):short("-r"))
+      :arg(Arg.new("base"):long("--base"):short("-b"):completor(complete_revisions))
+      :handler(function(m)
+        local go = to_global_opts(m)
+        local flags = { reverse = m:get_flag("reverse"), base = m:get_one("base") }
+        local arg1, arg2 = m:get_one("arg1"), m:get_one("arg2")
+        local range, file_path
+        if arg1 and arg2 then
+          range = arg1
+          file_path = expand_arg_path(arg2)
+        elseif arg1 then
+          local expanded = expand_arg_path(arg1)
+          if vim.fn.filereadable(expanded) == 1 then
+            file_path = expanded
+          else
+            range = arg1
+          end
+        end
+        local line_range = m:range()
+        if line_range and not file_path then
+          local buf_name = vim.api.nvim_buf_get_name(0)
+          if buf_name ~= "" then
+            file_path = buf_name
+          else
+            vim.notify("Line-range history requires a file buffer", vim.log.levels.ERROR)
+            return
+          end
+        end
+        handle_history(range, file_path, flags, line_range, go)
+      end)
+  )
+
+  app:subcommand(ap.Command.new("merge"):arg(Arg.new("file"):completor(complete_files)):handler(function(m)
+    local file = m:get_one("file")
+    if not file then
+      vim.notify("Usage: :CodeDiff merge <filename>", vim.log.levels.ERROR)
+      return
+    end
+    M.vscode_merge({ fargs = { file } }, to_global_opts(m))
+  end))
+
+  app:subcommand(ap.Command.new("install"):handler(function(m)
+    local force = m:bang()
+    local installer = require("codediff.core.installer")
+    if force then
+      vim.notify("Reinstalling libvscode-diff...", vim.log.levels.INFO)
+    end
+    local success, err = installer.install({ force = force, silent = false })
+    if success then
+      vim.notify("libvscode-diff installation successful!", vim.log.levels.INFO)
+    else
+      vim.notify("Installation failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+    end
+  end))
+
+  return app
+end
+
+local _app
+local function get_app()
+  _app = _app or build_app()
+  return _app
+end
+
+-- Tokens the completion engine sees: drop the command name and the partial lead.
+local function completion_prior(cmd_line, arg_lead)
+  local toks = vim.split(cmd_line, "%s+", { trimempty = true })
+  table.remove(toks, 1)
+  if arg_lead ~= "" and toks[#toks] == arg_lead then
+    table.remove(toks)
+  end
+  return toks
+end
+
+-- Completion entry point shared by :CodeDiff and :VscodeDiff.
+function M.complete(arg_lead, cmd_line)
+  return ap.complete.complete(get_app(), completion_prior(cmd_line, arg_lead), arg_lead)
+end
+
 function M.vscode_diff(opts)
-  -- Check if current tab is a diff view and toggle (close) it if so
+  -- Toggle: close the diff view if the current tab already is one.
   local current_tab = vim.api.nvim_get_current_tabpage()
   if lifecycle.get_session(current_tab) then
     lifecycle.close(current_tab)
     return
   end
 
-  -- Pre-parse global flags; strip them so subcommand dispatch sees clean args
-  local global_opts = {}
-  local args = {}
-  for _, arg in ipairs(opts.fargs) do
-    if arg == "--inline" then
-      global_opts.layout = "inline"
-    elseif arg == "--side-by-side" then
-      global_opts.layout = "side-by-side"
-    elseif arg == "--exit-on-close" then
-      global_opts.exit_on_close = true
-    else
-      table.insert(args, arg)
-    end
+  -- Normalize the `install!` alias into the `install` subcommand + bang.
+  local fargs, bang = opts.fargs, opts.bang
+  if fargs[1] == "install!" then
+    fargs = vim.list_slice(fargs, 1, #fargs)
+    fargs[1] = "install"
+    bang = true
   end
 
-  if #args == 0 then
-    -- :CodeDiff without arguments opens explorer mode
-    handle_explorer(nil, nil, global_opts)
-    return
-  end
-
-  -- Auto-detect two directory arguments: :CodeDiff dir1 dir2
-  if #args == 2 then
-    local expanded1 = vim.fn.expand(args[1])
-    local expanded2 = vim.fn.expand(args[2])
-    if vim.fn.isdirectory(expanded1) == 1 and vim.fn.isdirectory(expanded2) == 1 then
-      handle_dir_diff(expanded1, expanded2, global_opts)
-      return
-    end
-  end
-
-  local subcommand = args[1]
-
-  if subcommand == "merge" then
-    -- :CodeDiff merge <filename> - Merge Tool Mode
-    if #args ~= 2 then
-      vim.notify("Usage: :CodeDiff merge <filename>", vim.log.levels.ERROR)
-      return
-    end
-    M.vscode_merge({ fargs = { args[2] } }, global_opts)
-  elseif subcommand == "file" then
-    if #args == 2 then
-      -- Check for triple-dot syntax: :CodeDiff file main...
-      local base, target = parse_triple_dot(args[2])
-      if base then
-        handle_git_diff_merge_base(base, target, global_opts)
-      else
-        -- :CodeDiff file HEAD
-        handle_git_diff(args[2], nil, global_opts)
-      end
-    elseif #args == 3 then
-      -- Check if arguments are files or revisions
-      local arg1 = args[2]
-      local arg2 = args[3]
-
-      -- If both are readable files, treat as file diff
-      if vim.fn.filereadable(arg1) == 1 and vim.fn.filereadable(arg2) == 1 then
-        -- :CodeDiff file file_a.txt file_b.txt
-        handle_file_diff(arg1, arg2, global_opts)
-      else
-        -- Assume revisions: :CodeDiff file main HEAD
-        handle_git_diff(arg1, arg2, global_opts)
-      end
-    else
-      vim.notify("Usage: :CodeDiff file <revision> [revision2] OR :CodeDiff file <file_a> <file_b>", vim.log.levels.ERROR)
-    end
-  elseif subcommand == "dir" then
-    -- :CodeDiff dir dir1 dir2
-    if #args ~= 3 then
-      vim.notify("Usage: :CodeDiff dir <dir1> <dir2>", vim.log.levels.ERROR)
-      return
-    end
-    handle_dir_diff(args[2], args[3], global_opts)
-  elseif subcommand == "history" then
-    -- :CodeDiff history [range] [file] [--reverse|-r]
-    -- :'<,'>CodeDiff history                  - line-range history for selection
-    -- Examples:
-    --   :CodeDiff history                    - last 100 commits
-    --   :CodeDiff history HEAD~10            - last 10 commits
-    --   :CodeDiff history origin/main..HEAD  - commits in range
-    --   :CodeDiff history HEAD~10 %          - last 10 commits for current file
-    --   :CodeDiff history %                  - history for current file
-    --   :CodeDiff history path/to/file.lua   - history for specific file
-    --   :CodeDiff history --reverse          - last 100 commits (oldest first)
-    --   :CodeDiff history HEAD~10 -r         - last 10 commits (oldest first)
-
-    -- Import flag parser
-    local args_parser = require("codediff.core.args")
-
-    -- Define flag spec for history command
-    local flag_spec = {
-      ["--reverse"] = { short = "-r", type = "boolean" },
-      ["--base"] = { short = "-b", type = "string" },
-    }
-
-    -- Parse args: separate positional from flags
-    local remaining_args = vim.list_slice(args, 2) -- Skip "history" subcommand
-    local positional, flags, parse_err = args_parser.parse_args(remaining_args, flag_spec)
-
-    if parse_err then
-      vim.notify("Error: " .. parse_err, vim.log.levels.ERROR)
-      return
-    end
-
-    -- Use positional[1], positional[2] instead of args[2], args[3]
-    local arg1 = positional[1]
-    local arg2 = positional[2]
-    local range = nil
-    local file_path = nil
-
-    -- Helper to expand path (handles % and normal paths)
-    local function expand_path(p)
-      if p == "%" then
-        return vim.api.nvim_buf_get_name(0)
-      else
-        return vim.fn.expand(p)
-      end
-    end
-
-    if arg1 and arg2 then
-      -- Two params: first is range, second is file_path
-      range = arg1
-      file_path = expand_path(arg2)
-    elseif arg1 then
-      -- One param: try as file_path first, otherwise treat as range
-      local expanded = expand_path(arg1)
-      if vim.fn.filereadable(expanded) == 1 then
-        file_path = expanded
-      else
-        range = arg1
-      end
-    end
-
-    -- Detect visual range: opts.range == 2 means a range was explicitly given
-    -- (e.g., :'<,'>CodeDiff history)
-    local line_range = nil
-    if opts.range == 2 then
-      line_range = { opts.line1, opts.line2 }
-      -- Visual range implies current file
-      if not file_path then
-        local buf_name = vim.api.nvim_buf_get_name(0)
-        if buf_name ~= "" then
-          file_path = buf_name
-        else
-          vim.notify("Line-range history requires a file buffer", vim.log.levels.ERROR)
-          return
-        end
-      end
-    end
-
-    handle_history(range, file_path, flags, line_range, global_opts)
-  elseif subcommand == "install" or subcommand == "install!" then
-    -- :CodeDiff install or :CodeDiff install!
-    -- Handle both :CodeDiff! install and :CodeDiff install!
-    local force = opts.bang or subcommand == "install!"
-    local installer = require("codediff.core.installer")
-
-    if force then
-      vim.notify("Reinstalling libvscode-diff...", vim.log.levels.INFO)
-    end
-
-    local success, err = installer.install({ force = force, silent = false })
-
-    if success then
-      vim.notify("libvscode-diff installation successful!", vim.log.levels.INFO)
-    else
-      vim.notify("Installation failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
-    end
-  else
-    -- :CodeDiff <revision> [revision2] - opens explorer mode
-    -- Check for triple-dot syntax: :CodeDiff main...
-    local base, target = parse_triple_dot(subcommand)
-    if base then
-      handle_explorer_merge_base(base, target, global_opts)
-    elseif #args == 2 then
-      handle_explorer(args[1], args[2], global_opts)
-    else
-      handle_explorer(subcommand, nil, global_opts)
-    end
+  local _, err = get_app():execute(fargs, {
+    bang = bang,
+    range = opts.range == 2 and { opts.line1, opts.line2 } or nil,
+  })
+  if err then
+    vim.notify("CodeDiff: " .. tostring(err), vim.log.levels.ERROR)
   end
 end
 

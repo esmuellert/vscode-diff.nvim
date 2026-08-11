@@ -49,6 +49,7 @@ local function clear_buffer_highlights(bufnr)
   vim.api.nvim_buf_clear_namespace(bufnr, highlights.ns_conflict, 0, -1)
   local ns_inline = vim.api.nvim_create_namespace("codediff-inline")
   vim.api.nvim_buf_clear_namespace(bufnr, ns_inline, 0, -1)
+  require("codediff.ui.gutter_signs").clear_buffer(bufnr)
 end
 
 M.clear_buffer_highlights = clear_buffer_highlights
@@ -119,8 +120,14 @@ local function resume_diff(tabpage)
     return
   end
 
-  -- Check if buffers still exist
+  -- Check if buffers still exist. Dropping the session here would otherwise
+  -- orphan its registry, leaving codediff's mappings installed on whichever
+  -- pane survived and its saved user mappings unreachable.
   if not vim.api.nvim_buf_is_valid(diff.original_bufnr) or not vim.api.nvim_buf_is_valid(diff.modified_bufnr) then
+    if diff.keymaps then
+      diff.keymaps:dispose()
+      diff.keymaps = nil
+    end
     active_diffs[tabpage] = nil
     return
   end
@@ -195,7 +202,9 @@ local function resume_diff(tabpage)
       core.render_diff(diff.original_bufnr, diff.modified_bufnr, original_lines, modified_lines, lines_diff)
     end
 
-    -- Re-sync scrollbind ONLY if diff was recomputed and not inline mode
+    -- Re-align scroll-sync ONLY if diff was recomputed and not inline mode.
+    -- Fillers may have changed, so rebuild the alignment and re-sync in place
+    -- (the structural sync preserves scroll position, no reset-to-top needed).
     if
       diff_was_recomputed
       and diff.layout ~= "inline"
@@ -207,43 +216,22 @@ local function resume_diff(tabpage)
       local current_win = vim.api.nvim_get_current_win()
       local result_win = diff.result_win and vim.api.nvim_win_is_valid(diff.result_win) and diff.result_win or nil
 
-      if current_win == diff.original_win or current_win == diff.modified_win or current_win == result_win then
-        -- Step 1: Remember cursor position (line AND column)
-        local saved_cursor = vim.api.nvim_win_get_cursor(current_win)
-
-        -- Step 2: Reset all to line 1 (baseline)
-        vim.api.nvim_win_set_cursor(diff.original_win, { 1, 0 })
-        vim.api.nvim_win_set_cursor(diff.modified_win, { 1, 0 })
-        if result_win then
-          vim.api.nvim_win_set_cursor(result_win, { 1, 0 })
-        end
-
-        -- Step 3: Re-establish scrollbind (reset sync state)
-        vim.wo[diff.original_win].scrollbind = false
-        vim.wo[diff.modified_win].scrollbind = false
-        if result_win then
-          vim.wo[result_win].scrollbind = false
-        end
-        vim.wo[diff.original_win].scrollbind = true
-        vim.wo[diff.modified_win].scrollbind = true
-        if result_win then
-          vim.wo[result_win].scrollbind = true
-        end
-
-        -- Re-apply critical window options that might have been reset
-        vim.wo[diff.original_win].wrap = false
-        vim.wo[diff.modified_win].wrap = false
-        if result_win then
-          vim.wo[result_win].wrap = false
-        end
-
-        -- Step 4: Restore cursor position with both line and column
-        pcall(vim.api.nvim_win_set_cursor, diff.original_win, saved_cursor)
-        pcall(vim.api.nvim_win_set_cursor, diff.modified_win, saved_cursor)
-        if result_win then
-          pcall(vim.api.nvim_win_set_cursor, result_win, saved_cursor)
-        end
+      -- Re-apply critical window options that might have been reset
+      vim.wo[diff.original_win].wrap = false
+      vim.wo[diff.modified_win].wrap = false
+      if result_win then
+        vim.wo[result_win].wrap = false
       end
+
+      local scroll = require("codediff.ui.scroll")
+      local wins = { diff.original_win, diff.modified_win }
+      if result_win then
+        wins[#wins + 1] = result_win
+      end
+      scroll.bind(tabpage, wins)
+      -- Prefer the focused diff window as the alignment leader.
+      local leader = (current_win == diff.original_win or current_win == diff.modified_win or current_win == result_win) and current_win or diff.modified_win
+      scroll.refresh(tabpage, leader)
     end
   end
 

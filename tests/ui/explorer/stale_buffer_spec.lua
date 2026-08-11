@@ -6,7 +6,7 @@
 
 local h = dofile("tests/helpers.lua")
 
--- Ensure plugin is loaded (needed for PlenaryBustedFile subprocess)
+-- Ensure plugin is loaded (needed when the test framework isolates specs)
 h.ensure_plugin_loaded()
 
 -- Setup CodeDiff command for tests

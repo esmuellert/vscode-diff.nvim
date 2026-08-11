@@ -1,6 +1,6 @@
 -- Test: Move rendering in side-by-side mode
--- Verifies CodeDiffLineMove highlights, sign column symbols, and number_hl_group
--- on moved code blocks detected by the diff engine.
+-- Verifies CodeDiffLineMove highlights and number_hl_group on moved code
+-- blocks detected by the diff engine.
 
 local view = require("codediff.ui.view")
 local diff = require("codediff.core.diff")
@@ -67,20 +67,6 @@ local function lines_with_hl(bufnr, hl_group)
   return set
 end
 
--- Return map of 0-indexed line -> sign_text for extmarks that have sign_text
-local function signs_on_buf(bufnr)
-  local marks = get_extmarks(bufnr)
-  local map = {}
-  for _, m in ipairs(marks) do
-    local details = m[4]
-    if details.sign_text then
-      -- Neovim pads sign_text to 2 chars; trim trailing whitespace for comparison
-      map[m[2]] = { text = vim.trim(details.sign_text), hl = details.sign_hl_group }
-    end
-  end
-  return map
-end
-
 -- Return map of 0-indexed line -> number_hl_group
 local function number_hl_on_buf(bufnr)
   local marks = get_extmarks(bufnr)
@@ -92,6 +78,12 @@ local function number_hl_on_buf(bufnr)
     end
   end
   return map
+end
+
+local function assert_no_highlight_signs(bufnr)
+  for _, mark in ipairs(get_extmarks(bufnr)) do
+    assert.is_nil(mark[4].sign_text)
+  end
 end
 
 describe("Move rendering (side-by-side)", function()
@@ -158,89 +150,15 @@ describe("Move rendering (side-by-side)", function()
   end)
 
   -- ──────────────────────────────────────────────────────────────────────────
-  -- Test 2: Sign column symbols correct on original side
-  -- ──────────────────────────────────────────────────────────────────────────
-  it("sets correct sign column symbols on original side", function()
-    local tabpage, lp, rp = create_move_view(orig, mod, "sign_orig")
-
-    local orig_buf = lifecycle.get_buffers(tabpage)
-    assert(orig_buf, "original buffer must exist")
-
-    local signs = signs_on_buf(orig_buf)
-
-    local block_len = orig_last - orig_first + 1
-
-    for line = orig_first, orig_last do
-      local line_0 = line - 1
-      assert(signs[line_0], "sign expected on original line " .. line)
-
-      local expected_sign
-      if block_len == 1 then
-        expected_sign = "─"
-      elseif line == orig_first then
-        expected_sign = "┌"
-      elseif line == orig_last then
-        expected_sign = "└"
-      else
-        expected_sign = "│"
-      end
-
-      assert.equal(expected_sign, signs[line_0].text,
-        "original line " .. line .. " sign mismatch")
-      assert.equal("CodeDiffMoveTo", signs[line_0].hl,
-        "original line " .. line .. " sign_hl_group mismatch")
-    end
-
-    vim.fn.delete(lp)
-    vim.fn.delete(rp)
-  end)
-
-  -- ──────────────────────────────────────────────────────────────────────────
-  -- Test 3: Sign column symbols correct on modified side
-  -- ──────────────────────────────────────────────────────────────────────────
-  it("sets correct sign column symbols on modified side", function()
-    local tabpage, lp, rp = create_move_view(orig, mod, "sign_mod")
-
-    local _, mod_buf = lifecycle.get_buffers(tabpage)
-    assert(mod_buf, "modified buffer must exist")
-
-    local signs = signs_on_buf(mod_buf)
-
-    local block_len = mod_last - mod_first + 1
-
-    for line = mod_first, mod_last do
-      local line_0 = line - 1
-      assert(signs[line_0], "sign expected on modified line " .. line)
-
-      local expected_sign
-      if block_len == 1 then
-        expected_sign = "─"
-      elseif line == mod_first then
-        expected_sign = "┌"
-      elseif line == mod_last then
-        expected_sign = "└"
-      else
-        expected_sign = "│"
-      end
-
-      assert.equal(expected_sign, signs[line_0].text,
-        "modified line " .. line .. " sign mismatch")
-      assert.equal("CodeDiffMoveTo", signs[line_0].hl,
-        "modified line " .. line .. " sign_hl_group mismatch")
-    end
-
-    vim.fn.delete(lp)
-    vim.fn.delete(rp)
-  end)
-
-  -- ──────────────────────────────────────────────────────────────────────────
-  -- Test 4: number_hl_group is CodeDiffMoveTo on moved lines
+  -- Test 2: number_hl_group is CodeDiffMoveTo on moved lines
   -- ──────────────────────────────────────────────────────────────────────────
   it("sets number_hl_group to CodeDiffMoveTo on moved lines", function()
     local tabpage, lp, rp = create_move_view(orig, mod, "numhl")
 
     local orig_buf, mod_buf = lifecycle.get_buffers(tabpage)
     assert(orig_buf and mod_buf, "buffers must exist")
+    assert_no_highlight_signs(orig_buf)
+    assert_no_highlight_signs(mod_buf)
 
     -- Original side
     local nhl_orig = number_hl_on_buf(orig_buf)
@@ -261,7 +179,7 @@ describe("Move rendering (side-by-side)", function()
   end)
 
   -- ──────────────────────────────────────────────────────────────────────────
-  -- Test 5: No move rendering when compute_moves = false
+  -- Test 3: No move rendering when compute_moves = false
   -- ──────────────────────────────────────────────────────────────────────────
   it("produces no CodeDiffLineMove extmarks when compute_moves is false", function()
     local tabpage, lp, rp = create_move_view(orig, mod, "nomove", {
@@ -281,8 +199,8 @@ describe("Move rendering (side-by-side)", function()
     vim.fn.delete(rp)
   end)
 
-  -- Test 6: All test pairs — moved lines get correct highlights and signs
-  it("renders correct highlights and signs for ALL test pairs", function()
+  -- Test 4: All test pairs — moved lines get correct highlights
+  it("renders correct highlights for ALL test pairs", function()
     local pairs_dir = "scripts/test_pairs"
     local handle = vim.loop.fs_scandir(pairs_dir)
     assert.is_truthy(handle, "test_pairs directory should exist")

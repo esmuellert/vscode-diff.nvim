@@ -1,0 +1,61 @@
+name: Build library (macOS)
+
+# Native macOS build. CMake auto-detects Homebrew's libomp for OpenMP via the
+# fallback path in libvscode-diff/CMakeLists.txt.
+#
+# Inputs:
+#   arch     - "x64" (Intel) or "arm64" (Apple Silicon)
+#   runs-on  - GitHub runner label (macos-15-intel or macos-latest)
+#   artifact - Name of the uploaded artifact (e.g. "macos-arm64")
+
+on:
+  workflow_call:
+    inputs:
+      arch:
+        required: true
+        type: string
+      runs-on:
+        required: true
+        type: string
+      artifact:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ inputs.artifact }}
+    runs-on: ${{ inputs.runs-on }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 'lts/*'
+
+      - name: Setup Neovim
+        uses: ./.github/actions/setup-neovim
+        with:
+          arch: ${{ inputs.arch }}
+
+      - name: Build library
+        run: make build
+
+      - name: Run C unit tests
+        run: make test-c
+
+      - name: Run Neovim tests
+        run: make test-lua
+
+      - name: Upload build artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact }}
+          path: libvscode_diff.dylib
+          if-no-files-found: ignore
+          retention-days: 7

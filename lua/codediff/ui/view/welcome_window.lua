@@ -5,17 +5,13 @@ local welcome = require("codediff.ui.welcome")
 local option_names = {
   "number",
   "relativenumber",
-  "signcolumn",
   "foldcolumn",
-  "statuscolumn",
 }
 
 local welcome_opts = {
   number = false,
   relativenumber = false,
-  signcolumn = "no",
   foldcolumn = "0",
-  statuscolumn = " ",
 }
 
 local function is_valid_window(winid)

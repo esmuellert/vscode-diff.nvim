@@ -85,7 +85,7 @@ Coverage:
 - VSCode parity (2): line+char Myers, structure consistency
 - Edge cases (3): zero/negative timeout, empty files
 
-Run: `nvim --headless -u tests/init.lua -c "lua require('plenary.test_harness').test_file('tests/timeout_spec.lua')"`
+Run: `nvim --headless -u tests/init.lua -c "lua require('tests.framework').run_and_exit('tests/timeout_spec.lua')"`
 
 ## Files Modified
 
@@ -97,7 +97,7 @@ Run: `nvim --headless -u tests/init.lua -c "lua require('plenary.test_harness').
 6. `lua/vscode-diff/auto_refresh.lua` - Pass timeout from config
 7. `lua/vscode-diff/commands.lua` - Pass timeout from config (2 places)
 8. `tests/timeout_spec.lua` - Comprehensive test suite
-9. `tests/run_plenary_tests.sh` - Added to test runner
+9. `tests/run_tests.sh` - Added to test runner
 
 ---
 
