@@ -192,6 +192,46 @@ describe("Gutter signs", function()
     assert.equals(0, find_sign(session.original_bufnr, "┌").row)
     assert.equals(1, find_sign(session.original_bufnr, "│").row)
     assert.equals(2, find_sign(session.original_bufnr, "└").row)
+
+    -- Priority, not extmark creation order, has to decide the winner.
+    local changed_priority = find_sign(session.original_bufnr, "－").priority
+    for _, glyph in ipairs({ "┌", "│", "└" }) do
+      assert.is_true(find_sign(session.original_bufnr, glyph).priority > changed_priority)
+    end
+  end)
+
+  it("keeps move signs at their standalone priority when changed signs are enabled", function()
+    config.options.diff.gutter_signs = false
+    gutter_signs.set_move_range(session.original_bufnr, 1, 1)
+    local without_gutter = find_sign(session.original_bufnr, "─").priority
+
+    gutter_signs.clear_buffer(session.original_bufnr)
+    config.options.diff.gutter_signs = { changed_priority = 100 }
+    gutter_signs.set_move_range(session.original_bufnr, 1, 1)
+
+    assert.equals(without_gutter, find_sign(session.original_bufnr, "─").priority)
+  end)
+
+  it("still renders the diff when Neovim rejects the sign text", function()
+    local core = require("codediff.ui.core")
+    local highlights = require("codediff.ui.highlights")
+    highlights.setup()
+    config.options.diff.gutter_signs = { insert_text = "→→→" }
+
+    local original_lines = vim.api.nvim_buf_get_lines(session.original_bufnr, 0, -1, false)
+    local modified_lines = vim.api.nvim_buf_get_lines(session.modified_bufnr, 0, -1, false)
+    local ok = pcall(
+      core.render_diff,
+      session.original_bufnr,
+      session.modified_bufnr,
+      original_lines,
+      modified_lines,
+      { changes = changed_ranges, moves = {} }
+    )
+
+    assert.is_true(ok)
+    local rendered = vim.api.nvim_buf_get_extmarks(session.modified_bufnr, highlights.ns_highlight, 0, -1, {})
+    assert.is_true(#rendered > 0)
   end)
 
   it("keeps a growing whole-file sign anchored across replacement and appends", function()

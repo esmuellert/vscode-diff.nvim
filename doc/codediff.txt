@@ -447,9 +447,10 @@ Example: replace only group rows and right-align the file count:
 ==============================================================================
 GUTTER SIGNS                                         *codediff-gutter-signs*
 
-Gutter signs are disabled by default and require Neovim 0.9+. When enabled,
-they appear in every window displaying a buffer used by an active CodeDiff
-view. CodeDiff removes them when the view is suspended or closed.
+Gutter signs are disabled by default and require Neovim 0.10+, because a sign
+extmark spanning several lines only decorates every line from 0.10 on. When
+enabled, they appear in every window displaying a buffer used by an active
+CodeDiff view. CodeDiff removes them when the view is suspended or closed.
 
 >lua
   -- Disabled by default; existing move annotations remain.
@@ -473,8 +474,9 @@ view. CodeDiff removes them when the view is suspended or closed.
 
 Place `gutter_signs` under `diff`. `insert_text` and `delete_text` must each
 occupy one or two display cells, as measured by strdisplaywidth(), because
-Neovim limits sign text to two display cells. The fullwidth defaults
-each occupy two display cells.
+Neovim limits sign text to two display cells. The fullwidth defaults each
+occupy two display cells. A rejected sign is skipped with a warning and the
+rest of the diff still renders.
 
 CodeDiff does not modify signcolumn or statuscolumn. This example keeps a sign
 column and places signs after line numbers:

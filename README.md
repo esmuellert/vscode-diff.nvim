@@ -340,7 +340,7 @@ gutter_signs = {
 }
 ```
 
-Set this under `diff`. `insert_text` and `delete_text` must each occupy one or two display cells, as measured by `strdisplaywidth()`, because Neovim limits sign text to two display cells. The fullwidth defaults each occupy two display cells.
+Set this under `diff`. `insert_text` and `delete_text` must each occupy one or two display cells, as measured by `strdisplaywidth()`, because Neovim limits sign text to two display cells. The fullwidth defaults each occupy two display cells. A rejected sign is skipped with a warning and the rest of the diff still renders.
 
 CodeDiff uses persistent Neovim signs and does not modify `signcolumn` or `statuscolumn`. This example keeps a sign column and places signs after line numbers:
 
@@ -349,7 +349,7 @@ vim.opt.signcolumn = "yes"
 vim.opt.statuscolumn = "%C%=%l %s"
 ```
 
-`signcolumn = "yes:2"` allows a second sign on each line. Changed signs use priority 100 by default. An unchanged blocker at priority 99 can hide lower-priority Gitsigns, remote signs, diagnostics, or other signs across unchanged lines while the changed signs still win. Gutter signs require Neovim 0.9 or newer. When enabled, they appear in every window displaying a buffer used by an active CodeDiff view. CodeDiff removes them when the view is suspended or closed.
+`signcolumn = "yes:2"` allows a second sign on each line. Changed signs use priority 100 by default. An unchanged blocker at priority 99 can hide lower-priority Gitsigns, remote signs, diagnostics, or other signs across unchanged lines while the changed signs still win. Gutter signs require Neovim 0.10 or newer, because a sign extmark spanning several lines only decorates every line from 0.10 on. When enabled, they appear in every window displaying a buffer used by an active CodeDiff view. CodeDiff removes them when the view is suspended or closed.
 
 ### Managing Library Installation
 

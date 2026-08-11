@@ -223,9 +223,6 @@ function M.update_suspended(tabpage, suspended)
   end
 
   sess.suspended = suspended
-  if suspended then
-    clear_gutter_signs(sess)
-  end
   return true
 end
 

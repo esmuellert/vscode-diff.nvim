@@ -3,7 +3,9 @@ local M = {}
 local config = require("codediff.config")
 
 local namespace = vim.api.nvim_create_namespace("codediff-gutter-signs")
-local supports_native_signs = vim.fn.has("nvim-0.9") == 1
+-- A sign extmark spanning several rows only decorates every row from 0.10 on.
+-- Older versions decorate start_row alone, so ranges there are drawn per line.
+local has_ranged_signs = vim.fn.has("nvim-0.10") == 1
 local default_move_priority = 250
 local default_options = {
   insert_text = "＋",
@@ -34,8 +36,8 @@ local get_options = function()
   if type(options) ~= "table" then
     return nil
   end
-  if not supports_native_signs then
-    vim.notify_once("[codediff] diff.gutter_signs requires Neovim 0.9 or newer", vim.log.levels.WARN)
+  if not has_ranged_signs then
+    vim.notify_once("[codediff] diff.gutter_signs requires Neovim 0.10 or newer", vim.log.levels.WARN)
     return nil
   end
   return vim.tbl_extend("force", default_options, options)
@@ -50,6 +52,16 @@ local get_changed_sign = function(side, options)
   }
 end
 
+local set_extmark = function(bufnr, row, opts)
+  -- Neovim rejects sign text wider than two cells and out-of-range priorities.
+  -- Without this guard a bad option aborts the whole diff render.
+  local ok = pcall(vim.api.nvim_buf_set_extmark, bufnr, namespace, row, 0, opts)
+  if not ok then
+    vim.notify_once("[codediff] diff.gutter_signs could not place a sign, check insert_text, delete_text and priorities", vim.log.levels.WARN)
+  end
+  return ok
+end
+
 local set_sign_range = function(bufnr, range, sign, priority)
   if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) or not range or range.end_line <= range.start_line then
     return
@@ -62,7 +74,7 @@ local set_sign_range = function(bufnr, range, sign, priority)
     return
   end
 
-  vim.api.nvim_buf_set_extmark(bufnr, namespace, start_row, 0, {
+  set_extmark(bufnr, start_row, {
     end_row = end_row - 1,
     end_col = 0,
     sign_text = sign.text,
@@ -79,7 +91,7 @@ local set_whole_buffer_sign = function(bufnr, sign, priority, tracks_appends)
   end
 
   local line_count = vim.api.nvim_buf_line_count(bufnr)
-  vim.api.nvim_buf_set_extmark(bufnr, namespace, 0, 0, {
+  set_extmark(bufnr, 0, {
     end_row = tracks_appends and line_count or line_count - 1,
     end_col = 0,
     right_gravity = false,
@@ -121,21 +133,34 @@ M.set_changed_ranges = function(left_bufnr, right_bufnr, changes)
   end
 end
 
-M.set_move_range = function(bufnr, first, last)
-  local options = get_options()
-  if not supports_native_signs or last < first then
-    return
-  end
-
-  local priority = options and options.changed_priority or default_move_priority
+local move_sign = function(line, first, last)
   if first == last then
-    set_sign_range(bufnr, { start_line = first, end_line = first + 1 }, signs.move_single, priority)
+    return signs.move_single
+  end
+  if line == first then
+    return signs.move_first
+  end
+  if line == last then
+    return signs.move_last
+  end
+  return signs.move_middle
+end
+
+M.set_move_range = function(bufnr, first, last)
+  if last < first then
     return
   end
 
-  set_sign_range(bufnr, { start_line = first, end_line = first + 1 }, signs.move_first, priority)
-  set_sign_range(bufnr, { start_line = first + 1, end_line = last }, signs.move_middle, priority)
-  set_sign_range(bufnr, { start_line = last, end_line = last + 1 }, signs.move_last, priority)
+  -- A moved line is also a changed line, so the move glyph has to outrank the
+  -- changed sign instead of tying with it and depending on extmark creation order.
+  local options = get_options()
+  local priority = options and math.max(options.changed_priority + 1, default_move_priority) or default_move_priority
+
+  -- One sign per line, as move rendering has always done: a single ranged
+  -- extmark would decorate only its first row before Neovim 0.10.
+  for line = first, last do
+    set_sign_range(bufnr, { start_line = line, end_line = line + 1 }, move_sign(line, first, last), priority)
+  end
 end
 
 M.set_whole_file = function(bufnr, side)
