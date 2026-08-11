@@ -46,6 +46,7 @@ M.defaults = {
     jump_to_first_change = true, -- Auto-scroll to first change when opening a diff: true = jump to first hunk, false = stay at same line
     highlight_added_deleted_files = false, -- Tint the full contents of added, untracked, and deleted files
     highlight_priority = 100, -- Priority for line-level diff highlights (increase to override LSP highlights)
+    gutter_signs = false, -- Gutter +/- signs; optionally block lower-priority signs on unchanged lines
     compute_moves = false, -- Detect moved code blocks (opt-in, may increase diff computation time)
     compact_context_lines = 3, -- Number of context lines around hunks in compact mode
     compact_sync_folds = true, -- Sync fold open/close across panes in compact mode (mirrors Vim diff mode behavior)

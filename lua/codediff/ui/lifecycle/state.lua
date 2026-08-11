@@ -49,6 +49,7 @@ local function clear_buffer_highlights(bufnr)
   vim.api.nvim_buf_clear_namespace(bufnr, highlights.ns_conflict, 0, -1)
   local ns_inline = vim.api.nvim_create_namespace("codediff-inline")
   vim.api.nvim_buf_clear_namespace(bufnr, ns_inline, 0, -1)
+  require("codediff.ui.gutter_signs").clear_buffer(bufnr)
 end
 
 M.clear_buffer_highlights = clear_buffer_highlights
