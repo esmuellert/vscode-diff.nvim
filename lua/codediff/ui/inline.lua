@@ -4,6 +4,7 @@ local M = {}
 
 local config = require("codediff.config")
 local highlights = require("codediff.ui.highlights")
+local gutter_signs = require("codediff.ui.gutter_signs")
 local compat = require("codediff.core.compat")
 
 -- Dedicated namespace for inline diff (separate from side-by-side namespaces)
@@ -382,6 +383,7 @@ end
 function M.render_inline_diff(bufnr, diff_result, original_lines, modified_lines, opts)
   -- Clear previous inline decorations
   vim.api.nvim_buf_clear_namespace(bufnr, M.ns_inline, 0, -1)
+  gutter_signs.clear_buffer(bufnr)
   -- Clear merged highlight cache on re-render (colorscheme may have changed)
   merged_hl_cache = {}
 
@@ -472,6 +474,7 @@ end
 function M.clear(bufnr)
   if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
     vim.api.nvim_buf_clear_namespace(bufnr, M.ns_inline, 0, -1)
+    gutter_signs.clear_buffer(bufnr)
   end
 end
 

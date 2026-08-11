@@ -130,9 +130,9 @@ describe("Welcome Page", function()
 
       assert.is_false(vim.wo[main_win].number)
       assert.is_false(vim.wo[main_win].relativenumber)
-      assert.equals("no", vim.wo[main_win].signcolumn)
+      assert.equals("yes:1", vim.wo[main_win].signcolumn)
       assert.equals("0", vim.wo[main_win].foldcolumn)
-      assert.equals(" ", vim.wo[main_win].statuscolumn)
+      assert.equals("%l", vim.wo[main_win].statuscolumn)
 
       assert.is_true(vim.wo[other_win].number)
       assert.is_false(vim.wo[other_win].relativenumber)
@@ -276,9 +276,9 @@ describe("Welcome Page", function()
       assert.is_true(session.single_pane == true, "Session should be in single_pane mode")
       assert.is_false(vim.wo[session.modified_win].number)
       assert.is_false(vim.wo[session.modified_win].relativenumber)
-      assert.equals("no", vim.wo[session.modified_win].signcolumn)
+      assert.equals("yes:1", vim.wo[session.modified_win].signcolumn)
       assert.equals("0", vim.wo[session.modified_win].foldcolumn)
-      assert.equals(" ", vim.wo[session.modified_win].statuscolumn)
+      assert.equals("%l", vim.wo[session.modified_win].statuscolumn)
 
       -- Restore changes: modify the file again
       repo.write_file("test.txt", { "line 1", "line 2 changed again" })

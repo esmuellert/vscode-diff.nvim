@@ -9,6 +9,7 @@ codediff-explorer-custom-keymaps	codediff.txt	/*codediff-explorer-custom-keymaps
 codediff-explorer-line-formatters	codediff.txt	/*codediff-explorer-line-formatters*
 codediff-explorer-line-statistics	codediff.txt	/*codediff-explorer-line-statistics*
 codediff-filler-text	codediff.txt	/*codediff-filler-text*
+codediff-gutter-signs	codediff.txt	/*codediff-gutter-signs*
 codediff-highlight-groups	codediff.txt	/*codediff-highlight-groups*
 codediff-history	codediff.txt	/*codediff-history*
 codediff-history-line-range	codediff.txt	/*codediff-history-line-range*

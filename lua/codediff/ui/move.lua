@@ -3,6 +3,7 @@ local M = {}
 
 local highlights = require("codediff.ui.highlights")
 local filler_renderer = require("codediff.ui.filler")
+local gutter_signs = require("codediff.ui.gutter_signs")
 local ns_highlight = highlights.ns_highlight
 
 -- ============================================================================
@@ -69,26 +70,12 @@ end
 -- Per-Line Highlights and Signs
 -- ============================================================================
 
-local function get_sign(line, first, last)
-  if first == last then
-    return "─"
-  end
-  if line == first then
-    return "┌"
-  end
-  if line == last then
-    return "└"
-  end
-  return "│"
-end
-
 local function highlight_moved_lines(bufnr, first, last, line_count)
   for line = first, last do
     if line > line_count then
       break
     end
     local line_idx = line - 1
-    local sign = get_sign(line, first, last)
     -- Range extmark for highlight (overrides diff highlight at priority 250)
     pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_highlight, line_idx, 0, {
       end_line = line_idx + 1,
@@ -97,14 +84,13 @@ local function highlight_moved_lines(bufnr, first, last, line_count)
       hl_eol = true,
       priority = 250,
     })
-    -- Separate point extmark for sign + number highlight (no end_line — won't bleed)
+    -- Separate point extmark for number highlight (no end_line — won't bleed)
     pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_highlight, line_idx, 0, {
       number_hl_group = "CodeDiffMoveTo",
-      sign_text = sign,
-      sign_hl_group = "CodeDiffMoveTo",
       priority = 250,
     })
   end
+  gutter_signs.set_move_range(bufnr, first, math.min(last, line_count))
 end
 
 -- ============================================================================
