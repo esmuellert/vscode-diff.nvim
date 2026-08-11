@@ -183,7 +183,7 @@ end
 local function mappings_cover_change(mapping)
   local original_line = mapping.original.start_line
   local modified_line = mapping.modified.start_line
-  for _, line_mapping in ipairs(mapping.line_mappings) do
+  for _, line_mapping in ipairs(mapping.line_mappings or {}) do
     if line_mapping.original.start_line ~= original_line or line_mapping.modified.start_line ~= modified_line then
       return false
     end
@@ -244,7 +244,7 @@ local function calculate_fillers(mapping, original_lines)
   local fillers = {}
   local original_line = mapping.original.start_line
   local modified_line = mapping.modified.start_line
-  for _, line_mapping in ipairs(mapping.line_mappings) do
+  for _, line_mapping in ipairs(mapping.line_mappings or {}) do
     append_filler(fillers, original_line, line_mapping.original.start_line, modified_line, line_mapping.modified.start_line)
     append_filler(fillers, line_mapping.original.start_line, line_mapping.original.end_line, line_mapping.modified.start_line, line_mapping.modified.end_line)
     original_line = line_mapping.original.end_line
