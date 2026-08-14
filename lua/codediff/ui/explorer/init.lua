@@ -23,6 +23,7 @@ M.toggle_visibility = actions.toggle_visibility
 M.toggle_view_mode = actions.toggle_view_mode
 M.toggle_stage_entry = actions.toggle_stage_entry
 M.toggle_stage_file = actions.toggle_stage_file
+M.toggle_staged_view = actions.toggle_staged_view
 M.stage_all = actions.stage_all
 M.unstage_all = actions.unstage_all
 M.restore_entry = actions.restore_entry

@@ -5,6 +5,7 @@ local view = require("codediff.ui.view")
 local diff = require('codediff.core.diff')
 local highlights = require("codediff.ui.highlights")
 local lifecycle = require("codediff.ui.lifecycle")
+local path = require("codediff.core.path")
 
 -- Helper to get temp path
 local function get_temp_path(filename)
@@ -22,8 +23,8 @@ local function create_test_diff_view(original_lines, modified_lines, left_path, 
   local session_config = {
     mode = "standalone",
     git_root = nil,
-    original_path = left_path,
-    modified_path = right_path,
+    original = path.make_ref(left_path, nil),
+    modified = path.make_ref(right_path, nil),
     original_revision = nil,
     modified_revision = nil,
   }
@@ -37,15 +38,21 @@ local function create_test_diff_view(original_lines, modified_lines, left_path, 
   local tabpage = vim.api.nvim_get_current_tabpage()
   local wins = vim.api.nvim_tabpage_list_wins(tabpage)
 
-  -- Find which window has which buffer by checking buffer names
+  -- Find which window has which buffer by checking buffer names.
+  -- Normalize paths so Windows-style backslashes match Neovim's forward-slash
+  -- buffer names: vim.api.nvim_buf_get_name() returns forward-slash paths on
+  -- recent Neovim versions regardless of how the file was opened, while
+  -- left_path/right_path may contain backslashes on Windows.
+  local norm_left = vim.fs.normalize(left_path)
+  local norm_right = vim.fs.normalize(right_path)
   local original_win, modified_win, original_bufnr, modified_bufnr
   for _, w in ipairs(wins) do
     local buf = vim.api.nvim_win_get_buf(w)
-    local name = vim.api.nvim_buf_get_name(buf)
-    if name:match(vim.pesc(left_path)) then
+    local name = vim.fs.normalize(vim.api.nvim_buf_get_name(buf))
+    if name:find(norm_left, 1, true) then
       original_win = w
       original_bufnr = buf
-    elseif name:match(vim.pesc(right_path)) then
+    elseif name:find(norm_right, 1, true) then
       modified_win = w
       modified_bufnr = buf
     end

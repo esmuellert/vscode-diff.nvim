@@ -8,6 +8,7 @@ local diff = require("codediff.core.diff")
 local lifecycle = require("codediff.ui.lifecycle")
 local highlights = require("codediff.ui.highlights")
 local test_helpers = require("tests.helpers")
+local path = require("codediff.core.path")
 
 -- Helper to get OS-appropriate temp path
 local function get_temp_path(filename)
@@ -38,8 +39,8 @@ describe("Inline diff with history-like configurations", function()
     local session_config = {
       mode = "history",
       git_root = "/tmp/fakerepo",
-      original_path = "",
-      modified_path = "",
+      original = path.make_ref("", "/tmp/fakerepo"),
+      modified = path.make_ref("", "/tmp/fakerepo"),
       original_revision = nil,
       modified_revision = nil,
       history_data = {
@@ -87,8 +88,8 @@ describe("Inline diff with history-like configurations", function()
     local session_config = {
       mode = "standalone",
       git_root = nil,
-      original_path = left_path,
-      modified_path = right_path,
+      original = path.make_ref(left_path, nil),
+      modified = path.make_ref(right_path, nil),
       original_revision = nil,
       modified_revision = nil,
     }
@@ -149,8 +150,8 @@ describe("Inline diff with history-like configurations", function()
     local session_config = {
       mode = "standalone",
       git_root = nil,
-      original_path = left_path,
-      modified_path = right_path,
+      original = path.make_ref(left_path, nil),
+      modified = path.make_ref(right_path, nil),
       original_revision = nil,
       modified_revision = nil,
     }
@@ -183,19 +184,18 @@ describe("Inline diff with history-like configurations", function()
     assert.is_not_nil(session_after, "Session should still exist after show_single_file")
 
     -- Path should be updated to the single file
-    local _, modified_path = lifecycle.get_paths(tabpage)
-    assert.equals(single_path, modified_path, "Modified path should be updated to single file path")
+    local _, modified_ref = lifecycle.get_paths(tabpage)
+    assert.equals(path.make_ref(single_path, nil).absolute, modified_ref.absolute, "Modified path should be updated to single file path")
 
     -- Original path should be empty (no comparison side)
-    local original_path, _ = lifecycle.get_paths(tabpage)
-    assert.equals("", original_path, "Original path should be empty for single file view")
+    local original_ref, _ = lifecycle.get_paths(tabpage)
+    assert.is_true(path.is_empty(original_ref), "Original path should be empty for single file view")
 
     -- The modified buffer should now show the single file content
     local _, mod_buf = lifecycle.get_buffers(tabpage)
     assert.is_true(vim.api.nvim_buf_is_valid(mod_buf), "Modified buffer should be valid")
     local buf_lines = vim.api.nvim_buf_get_lines(mod_buf, 0, -1, false)
-    assert.are.same({ "single file content", "second line" }, buf_lines,
-      "Modified buffer should contain single file content")
+    assert.are.same({ "single file content", "second line" }, buf_lines, "Modified buffer should contain single file content")
 
     -- Inline extmarks should be cleared (no diff decorations for single file)
     local marks = vim.api.nvim_buf_get_extmarks(mod_buf, inline.ns_inline, 0, -1, {})
@@ -222,8 +222,8 @@ describe("Inline diff with history-like configurations", function()
     local session_config = {
       mode = "standalone",
       git_root = nil,
-      original_path = left_path,
-      modified_path = right_path,
+      original = path.make_ref(left_path, nil),
+      modified = path.make_ref(right_path, nil),
       original_revision = nil,
       modified_revision = nil,
     }
@@ -250,8 +250,8 @@ describe("Inline diff with history-like configurations", function()
     local update_config = {
       mode = "standalone",
       git_root = nil,
-      original_path = new_left_path,
-      modified_path = new_right_path,
+      original = path.make_ref(new_left_path, nil),
+      modified = path.make_ref(new_right_path, nil),
       original_revision = nil,
       modified_revision = nil,
     }

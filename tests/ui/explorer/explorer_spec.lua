@@ -2,6 +2,7 @@
 -- Validates git status explorer functionality, window management, and file selection
 
 local git = require('codediff.core.git')
+local config = require("codediff.config")
 local h = dofile('tests/helpers.lua')
 
 -- Setup CodeDiff command for tests
@@ -18,12 +19,114 @@ local function setup_command()
   })
 end
 
+-- Open a fresh CodeDiff explorer for `focus_file` and return (tabpage, explorer).
+-- Earlier tests leave sessions and pending vim.schedule callbacks in the
+-- lifecycle singleton, so flush + cleanup first, then pick up the explorer
+-- created by THIS :CodeDiff (the one whose buffer carries the auto-open
+-- buffer-local j keymap).
+local function open_explorer(temp_dir, focus_file)
+  local lifecycle = require("codediff.ui.lifecycle")
+  vim.wait(200)
+  lifecycle.cleanup_all()
+
+  vim.cmd("edit " .. temp_dir .. "/" .. focus_file)
+  vim.cmd("CodeDiff")
+
+  local tabpage, explorer
+  local ready = vim.wait(6000, function()
+    for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
+      local e = lifecycle.get_explorer(tp)
+      if e and e.winid and vim.api.nvim_win_is_valid(e.winid)
+          and e.bufnr and vim.api.nvim_buf_is_valid(e.bufnr)
+          and e.current_file_path ~= nil then
+        -- Pick the explorer wired with the auto-open j/k keymap; leftover
+        -- explorers from prior tests (default config) lack it.
+        local maps = vim.api.nvim_buf_get_keymap(e.bufnr, "n")
+        for _, m in ipairs(maps) do
+          if m.lhs == "j" and (m.desc or ""):find("codediff: move and auto%-open") then
+            tabpage = tp
+            explorer = e
+            return true
+          end
+        end
+      end
+    end
+    return false
+  end, 50)
+  return ready, tabpage, explorer
+end
+
+local function open_initial_explorer(temp_dir, view_mode, ignore_patterns)
+  local lifecycle = require("codediff.ui.lifecycle")
+  vim.wait(200)
+  lifecycle.cleanup_all()
+  require("codediff").setup({
+    diff = { layout = "side-by-side" },
+    explorer = {
+      view_mode = view_mode,
+      file_filter = { ignore = ignore_patterns or config.defaults.explorer.file_filter.ignore },
+    },
+  })
+
+  vim.fn.writefile({ "modified nested" }, temp_dir .. "/nested/deep.txt")
+  vim.cmd("enew")
+  vim.cmd("CodeDiff")
+
+  local explorer, session
+  local ready = vim.wait(6000, function()
+    explorer = lifecycle.get_explorer(vim.api.nvim_get_current_tabpage())
+    if not explorer or not explorer.current_file_path then
+      return false
+    end
+    session = lifecycle.get_session(explorer.tabpage)
+    if not session or type(session.original) ~= "table" or type(session.modified) ~= "table" then
+      return false
+    end
+    return session.original.relative ~= "" and session.modified.relative ~= ""
+  end, 20)
+  assert.is_true(ready, "Explorer should complete its initial selection")
+  return explorer, session
+end
+
+local function assert_first_visible_file_selected(explorer, session, expected_path)
+  local first_path
+  for line = 1, vim.api.nvim_buf_line_count(explorer.bufnr) do
+    local node = explorer.tree:get_node(line)
+    if node and node.data and node.data.path then
+      first_path = node.data.path
+      break
+    end
+  end
+
+  local cursor_line = vim.api.nvim_win_get_cursor(explorer.winid)[1]
+  local cursor_node = explorer.tree:get_node(cursor_line)
+  assert.equals(expected_path, first_path)
+  assert.equals(first_path, explorer.current_file_path)
+  assert.equals(first_path, cursor_node.data.path)
+  assert.equals(first_path, session.original.relative)
+  assert.equals(first_path, session.modified.relative)
+end
+
+local function find_file_node(explorer, predicate)
+  for line = 1, vim.api.nvim_buf_line_count(explorer.bufnr) do
+    local node = explorer.tree:get_node(line)
+    local data = node and node.data
+    if data and data.path and predicate(data) then
+      return line, data.path, data.group
+    end
+  end
+end
+
 describe("Explorer Mode", function()
   local temp_dir
   local original_cwd
 
   before_each(function()
-    require("codediff").setup({ diff = { layout = "side-by-side" } })
+    config.options = vim.deepcopy(config.defaults)
+    require("codediff").setup({
+      diff = { layout = "side-by-side" },
+      explorer = { view_mode = "list" },
+    })
     -- Setup command
     setup_command()
     
@@ -43,7 +146,9 @@ describe("Explorer Mode", function()
     
     -- Create and commit initial file
     vim.fn.writefile({"line 1", "line 2"}, temp_dir .. "/file1.txt")
-    h.git_cmd(temp_dir, "add file1.txt")
+    vim.fn.mkdir(temp_dir .. "/nested", "p")
+    vim.fn.writefile({ "original nested" }, temp_dir .. "/nested/deep.txt")
+    h.git_cmd(temp_dir, "add file1.txt nested/deep.txt")
     local commit_result = h.git_cmd(temp_dir, 'commit -m "Initial commit"')
     assert(vim.v.shell_error == 0, "git commit failed: " .. commit_result)
     
@@ -318,46 +423,43 @@ describe("Explorer Mode", function()
   end)
 
   -- Test 6: First file is auto-selected and displayed
-  it("Auto-selects and displays first file", function()
-    vim.cmd("edit " .. temp_dir .. "/file1.txt")
-    vim.cmd("CodeDiff")
-    
-    -- Wait for explorer and first file to load
-    vim.wait(6000, function()
-      local wincount = vim.fn.winnr('$')
-      if wincount ~= 3 then return false end
-      
-      -- Check if any diff window has content
-      for i = 1, wincount do
-        local winid = vim.fn.win_getid(i)
-        local bufnr = vim.api.nvim_win_get_buf(winid)
-        local ft = vim.bo[bufnr].filetype
-        if ft ~= "codediff-explorer" and ft ~= "" then
-          local lines = vim.api.nvim_buf_get_lines(bufnr, 0, 5, false)
-          if #lines > 0 and lines[1] ~= "" then
-            return true
-          end
-        end
-      end
-      return false
-    end)
-    
-    -- Should have content in at least one diff window
-    local has_content = false
-    for i = 1, vim.fn.winnr('$') do
-      local winid = vim.fn.win_getid(i)
-      local bufnr = vim.api.nvim_win_get_buf(winid)
-      local ft = vim.bo[bufnr].filetype
-      if ft ~= "codediff-explorer" and ft ~= "" then
-        local lines = vim.api.nvim_buf_get_lines(bufnr, 0, 5, false)
-        if #lines > 0 and lines[1] ~= "" then
-          has_content = true
-          break
-        end
-      end
-    end
-    
-    assert.is_true(has_content, "Should display first file content")
+  it("Selects the first visible file in list view", function()
+    local explorer, session = open_initial_explorer(temp_dir, "list")
+    assert_first_visible_file_selected(explorer, session, "file1.txt")
+  end)
+
+  it("Selects the first visible file in tree view", function()
+    local explorer, session = open_initial_explorer(temp_dir, "tree")
+    assert_first_visible_file_selected(explorer, session, "nested/deep.txt")
+  end)
+
+  it("Re-renders the explorer buffer when toggle_view_mode flips the mode (regression #486)", function()
+    -- PR #486 added a "skip refresh when git status unchanged" optimization at
+    -- refresh.lua that made toggle_view_mode a no-op: view_mode is a client-only
+    -- config, so flipping it never changes git status, and the deep_equal skip
+    -- fired before the tree got rebuilt. Fix: toggle_view_mode now uses
+    -- rebuild_from_cache (like toggle_group) instead of the async refresh path.
+    local explorer = open_initial_explorer(temp_dir, "list")
+    local before_lines = vim.api.nvim_buf_get_lines(explorer.bufnr, 0, -1, false)
+    local before_mode = config.options.explorer.view_mode
+
+    require("codediff.ui.explorer.actions").toggle_view_mode(explorer)
+    vim.wait(200)
+
+    local after_lines = vim.api.nvim_buf_get_lines(explorer.bufnr, 0, -1, false)
+    local after_mode = config.options.explorer.view_mode
+
+    assert.equals("list", before_mode)
+    assert.equals("tree", after_mode)
+    assert.is_false(
+      vim.deep_equal(before_lines, after_lines),
+      "Explorer buffer must re-render when view_mode flips (bug: skip check swallowed the rebuild)"
+    )
+  end)
+
+  it("Does not select files excluded from the explorer", function()
+    local explorer, session = open_initial_explorer(temp_dir, "list", { "file1.txt", "file3.txt" })
+    assert_first_visible_file_selected(explorer, session, "nested/deep.txt")
   end)
 
   -- Test 7: Lifecycle session is created correctly
@@ -443,6 +545,123 @@ describe("Explorer Mode", function()
     assert.is_true(notified, "Should notify for non-git directory")
   end)
 
+  it("Opens the explorer file under the cursor in the previous tab", function()
+    require("codediff").setup({
+      diff = { layout = "side-by-side" },
+      explorer = { auto_open_on_cursor = true },
+      keymaps = { view = { open_in_prev_tab = "P" } },
+    })
+
+    local previous_tab = vim.api.nvim_get_current_tabpage()
+    local ready, tabpage, explorer = open_explorer(temp_dir, "file1.txt")
+    assert.is_true(ready, "Explorer should be ready with an initial selection")
+    vim.api.nvim_set_current_tabpage(tabpage)
+
+    local target_line, target_path = find_file_node(explorer, function(data)
+      return data.path ~= explorer.current_file_path
+    end)
+    assert.is_not_nil(target_line, "Should find a different file node")
+
+    vim.api.nvim_set_current_win(explorer.winid)
+    vim.api.nvim_win_set_cursor(explorer.winid, { target_line, 0 })
+    local callback = vim.api.nvim_buf_call(explorer.bufnr, function()
+      return vim.fn.maparg("P", "n", false, true).callback
+    end)
+    assert.is_function(callback, "open_in_prev_tab mapping should exist in explorer buffer")
+    callback()
+
+    assert.equals(previous_tab, vim.api.nvim_get_current_tabpage())
+    local expected_path = vim.uv.fs_realpath(vim.fs.joinpath(temp_dir, target_path))
+    local actual_path = vim.uv.fs_realpath(vim.api.nvim_buf_get_name(0))
+    assert.equals(expected_path, actual_path)
+  end)
+
+  -- Test: auto_open_on_cursor opens the file under cursor after j/k
+  it("Auto-opens diff under cursor when auto_open_on_cursor is enabled", function()
+    require("codediff").setup({
+      diff = { layout = "side-by-side" },
+      explorer = { auto_open_on_cursor = true },
+    })
+
+    local ready, tabpage, explorer = open_explorer(temp_dir, "file1.txt")
+    assert.is_true(ready, "Explorer should be ready with an initial selection")
+    vim.api.nvim_set_current_tabpage(tabpage)
+
+    local initial_path = explorer.current_file_path
+    local initial_group = explorer.current_file_group
+
+    -- Find a file node and its delta from the current cursor line.
+    local cur_line = vim.api.nvim_win_get_cursor(explorer.winid)[1]
+    local target_line, target_path, target_group = find_file_node(explorer, function(data)
+      return data.path ~= initial_path or data.group ~= initial_group
+    end)
+    assert.is_not_nil(target_line, "Should find a second file node to navigate to")
+
+    -- Press j (or k) the right number of times to reach the target line.
+    -- 'tx' flag = typed + execute, which lets buffer-local mappings fire.
+    vim.api.nvim_set_current_win(explorer.winid)
+    local motion = target_line > cur_line and "j" or "k"
+    local count = math.abs(target_line - cur_line)
+    vim.api.nvim_feedkeys(string.rep(motion, count), "tx", false)
+
+    local opened = vim.wait(2000, function()
+      return explorer.current_file_path == target_path
+        and explorer.current_file_group == target_group
+    end, 20)
+    assert.is_true(opened, "j/k on a file node should auto-open its diff")
+  end)
+
+  it("Ignores j/k landing on group/directory nodes when auto_open_on_cursor is enabled", function()
+    require("codediff").setup({
+      diff = { layout = "side-by-side" },
+      explorer = {
+        auto_open_on_cursor = true,
+        view_mode = "tree", -- ensure directory nodes are present
+      },
+    })
+
+    -- Add a nested file so the tree has a directory node
+    vim.fn.mkdir(temp_dir .. "/nested", "p")
+    vim.fn.writefile({"deep"}, temp_dir .. "/nested/deep.txt")
+
+    local ready, tabpage, explorer = open_explorer(temp_dir, "file1.txt")
+    assert.is_true(ready, "Explorer should be ready")
+    vim.api.nvim_set_current_tabpage(tabpage)
+
+    -- Find a line immediately before a group/directory node — pressing j
+    -- once will land us on it.
+    local skip_line, jump_from_line
+    local line_count = vim.api.nvim_buf_line_count(explorer.bufnr)
+    for line = 1, line_count - 1 do
+      local node = explorer.tree:get_node(line + 1)
+      if node and node.data and (node.data.type == "group" or node.data.type == "directory") then
+        skip_line = line + 1
+        jump_from_line = line
+        break
+      end
+    end
+    assert.is_not_nil(skip_line, "Should find a group/directory node line")
+
+    vim.api.nvim_set_current_win(explorer.winid)
+    vim.api.nvim_win_set_cursor(explorer.winid, { jump_from_line, 0 })
+
+    -- Capture state *after* manual cursor placement (which itself doesn't
+    -- trigger our keymap, only j/k do).
+    local before_path = explorer.current_file_path
+    local before_group = explorer.current_file_group
+
+    -- One j: lands on the skip_line (which is a group/dir).
+    vim.api.nvim_feedkeys("j", "tx", false)
+
+    vim.wait(150)
+    -- After landing on a group/dir, current_file_path must not have changed
+    -- from before the j keypress.
+    assert.equals(before_path, explorer.current_file_path,
+      "Group/directory nodes should not trigger auto-open")
+    assert.equals(before_group, explorer.current_file_group,
+      "Group/directory nodes should not change current group")
+  end)
+
   -- Test 10: Commands.lua simplicity (no callbacks in commands)
   it("Commands.lua follows simple pattern", function()
     -- This is a design validation test
@@ -459,3 +678,4 @@ describe("Explorer Mode", function()
     end
   end)
 end)
+

@@ -2,8 +2,9 @@
 local M = {}
 
 local highlights = require("codediff.ui.highlights")
+local filler_renderer = require("codediff.ui.filler")
+local gutter_signs = require("codediff.ui.gutter_signs")
 local ns_highlight = highlights.ns_highlight
-local ns_filler = highlights.ns_filler
 
 -- ============================================================================
 -- Change Lookup Helpers
@@ -69,26 +70,12 @@ end
 -- Per-Line Highlights and Signs
 -- ============================================================================
 
-local function get_sign(line, first, last)
-  if first == last then
-    return "─"
-  end
-  if line == first then
-    return "┌"
-  end
-  if line == last then
-    return "└"
-  end
-  return "│"
-end
-
 local function highlight_moved_lines(bufnr, first, last, line_count)
   for line = first, last do
     if line > line_count then
       break
     end
     local line_idx = line - 1
-    local sign = get_sign(line, first, last)
     -- Range extmark for highlight (overrides diff highlight at priority 250)
     pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_highlight, line_idx, 0, {
       end_line = line_idx + 1,
@@ -97,14 +84,13 @@ local function highlight_moved_lines(bufnr, first, last, line_count)
       hl_eol = true,
       priority = 250,
     })
-    -- Separate point extmark for sign + number highlight (no end_line — won't bleed)
+    -- Separate point extmark for number highlight (no end_line — won't bleed)
     pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_highlight, line_idx, 0, {
       number_hl_group = "CodeDiffMoveTo",
-      sign_text = sign,
-      sign_hl_group = "CodeDiffMoveTo",
       priority = 250,
     })
   end
+  gutter_signs.set_move_range(bufnr, first, math.min(last, line_count))
 end
 
 -- ============================================================================
@@ -168,9 +154,8 @@ local function place_annotation(ann_bufnr, filler_bufnr, ann_line, label, change
   })
 
   local filler_anchor, filler_above = compute_filler_position(ann_line, change, is_orig_side, changes, filler_line_count)
-  pcall(vim.api.nvim_buf_set_extmark, filler_bufnr, ns_filler, filler_anchor, 0, {
-    virt_lines = { { { string.rep("╱", 500), "CodeDiffFiller" } } },
-    virt_lines_above = filler_above,
+  pcall(filler_renderer.place, filler_bufnr, filler_anchor, 1, {
+    above = filler_above,
     priority = 250,
   })
 end

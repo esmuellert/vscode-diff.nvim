@@ -14,6 +14,8 @@ on:
 jobs:
   build-and-test:
     uses: ./.github/workflows/build-and-test.yml
+    permissions:
+      contents: read
 
   version-and-tag:
     needs: build-and-test
@@ -33,14 +35,14 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           token: ${{ steps.generate_token.outputs.token }}
           ref: ${{ github.ref_name }}
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 'lts/*'
 
@@ -128,7 +130,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -174,6 +176,16 @@ jobs:
           # Windows ARM64
           if [ -f artifacts/windows-arm64/libvscode_diff.dll ]; then
             cp artifacts/windows-arm64/libvscode_diff.dll release-assets/libvscode_diff_windows_arm64_${VERSION}.dll
+          fi
+
+          # Android ARM64 (Termux, #333)
+          if [ -f artifacts/android-arm64/libvscode_diff.so ]; then
+            cp artifacts/android-arm64/libvscode_diff.so release-assets/libvscode_diff_android_arm64_${VERSION}.so
+          fi
+
+          # Android x64 (Termux on Chromebooks / Android-x86 / x86_64 emulators)
+          if [ -f artifacts/android-x64/libvscode_diff.so ]; then
+            cp artifacts/android-x64/libvscode_diff.so release-assets/libvscode_diff_android_x64_${VERSION}.so
           fi
 
           ls -lah release-assets/

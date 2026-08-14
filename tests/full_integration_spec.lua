@@ -23,44 +23,44 @@ describe("Full Integration Suite", function()
 
   -- Helper to run git in temp_dir (cross-platform)
   local function git(args)
-    local h = dofile('tests/helpers.lua')
+    local h = dofile("tests/helpers.lua")
     return h.git_cmd(temp_dir, args)
   end
 
   before_each(function()
     -- Setup command
     setup_command()
-    
+
     -- Create temporary git repository for testing
     temp_dir = vim.fn.tempname()
     vim.fn.mkdir(temp_dir, "p")
-    
+
     -- Initialize git repo
     git("init")
     -- Rename branch to main to be sure
     git("branch -m main")
     git('config user.email "test@example.com"')
     git('config user.name "Test User"')
-    
+
     -- Commit 1
-    vim.fn.writefile({"line 1", "line 2"}, temp_dir .. "/file.txt")
+    vim.fn.writefile({ "line 1", "line 2" }, temp_dir .. "/file.txt")
     git("add file.txt")
     git('commit -m "Initial commit"')
     commit_hash_1 = vim.trim(git("rev-parse HEAD"))
-    
+
     -- Tag v1.0.0
     git("tag v1.0.0")
 
     -- Commit 2
-    vim.fn.writefile({"line 1", "line 2 modified"}, temp_dir .. "/file.txt")
+    vim.fn.writefile({ "line 1", "line 2 modified" }, temp_dir .. "/file.txt")
     git("add file.txt")
     git('commit -m "Second commit"')
     commit_hash_2 = vim.trim(git("rev-parse HEAD"))
 
     -- Create another file for file comparison
-    vim.fn.writefile({"file a content"}, temp_dir .. "/file_a.txt")
-    vim.fn.writefile({"file b content"}, temp_dir .. "/file_b.txt")
-    
+    vim.fn.writefile({ "file a content" }, temp_dir .. "/file_a.txt")
+    vim.fn.writefile({ "file b content" }, temp_dir .. "/file_b.txt")
+
     -- Open the main file
     vim.cmd("edit " .. temp_dir .. "/file.txt")
   end)
@@ -69,7 +69,7 @@ describe("Full Integration Suite", function()
     -- Reset tabs first to close windows/buffers that might be using the dir
     vim.cmd("tabnew")
     vim.cmd("tabonly")
-    
+
     -- Give enough time for async tasks/handles to close
     vim.wait(200)
 
@@ -82,13 +82,13 @@ describe("Full Integration Suite", function()
   -- Helper to verify explorer opened
   local function assert_explorer_opened()
     local opened = vim.wait(5000, function()
-      return vim.fn.tabpagenr('$') > 1
+      return vim.fn.tabpagenr("$") > 1
     end)
     assert.is_true(opened, "Should open a new tab")
-    
+
     local has_explorer = false
     vim.wait(2000, function()
-      for i = 1, vim.fn.winnr('$') do
+      for i = 1, vim.fn.winnr("$") do
         local winid = vim.fn.win_getid(i)
         local bufnr = vim.api.nvim_win_get_buf(winid)
         if vim.bo[bufnr].filetype == "codediff-explorer" then
@@ -104,8 +104,8 @@ describe("Full Integration Suite", function()
   -- 1. Explorer Mode: Default
   it("Runs :CodeDiff (Explorer Default)", function()
     -- Make a change so there is something to show
-    vim.fn.writefile({"line 1", "line 2 modified", "line 3"}, temp_dir .. "/file.txt")
-    
+    vim.fn.writefile({ "line 1", "line 2 modified", "line 3" }, temp_dir .. "/file.txt")
+
     vim.cmd("CodeDiff")
     assert_explorer_opened()
   end)
@@ -121,9 +121,9 @@ describe("Full Integration Suite", function()
     -- Create a dev branch and switch to it so main is different
     git("reset --hard HEAD~1")
     git("checkout -b feature")
-    vim.fn.writefile({"feature change"}, temp_dir .. "/file.txt")
+    vim.fn.writefile({ "feature change" }, temp_dir .. "/file.txt")
     git('commit -am "feature commit"')
-    
+
     -- Now compare against main
     vim.cmd("CodeDiff main")
     assert_explorer_opened()
@@ -140,7 +140,7 @@ describe("Full Integration Suite", function()
     -- Ensure there is a diff between main and HEAD
     git("checkout HEAD~1")
     -- Now HEAD is commit 1. main is commit 2.
-    
+
     vim.cmd("CodeDiff main HEAD")
     assert_explorer_opened()
   end)
@@ -150,23 +150,23 @@ describe("Full Integration Suite", function()
     -- Go back to first commit and create feature branch
     git("checkout " .. commit_hash_1)
     git("checkout -b feature-branch")
-    vim.fn.writefile({"feature line 1", "feature line 2"}, temp_dir .. "/feature.txt")
+    vim.fn.writefile({ "feature line 1", "feature line 2" }, temp_dir .. "/feature.txt")
     git("add feature.txt")
     git('commit -m "feature commit"')
-    
+
     -- Now we have:
     -- main: commit_hash_1 -> commit_hash_2
     -- feature-branch: commit_hash_1 -> feature_commit
     -- merge-base(main, HEAD) = commit_hash_1
     -- So :CodeDiff main... should show only the feature.txt change
-    
+
     vim.cmd("CodeDiff main...")
     assert_explorer_opened()
   end)
 
   -- 7. CodeDiffOpen autocmd fires on open
   it("Fires CodeDiffOpen User autocmd", function()
-    vim.fn.writefile({"line 1", "line 2 modified", "line 3"}, temp_dir .. "/file.txt")
+    vim.fn.writefile({ "line 1", "line 2 modified", "line 3" }, temp_dir .. "/file.txt")
 
     local event_data = nil
     local au_id = vim.api.nvim_create_autocmd("User", {
@@ -188,7 +188,7 @@ describe("Full Integration Suite", function()
 
   -- 8. CodeDiffClose autocmd fires on close
   it("Fires CodeDiffClose User autocmd", function()
-    vim.fn.writefile({"line 1", "line 2 modified", "line 3"}, temp_dir .. "/file.txt")
+    vim.fn.writefile({ "line 1", "line 2 modified", "line 3" }, temp_dir .. "/file.txt")
 
     -- Ensure lifecycle autocmds are set up (TabClosed handler)
     require("codediff.ui.lifecycle").setup()
@@ -206,7 +206,9 @@ describe("Full Integration Suite", function()
 
     -- Close via tabclose (triggers TabClosed autocmd -> cleanup_diff)
     vim.cmd("tabclose")
-    vim.wait(2000, function() return close_data ~= nil end)
+    vim.wait(2000, function()
+      return close_data ~= nil
+    end)
 
     assert.is_not_nil(close_data, "CodeDiffClose should fire")
     assert.equal("explorer", close_data.mode, "Mode should be explorer")
@@ -214,4 +216,18 @@ describe("Full Integration Suite", function()
     vim.api.nvim_del_autocmd(au_id)
   end)
 
+  -- 9. Hardening: reject :CodeDiff file on a non-file buffer (buftype ~= "")
+  it("Rejects :CodeDiff file on a non-file (scratch) buffer", function()
+    local scratch = vim.api.nvim_create_buf(true, false)
+    vim.bo[scratch].buftype = "nofile"
+    vim.api.nvim_set_current_buf(scratch)
+
+    local tabs_before = vim.fn.tabpagenr("$")
+    -- Rejection surfaces as an error notify; pcall so the expected rejection
+    -- does not abort the test. The assertion is that no diff view was created.
+    pcall(vim.cmd, "CodeDiff file HEAD")
+    vim.wait(300)
+
+    assert.equals(tabs_before, vim.fn.tabpagenr("$"), "Should not open a diff for a non-file buffer")
+  end)
 end)

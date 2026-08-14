@@ -3,12 +3,40 @@ local M = {}
 
 local lifecycle = require("codediff.ui.lifecycle")
 local config = require("codediff.config")
+local resolve = require("codediff.keymap.resolve")
 local tracking = require("codediff.ui.conflict.tracking")
 local actions = require("codediff.ui.conflict.actions")
 local diffget = require("codediff.ui.conflict.diffget")
 local navigation = require("codediff.ui.conflict.navigation")
 
+-- Dot-repeatable actions are expr mappings (see conflict.tracking).
+local REPEATABLE_ACTIONS = {
+  { key = "accept_incoming", fn = actions.accept_incoming, desc = "Accept incoming change" },
+  { key = "accept_current", fn = actions.accept_current, desc = "Accept current change" },
+  { key = "accept_both", fn = actions.accept_both, desc = "Accept both changes" },
+  { key = "discard", fn = actions.discard, desc = "Discard changes (keep base)" },
+}
+
+local PLAIN_ACTIONS = {
+  { key = "accept_all_incoming", fn = actions.accept_all_incoming, desc = "Accept ALL incoming changes" },
+  { key = "accept_all_current", fn = actions.accept_all_current, desc = "Accept ALL current changes" },
+  { key = "accept_all_both", fn = actions.accept_all_both, desc = "Accept ALL both changes" },
+  { key = "discard_all", fn = actions.discard_all, desc = "Discard ALL, reset to base" },
+  { key = "next_conflict", fn = navigation.navigate_next_conflict, desc = "Next conflict" },
+  { key = "prev_conflict", fn = navigation.navigate_prev_conflict, desc = "Previous conflict" },
+}
+
+-- Vimdiff-style numbered diffget, only meaningful on the result buffer.
+local RESULT_ONLY_ACTIONS = {
+  { key = "diffget_incoming", fn = diffget.diffget_incoming, desc = "Get hunk from incoming (2do)" },
+  { key = "diffget_current", fn = diffget.diffget_current, desc = "Get hunk from current (3do)" },
+}
+
 --- Setup conflict keymaps for a session
+---
+--- Ordinary do/dp are not deleted here. The view layer skips claiming them
+--- while a result pane exists, so any mapping the user already had on those
+--- keys stays intact for the duration of the merge instead of being destroyed.
 --- @param tabpage number
 function M.setup_keymaps(tabpage)
   local session = lifecycle.get_session(tabpage)
@@ -16,138 +44,56 @@ function M.setup_keymaps(tabpage)
     return
   end
 
-  local keymaps = config.options.keymaps.conflict or {}
-  local view_keymaps = config.options.keymaps.view or {}
+  lifecycle.begin_keymap_scope(tabpage, "conflict")
+
+  local keymaps = resolve.keymaps_for("conflict")
 
   -- Bind to incoming (left), current (right), AND result buffers
   local buffers = { session.original_bufnr, session.modified_bufnr, session.result_bufnr }
 
   local base_opts = { noremap = true, silent = true, nowait = true }
 
+  local function bind(bufnr, action, opts)
+    if not keymaps[action.key] then
+      return
+    end
+    lifecycle.set_buf_keymap(tabpage, bufnr, "n", keymaps[action.key], opts.rhs, vim.tbl_extend("force", base_opts, opts.extra or {}))
+  end
+
   for _, bufnr in ipairs(buffers) do
     if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
-      -- Unbind normal mode do/dp from view keymaps (they don't apply in merge conflict mode)
-      if view_keymaps.diff_get then
-        pcall(vim.keymap.del, "n", view_keymaps.diff_get, { buffer = bufnr })
-      end
-      if view_keymaps.diff_put then
-        pcall(vim.keymap.del, "n", view_keymaps.diff_put, { buffer = bufnr })
-      end
-
-      -- Accept incoming
-      if keymaps.accept_incoming then
-        vim.keymap.set(
-          "n",
-          keymaps.accept_incoming,
-          tracking.make_repeatable(function()
-            actions.accept_incoming(tabpage)
+      for _, action in ipairs(REPEATABLE_ACTIONS) do
+        bind(bufnr, action, {
+          rhs = tracking.make_repeatable(function()
+            action.fn(tabpage)
           end),
-          vim.tbl_extend("force", base_opts, { buffer = bufnr, desc = "Accept incoming change", expr = true })
-        )
+          extra = { desc = action.desc, expr = true },
+        })
       end
 
-      -- Accept current
-      if keymaps.accept_current then
-        vim.keymap.set(
-          "n",
-          keymaps.accept_current,
-          tracking.make_repeatable(function()
-            actions.accept_current(tabpage)
-          end),
-          vim.tbl_extend("force", base_opts, { buffer = bufnr, desc = "Accept current change", expr = true })
-        )
+      for _, action in ipairs(PLAIN_ACTIONS) do
+        bind(bufnr, action, {
+          rhs = function()
+            action.fn(tabpage)
+          end,
+          extra = { desc = action.desc },
+        })
       end
 
-      -- Accept both
-      if keymaps.accept_both then
-        vim.keymap.set(
-          "n",
-          keymaps.accept_both,
-          tracking.make_repeatable(function()
-            actions.accept_both(tabpage)
-          end),
-          vim.tbl_extend("force", base_opts, { buffer = bufnr, desc = "Accept both changes", expr = true })
-        )
-      end
-
-      -- Discard
-      if keymaps.discard then
-        vim.keymap.set(
-          "n",
-          keymaps.discard,
-          tracking.make_repeatable(function()
-            actions.discard(tabpage)
-          end),
-          vim.tbl_extend("force", base_opts, { buffer = bufnr, desc = "Discard changes (keep base)", expr = true })
-        )
-      end
-
-      -- Accept ALL incoming
-      if keymaps.accept_all_incoming then
-        vim.keymap.set("n", keymaps.accept_all_incoming, function()
-          actions.accept_all_incoming(tabpage)
-        end, vim.tbl_extend("force", base_opts, { buffer = bufnr, desc = "Accept ALL incoming changes" }))
-      end
-
-      -- Accept ALL current
-      if keymaps.accept_all_current then
-        vim.keymap.set("n", keymaps.accept_all_current, function()
-          actions.accept_all_current(tabpage)
-        end, vim.tbl_extend("force", base_opts, { buffer = bufnr, desc = "Accept ALL current changes" }))
-      end
-
-      -- Accept ALL both
-      if keymaps.accept_all_both then
-        vim.keymap.set("n", keymaps.accept_all_both, function()
-          actions.accept_all_both(tabpage)
-        end, vim.tbl_extend("force", base_opts, { buffer = bufnr, desc = "Accept ALL both changes" }))
-      end
-
-      -- Discard ALL
-      if keymaps.discard_all then
-        vim.keymap.set("n", keymaps.discard_all, function()
-          actions.discard_all(tabpage)
-        end, vim.tbl_extend("force", base_opts, { buffer = bufnr, desc = "Discard ALL, reset to base" }))
-      end
-
-      -- Navigation
-      if keymaps.next_conflict then
-        vim.keymap.set("n", keymaps.next_conflict, function()
-          navigation.navigate_next_conflict(tabpage)
-        end, vim.tbl_extend("force", base_opts, { buffer = bufnr, desc = "Next conflict" }))
-      end
-
-      if keymaps.prev_conflict then
-        vim.keymap.set("n", keymaps.prev_conflict, function()
-          navigation.navigate_prev_conflict(tabpage)
-        end, vim.tbl_extend("force", base_opts, { buffer = bufnr, desc = "Previous conflict" }))
-      end
-
-      -- Vimdiff-style diffget from incoming (2do) - only on result buffer
-      if keymaps.diffget_incoming and bufnr == session.result_bufnr then
-        vim.keymap.set(
-          "n",
-          keymaps.diffget_incoming,
-          tracking.make_repeatable(function()
-            diffget.diffget_incoming(tabpage)
-          end),
-          vim.tbl_extend("force", base_opts, { buffer = bufnr, desc = "Get hunk from incoming (2do)", expr = true })
-        )
-      end
-
-      -- Vimdiff-style diffget from current (3do) - only on result buffer
-      if keymaps.diffget_current and bufnr == session.result_bufnr then
-        vim.keymap.set(
-          "n",
-          keymaps.diffget_current,
-          tracking.make_repeatable(function()
-            diffget.diffget_current(tabpage)
-          end),
-          vim.tbl_extend("force", base_opts, { buffer = bufnr, desc = "Get hunk from current (3do)", expr = true })
-        )
+      if bufnr == session.result_bufnr then
+        for _, action in ipairs(RESULT_ONLY_ACTIONS) do
+          bind(bufnr, action, {
+            rhs = tracking.make_repeatable(function()
+              action.fn(tabpage)
+            end),
+            extra = { desc = action.desc, expr = true },
+          })
+        end
       end
     end
   end
+
+  lifecycle.end_keymap_scope(tabpage, "conflict")
 end
 
 return M

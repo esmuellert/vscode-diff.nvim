@@ -4,6 +4,8 @@
 local layout = require("codediff.ui.layout")
 local lifecycle = require("codediff.ui.lifecycle")
 local config = require("codediff.config")
+local highlights = require("codediff.ui.highlights")
+local path = require("codediff.core.path")
 
 -- Tolerance for width assertions (Neovim may round or add separators)
 local WIDTH_TOLERANCE = 2
@@ -13,6 +15,12 @@ local function assert_width_near(expected, actual, msg)
     math.abs(expected - actual) <= WIDTH_TOLERANCE,
     (msg or "") .. " expected ~" .. expected .. " got " .. actual
   )
+end
+
+local function assert_whole_file_highlight(bufnr, expected_group)
+  local marks = vim.api.nvim_buf_get_extmarks(bufnr, highlights.ns_highlight, 0, -1, { details = true })
+  assert.are.equal(1, #marks, "Buffer should have one whole-file highlight")
+  assert.are.equal(expected_group, marks[1][4].hl_group)
 end
 
 -- Create a mock session in lifecycle so layout.arrange() can read it
@@ -872,11 +880,12 @@ describe("Layout Manager", function()
   end)
 
   -- =========================================================================
-  -- Case 14: show_untracked_file closes original, single-pane, no highlights
+  -- Case 14: show_untracked_file closes original, single-pane, insert highlight
   -- =========================================================================
   it("Case 14: show_untracked_file — closes orig, single-pane, diff pane fills remainder", function()
     local panel_width = 35
     config.options.explorer = { position = "left", width = panel_width }
+    config.options.diff.highlight_added_deleted_files = true
 
     vim.cmd("tabnew")
     local tabpage = vim.api.nvim_get_current_tabpage()
@@ -894,8 +903,8 @@ describe("Layout Manager", function()
     session_mod.get_active_diffs()[tabpage] = {
       mode = "explorer",
       git_root = "/tmp",
-      original_path = "",
-      modified_path = "",
+      original = path.empty(),
+      modified = path.empty(),
       original_revision = nil,
       modified_revision = nil,
       original_bufnr = orig_buf,
@@ -928,11 +937,9 @@ describe("Layout Manager", function()
     assert.is_false(vim.api.nvim_win_is_valid(orig_win), "Original window should be closed")
     assert.is_true(vim.api.nvim_win_is_valid(mod_win), "Modified window should be valid")
 
-    -- Validate: no diff highlights on the modified buffer
-    local highlights = require("codediff.ui.highlights")
-    local hl_marks = vim.api.nvim_buf_get_extmarks(session.modified_bufnr, highlights.ns_highlight, 0, -1, {})
+    -- Validate: whole-file highlight on the modified buffer
+    assert_whole_file_highlight(session.modified_bufnr, "CodeDiffLineInsert")
     local filler_marks = vim.api.nvim_buf_get_extmarks(session.modified_bufnr, highlights.ns_filler, 0, -1, {})
-    assert.are.equal(0, #hl_marks, "No diff highlights should remain on modified buffer")
     assert.are.equal(0, #filler_marks, "No filler highlights should remain on modified buffer")
 
     -- Validate: layout — diff pane fills remainder
@@ -942,7 +949,7 @@ describe("Layout Manager", function()
     local expected_diff = vim.o.columns - panel_width - 1
     assert_width_near(expected_diff, mod_w, "Diff pane should fill remainder:")
 
-    -- Validate: empty diff result (no highlights)
+    -- Validate: empty diff result
     assert.is_truthy(session.stored_diff_result, "Should have diff result")
     assert.same(session.stored_diff_result.changes, {}, "Should have no changes (empty diff)")
 
@@ -951,11 +958,12 @@ describe("Layout Manager", function()
   end)
 
   -- =========================================================================
-  -- Case 15: show_deleted_file closes modified, single-pane, no highlights
+  -- Case 15: show_deleted_file closes modified, single-pane, delete highlight
   -- =========================================================================
   it("Case 15: show_deleted_file — closes mod, single-pane, diff pane fills remainder", function()
     local panel_width = 35
     config.options.explorer = { position = "left", width = panel_width }
+    config.options.diff.highlight_added_deleted_files = true
 
     vim.cmd("tabnew")
     local tabpage = vim.api.nvim_get_current_tabpage()
@@ -972,8 +980,8 @@ describe("Layout Manager", function()
     session_mod.get_active_diffs()[tabpage] = {
       mode = "explorer",
       git_root = "/tmp",
-      original_path = "",
-      modified_path = "",
+      original = path.empty(),
+      modified = path.empty(),
       original_revision = nil,
       modified_revision = nil,
       original_bufnr = orig_buf,
@@ -1001,10 +1009,8 @@ describe("Layout Manager", function()
     assert.is_false(vim.api.nvim_win_is_valid(mod_win), "Modified window should be closed")
     assert.is_true(vim.api.nvim_win_is_valid(orig_win), "Original window should be valid")
 
-    -- Validate: no diff highlights on the original buffer
-    local highlights = require("codediff.ui.highlights")
-    local hl_marks = vim.api.nvim_buf_get_extmarks(session.original_bufnr, highlights.ns_highlight, 0, -1, {})
-    assert.are.equal(0, #hl_marks, "No diff highlights should remain on original buffer")
+    -- Validate: whole-file highlight on the original buffer
+    assert_whole_file_highlight(session.original_bufnr, "CodeDiffLineDelete")
 
     -- Validate: layout
     local panel_w = vim.api.nvim_win_get_width(panel.winid)
@@ -1019,9 +1025,10 @@ describe("Layout Manager", function()
   -- =========================================================================
   -- Case 16: show_added_virtual_file — closes orig, single-pane for "A" status
   -- =========================================================================
-  it("Case 16: show_added_virtual_file — closes orig, single-pane, no highlights", function()
+  it("Case 16: show_added_virtual_file — closes orig, single-pane, insert highlight", function()
     local panel_width = 35
     config.options.explorer = { position = "left", width = panel_width }
+    config.options.diff.highlight_added_deleted_files = true
 
     vim.cmd("tabnew")
     local tabpage = vim.api.nvim_get_current_tabpage()
@@ -1038,8 +1045,8 @@ describe("Layout Manager", function()
     session_mod.get_active_diffs()[tabpage] = {
       mode = "explorer",
       git_root = "/tmp",
-      original_path = "",
-      modified_path = "",
+      original = path.empty(),
+      modified = path.empty(),
       original_revision = "abc123",
       modified_revision = "def456",
       original_bufnr = orig_buf,
@@ -1068,10 +1075,8 @@ describe("Layout Manager", function()
     assert.is_false(vim.api.nvim_win_is_valid(orig_win), "Original window should be closed")
     assert.is_true(vim.api.nvim_win_is_valid(mod_win), "Modified window should be valid")
 
-    -- Validate: no diff highlights on modified buffer
-    local highlights = require("codediff.ui.highlights")
-    local hl_marks = vim.api.nvim_buf_get_extmarks(session.modified_bufnr, highlights.ns_highlight, 0, -1, {})
-    assert.are.equal(0, #hl_marks, "No diff highlights on modified buffer")
+    -- Validate: whole-file highlight on modified buffer
+    assert_whole_file_highlight(session.modified_bufnr, "CodeDiffLineInsert")
 
     -- Validate: layout
     local panel_w = vim.api.nvim_win_get_width(panel.winid)
@@ -1090,9 +1095,10 @@ describe("Layout Manager", function()
   -- =========================================================================
   -- Case 17: show_deleted_virtual_file — closes mod, single-pane for "D" in revision mode
   -- =========================================================================
-  it("Case 17: show_deleted_virtual_file — closes mod, single-pane, no highlights", function()
+  it("Case 17: show_deleted_virtual_file — closes mod, single-pane, delete highlight", function()
     local panel_width = 35
     config.options.explorer = { position = "left", width = panel_width }
+    config.options.diff.highlight_added_deleted_files = true
 
     vim.cmd("tabnew")
     local tabpage = vim.api.nvim_get_current_tabpage()
@@ -1109,8 +1115,8 @@ describe("Layout Manager", function()
     session_mod.get_active_diffs()[tabpage] = {
       mode = "explorer",
       git_root = "/tmp",
-      original_path = "",
-      modified_path = "",
+      original = path.empty(),
+      modified = path.empty(),
       original_revision = "abc123",
       modified_revision = "def456",
       original_bufnr = orig_buf,
@@ -1138,10 +1144,8 @@ describe("Layout Manager", function()
     assert.is_false(vim.api.nvim_win_is_valid(mod_win), "Modified window should be closed")
     assert.is_true(vim.api.nvim_win_is_valid(orig_win), "Original window should be valid")
 
-    -- Validate: no diff highlights
-    local highlights = require("codediff.ui.highlights")
-    local hl_marks = vim.api.nvim_buf_get_extmarks(session.original_bufnr, highlights.ns_highlight, 0, -1, {})
-    assert.are.equal(0, #hl_marks, "No diff highlights on original buffer")
+    -- Validate: whole-file highlight
+    assert_whole_file_highlight(session.original_bufnr, "CodeDiffLineDelete")
 
     -- Validate: layout
     local panel_w = vim.api.nvim_win_get_width(panel.winid)
@@ -1190,5 +1194,51 @@ describe("Layout Manager", function()
     assert.is_nil(session.single_pane, "single_pane should NOT be set for empty files")
 
     cleanup_mock_session(tabpage)
+  end)
+
+  -- Regression test: #346 — panel width should be re-applied on VimResized
+  it("re-pins panel width on VimResized (regression: #346)", function()
+    local panel_width = 28
+    local panel = create_panel_split("left", panel_width)
+    vim.cmd("vsplit")
+    local orig_win = vim.api.nvim_get_current_win()
+    vim.cmd("vsplit")
+    local mod_win = vim.api.nvim_get_current_win()
+    local orig_buf = vim.api.nvim_create_buf(false, true)
+    local mod_buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_win_set_buf(orig_win, orig_buf)
+    vim.api.nvim_win_set_buf(mod_win, mod_buf)
+
+    local tabpage = vim.api.nvim_get_current_tabpage()
+    local session_mod = require("codediff.ui.lifecycle.session")
+    config.options.explorer = config.options.explorer or {}
+    config.options.explorer.width = panel_width
+    session_mod.create_session(
+      tabpage, "explorer", "/tmp", "", "", nil, nil,
+      orig_buf, mod_buf, orig_win, mod_win, {}, nil
+    )
+    local accessors = require("codediff.ui.lifecycle.accessors")
+    accessors.set_explorer(tabpage, panel)
+
+    -- The VimResized autocmd is installed by lifecycle.setup() (once-guarded by
+    -- view.create()). This test creates the session directly, bypassing view.create(),
+    -- so we install the autocmds explicitly to exercise the resize path.
+    require("codediff.ui.lifecycle.cleanup").setup_autocmds()
+
+    -- Pin the configured width first, then sabotage it (simulating what a real
+    -- terminal resize does to the layout) and confirm VimResized re-pins it.
+    layout.arrange(tabpage)
+    local initial = vim.api.nvim_win_get_width(panel.winid)
+    assert_width_near(panel_width, initial, "Initial panel width should match config:")
+
+    vim.api.nvim_win_set_width(panel.winid, 90) -- sabotage
+    vim.cmd("doautocmd VimResized")
+    vim.wait(50)
+
+    local restored = vim.api.nvim_win_get_width(panel.winid)
+    assert_width_near(panel_width, restored, "VimResized should re-pin panel width:")
+
+    cleanup_mock_session(tabpage)
+    pcall(panel.split.unmount, panel.split)
   end)
 end)

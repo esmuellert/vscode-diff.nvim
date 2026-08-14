@@ -7,6 +7,7 @@ local diff = require("codediff.core.diff")
 local highlights = require("codediff.ui.highlights")
 local lifecycle = require("codediff.ui.lifecycle")
 local navigation = require("codediff.ui.view.navigation")
+local path = require("codediff.core.path")
 
 -- Helper to get OS-appropriate temp path
 local function get_temp_path(filename)
@@ -34,8 +35,8 @@ local function create_inline_view(original_lines, modified_lines)
   view.create({
     mode = "standalone",
     git_root = nil,
-    original_path = left_path,
-    modified_path = right_path,
+    original = path.make_ref(left_path, nil),
+    modified = path.make_ref(right_path, nil),
     original_revision = nil,
     modified_revision = nil,
   })

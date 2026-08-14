@@ -2,6 +2,8 @@
 -- All operations are async and atomic
 local M = {}
 
+local config = require("codediff.config")
+
 -- Unquote git C-quoted paths (e.g., "my file.md" -> my file.md)
 local function unquote_path(path)
   if path:sub(1, 1) == '"' and path:sub(-1) == '"' then
@@ -91,8 +93,36 @@ end
 
 -- Run a git command asynchronously
 -- Uses vim.system if available (Neovim 0.10+), falls back to vim.loop.spawn
+-- Read `explorer.untracked` from config, validated. Owned by the domain
+-- functions that need it (get_status, get_diff_revision) — see #389 for the
+-- semantics of each mode; run_git_async stays a dumb transport.
+local UNTRACKED_MODES = { all = true, normal = true, no = true }
+local function untracked_mode()
+  local mode = config.options.explorer and config.options.explorer.untracked
+  return UNTRACKED_MODES[mode] and mode or "all"
+end
+
 local function run_git_async(args, opts, callback)
   opts = opts or {}
+
+  local argv = { "git" }
+  if opts.no_optional_locks then
+    -- `--no-optional-locks` (git 2.15+) tells git to skip the *optional* index
+    -- refresh that read-only queries perform, which takes `.git/index.lock`.
+    -- Required locks (e.g. the one `git add` needs) are unaffected.
+    --
+    -- The explorer polls status every 500ms. Without this, a poll landing while
+    -- the user stages or discards a hunk owns index.lock just long enough to
+    -- make the staging command fail with
+    -- `Unable to create '.../.git/index.lock': File exists`.
+    --
+    -- `git status` and `git ls-files` honor it; `git diff` refreshes the index
+    -- regardless, so it is passed there for intent and forward-compatibility
+    -- only. Reads never fail on a contended lock either way — git falls back to
+    -- not refreshing.
+    table.insert(argv, "--no-optional-locks")
+  end
+  vim.list_extend(argv, args)
 
   -- Use vim.system if available (Neovim 0.10+)
   if vim.system then
@@ -103,7 +133,7 @@ local function run_git_async(args, opts, callback)
       return
     end
 
-    vim.system(vim.list_extend({ "git" }, args), {
+    vim.system(argv, {
       cwd = opts.cwd,
       text = true,
     }, function(result)
@@ -130,7 +160,9 @@ local function run_git_async(args, opts, callback)
 
     ---@diagnostic disable-next-line: missing-fields
     handle = vim.loop.spawn("git", {
-      args = args,
+      -- `argv` already carries `--no-optional-locks` when requested; `spawn`
+      -- takes the arguments *after* argv[0], so drop the leading "git".
+      args = vim.list_slice(argv, 2, #argv),
       cwd = opts.cwd,
       stdio = { nil, stdout, stderr },
     }, function(code)
@@ -178,6 +210,172 @@ local function run_git_async(args, opts, callback)
       end)
     end
   end
+end
+
+local function parse_numstat(output)
+  local stats = {}
+  local records = vim.split(output or "", "\0", { plain = true })
+  for index, record in ipairs(records) do
+    local insertions, deletions, path = record:match("^([^\t]+)\t([^\t]+)\t(.*)$")
+    if insertions then
+      path = path ~= "" and path or records[index + 2]
+      if path and path ~= "" then
+        stats[path] = insertions == "-" and { insertions = 0, deletions = 0, binary = true }
+          or { insertions = tonumber(insertions) or 0, deletions = tonumber(deletions) or 0, binary = false }
+      end
+    end
+  end
+  return stats
+end
+
+local function get_untracked_line_stats(path, max_bytes)
+  local uv = vim.uv or vim.loop
+  local stat = uv.fs_stat(path)
+  if not stat or stat.type ~= "file" or stat.size > max_bytes then
+    return nil
+  end
+
+  local fd = uv.fs_open(path, "r", 438)
+  if not fd then
+    return nil
+  end
+  local data = uv.fs_read(fd, stat.size, 0) or ""
+  uv.fs_close(fd)
+  if data:find("\0", 1, true) then
+    return { insertions = 0, deletions = 0, binary = true }
+  end
+
+  local _, newlines = data:gsub("\n", "")
+  local final_line = #data > 0 and data:sub(-1) ~= "\n" and 1 or 0
+  return { insertions = newlines + final_line, deletions = 0, binary = false }
+end
+
+local function attach_line_stats(entries, stats)
+  for _, entry in ipairs(entries or {}) do
+    entry.line_stats = stats[entry.path]
+  end
+end
+
+local function attach_untracked_line_stats(entries, git_root, max_bytes)
+  for _, entry in ipairs(entries or {}) do
+    if entry.status == "??" then
+      entry.line_stats = get_untracked_line_stats(git_root .. "/" .. entry.path, max_bytes)
+    end
+  end
+end
+
+local function collect_line_stats(git_root, requests, callback)
+  local remaining = #requests
+  local first_error
+  for _, request in ipairs(requests) do
+    run_git_async(request.args, { cwd = git_root }, function(err, output)
+      first_error = first_error or err
+      if not err then
+        local stats = parse_numstat(output)
+        for _, entries in ipairs(request.entries) do
+          attach_line_stats(entries, stats)
+        end
+      end
+      remaining = remaining - 1
+      if remaining == 0 then
+        callback(first_error)
+      end
+    end)
+  end
+end
+
+local function line_stats_options()
+  return (config.options.explorer or {}).line_stats or {}
+end
+
+function M.get_status_with_line_stats(git_root, callback, pathspec)
+  local options = line_stats_options()
+  if not options.enabled then
+    M.get_status(git_root, callback, pathspec)
+    return
+  end
+
+  M.get_status(git_root, function(err, result)
+    if err then
+      callback(err, nil)
+      return
+    end
+    collect_line_stats(git_root, {
+      {
+        args = vim.list_extend({ "diff", "--numstat", "-z", "-M", "--" }, pathspec or {}),
+        entries = { result.unstaged, result.conflicts },
+      },
+      {
+        args = vim.list_extend({ "diff", "--cached", "--numstat", "-z", "-M", "--" }, pathspec or {}),
+        entries = { result.staged },
+      },
+    }, function(stats_err)
+      if stats_err then
+        callback(stats_err, nil)
+        return
+      end
+      if options.count_untracked then
+        attach_untracked_line_stats(result.unstaged, git_root, options.max_untracked_bytes or 1024 * 1024)
+      end
+      callback(nil, result)
+    end)
+  end, pathspec)
+end
+
+function M.get_diff_revision_with_line_stats(revision, git_root, callback, pathspec)
+  local options = line_stats_options()
+  if not options.enabled then
+    M.get_diff_revision(revision, git_root, callback, pathspec)
+    return
+  end
+
+  M.get_diff_revision(revision, git_root, function(err, result)
+    if err then
+      callback(err, nil)
+      return
+    end
+    collect_line_stats(git_root, {
+      {
+        args = vim.list_extend({ "diff", "--numstat", "-z", "-M", revision, "--" }, pathspec or {}),
+        entries = { result.unstaged },
+      },
+    }, function(stats_err)
+      if stats_err then
+        callback(stats_err, nil)
+        return
+      end
+      if options.count_untracked then
+        attach_untracked_line_stats(result.unstaged, git_root, options.max_untracked_bytes or 1024 * 1024)
+      end
+      callback(nil, result)
+    end)
+  end, pathspec)
+end
+
+function M.get_diff_revisions_with_line_stats(rev1, rev2, git_root, callback, pathspec)
+  if not line_stats_options().enabled then
+    M.get_diff_revisions(rev1, rev2, git_root, callback, pathspec)
+    return
+  end
+
+  M.get_diff_revisions(rev1, rev2, git_root, function(err, result)
+    if err then
+      callback(err, nil)
+      return
+    end
+    collect_line_stats(git_root, {
+      {
+        args = vim.list_extend({ "diff", "--numstat", "-z", "-M", rev1, rev2, "--" }, pathspec or {}),
+        entries = { result.unstaged },
+      },
+    }, function(stats_err)
+      if stats_err then
+        callback(stats_err, nil)
+        return
+      end
+      callback(nil, result)
+    end)
+  end, pathspec)
 end
 
 -- ATOMIC ASYNC OPERATIONS
@@ -242,6 +440,13 @@ function M.get_relative_path(file_path, git_root)
   return rel_path
 end
 
+-- The universal SHA-1 for an empty git tree object. Every git repository
+-- recognizes this hash — see `git hash-object -t tree /dev/null`. Diffing
+-- against it yields the entire other side as newly added, which is the
+-- correct semantic for "no HEAD yet" (a fresh repo before the first commit,
+-- see #498).
+local GIT_EMPTY_TREE_SHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
 -- Resolve a git revision to its commit hash (async, atomic)
 -- revision: branch name, tag, or commit reference
 -- git_root: absolute path to git repository root
@@ -249,6 +454,27 @@ end
 function M.resolve_revision(revision, git_root, callback)
   run_git_async({ "rev-parse", "--verify", revision }, { cwd = git_root }, function(err, output)
     if err then
+      -- Special case: on an unborn branch (fresh `git init` with no commits
+      -- yet), `rev-parse --verify HEAD` fails with "Needed a single
+      -- revision". Callers ask for HEAD to get a diff base; the empty-tree
+      -- hash IS a valid diff base and produces the correct visual (every
+      -- staged/worktree file appears as newly added), so translate the
+      -- failure into a hash the caller can use unchanged (#498).
+      if revision == "HEAD" then
+        -- Double-check we're actually on an unborn branch (not, say, a
+        -- corrupt repo). `symbolic-ref HEAD` succeeds even when the target
+        -- branch has no commits yet, so this positively identifies unborn.
+        run_git_async({ "symbolic-ref", "--quiet", "HEAD" }, { cwd = git_root }, function(sym_err)
+          if sym_err then
+            -- HEAD is not a symbolic ref (detached HEAD without any commit,
+            -- or a genuinely broken repo). Surface the original failure.
+            callback(string.format("Invalid revision '%s': %s", revision, err), nil)
+          else
+            callback(nil, GIT_EMPTY_TREE_SHA)
+          end
+        end)
+        return
+      end
       callback(string.format("Invalid revision '%s': %s", revision, err), nil)
     else
       local commit_hash = vim.trim(output)
@@ -333,10 +559,12 @@ end
 --   staged = { { path = "file.txt", status = "M"|"A"|"D" } },
 --   conflicts = { { path = "file.txt", status = "!" } }
 -- }
-function M.get_status(git_root, callback)
+function M.get_status(git_root, callback, pathspec)
+  -- Trailing `-- <paths>` scopes the status to a pathspec (nil/empty = all files).
+  -- `-u<mode>` (untracked-files scan; #389) is read from explorer.untracked config.
   run_git_async(
-    { "status", "--porcelain", "-uall", "-M" }, -- -M to detect renames
-    { cwd = git_root },
+    vim.list_extend({ "status", "--porcelain", "-u" .. untracked_mode(), "-M", "--" }, pathspec or {}), -- -M to detect renames
+    { cwd = git_root, no_optional_locks = true },
     function(err, output)
       if err then
         callback(err, nil)
@@ -398,9 +626,9 @@ end
 -- revision: git revision (e.g., "HEAD", "HEAD~1", commit hash, branch name)
 -- git_root: absolute path to git repository root
 -- callback: function(err, status_result) where status_result has same format as get_status
-function M.get_diff_revision(revision, git_root, callback)
-  -- First get tracked file changes
-  run_git_async({ "diff", "--name-status", "-M", revision }, { cwd = git_root }, function(err, output)
+function M.get_diff_revision(revision, git_root, callback, pathspec)
+  -- First get tracked file changes (trailing `-- <paths>` scopes to a pathspec)
+  run_git_async(vim.list_extend({ "diff", "--name-status", "-M", revision, "--" }, pathspec or {}), { cwd = git_root, no_optional_locks = true }, function(err, output)
     if err then
       callback(err, nil)
       return
@@ -434,8 +662,22 @@ function M.get_diff_revision(revision, git_root, callback)
       end
     end
 
-    -- Now get untracked files (they don't exist in the revision, so they're "new")
-    run_git_async({ "ls-files", "--others", "--exclude-standard" }, { cwd = git_root }, function(err_untracked, output_untracked)
+    -- Untracked files (#389): they don't exist in the revision, so they're "new".
+    -- `no`   -> skip the recursive ls-files scan entirely (the hang fix for huge
+    --          work trees like GIT_WORK_TREE=$HOME).
+    -- `normal` -> collapse untracked directories to one entry via --directory.
+    -- `all`  -> list every untracked file individually (current default).
+    local mode = untracked_mode()
+    if mode == "no" then
+      callback(nil, result)
+      return
+    end
+    local ls_args = { "ls-files", "--others", "--exclude-standard" }
+    if mode == "normal" then
+      table.insert(ls_args, "--directory")
+    end
+    table.insert(ls_args, "--")
+    run_git_async(vim.list_extend(ls_args, pathspec or {}), { cwd = git_root, no_optional_locks = true }, function(err_untracked, output_untracked)
       if err_untracked then
         -- If getting untracked files fails, just return what we have
         callback(nil, result)
@@ -463,8 +705,8 @@ end
 -- rev2: modified revision (e.g., commit hash)
 -- git_root: absolute path to git repository root
 -- callback: function(err, status_result)
-function M.get_diff_revisions(rev1, rev2, git_root, callback)
-  run_git_async({ "diff", "--name-status", "-M", rev1, rev2 }, { cwd = git_root }, function(err, output)
+function M.get_diff_revisions(rev1, rev2, git_root, callback, pathspec)
+  run_git_async(vim.list_extend({ "diff", "--name-status", "-M", rev1, rev2, "--" }, pathspec or {}), { cwd = git_root, no_optional_locks = true }, function(err, output)
     if err then
       callback(err, nil)
       return
@@ -494,6 +736,54 @@ function M.get_diff_revisions(rev1, rev2, git_root, callback)
           end
 
           table.insert(result.unstaged, {
+            path = path,
+            status = status,
+            old_path = old_path,
+          })
+        end
+      end
+    end
+
+    callback(nil, result)
+  end)
+end
+
+-- Get staged changes vs a revision (async) — the equivalent of diffview's
+-- `--staged`/`--cached` filter: `git diff --cached --name-status -M <revision>`.
+-- Only files whose index copy differs from `revision` are returned. Entries
+-- go into `result.staged` so the `-` toggle key unstages them and the tree
+-- renders them under the "Staged Changes" header.
+--
+-- revision: git revision (e.g., "HEAD"), the base to compare the index against
+-- git_root: absolute path to git repository root
+-- callback: function(err, status_result)
+function M.get_diff_staged(revision, git_root, callback, pathspec)
+  run_git_async(vim.list_extend({ "diff", "--cached", "--name-status", "-M", revision, "--" }, pathspec or {}), { cwd = git_root }, function(err, output)
+    if err then
+      callback(err, nil)
+      return
+    end
+
+    local result = {
+      unstaged = {},
+      staged = {},
+      conflicts = {},
+    }
+
+    for line in output:gmatch("[^\r\n]+") do
+      if #line > 0 then
+        local parts = vim.split(line, "\t")
+        if #parts >= 2 then
+          local status = parts[1]:sub(1, 1)
+          local path = unquote_path(parts[2])
+          local old_path = nil
+
+          if status == "R" and #parts >= 3 then
+            old_path = unquote_path(parts[2])
+            path = unquote_path(parts[3])
+          end
+
+          table.insert(result.staged, {
             path = path,
             status = status,
             old_path = old_path,
@@ -610,12 +900,6 @@ function M.apply_patch(git_root, patch, opts, callback)
     stdin_pipe:write(patch)
     stdin_pipe:shutdown()
   end
-end
-
--- Discard a hunk from the working tree by reverse-applying a patch (async)
--- Convenience wrapper: applies patch in reverse to working tree (not index)
-function M.discard_hunk_patch(git_root, patch, callback)
-  M.apply_patch(git_root, patch, { cached = false, reverse = true }, callback)
 end
 
 -- Run a git command synchronously

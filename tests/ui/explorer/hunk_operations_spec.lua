@@ -10,7 +10,7 @@
 
 local h = dofile("tests/helpers.lua")
 
--- Ensure plugin is loaded (needed for PlenaryBustedFile subprocess)
+-- Ensure plugin is loaded (needed when the test framework isolates specs)
 h.ensure_plugin_loaded()
 
 -- Setup CodeDiff user command for tests
@@ -218,12 +218,14 @@ end
 describe("Hunk operations (side-by-side)", function()
   local repo
   local original_cwd
+  local original_autoread
 
   before_each(function()
     vim.g.mapleader = " "
     require("codediff").setup({ diff = { layout = "side-by-side" } })
     setup_command()
     original_cwd = vim.fn.getcwd()
+    original_autoread = vim.o.autoread
   end)
 
   after_each(function()
@@ -232,6 +234,7 @@ describe("Hunk operations (side-by-side)", function()
       vim.cmd("tabonly")
     end)
     vim.fn.chdir(original_cwd)
+    vim.o.autoread = original_autoread
     vim.wait(200)
     if repo then
       repo.cleanup()
@@ -380,7 +383,8 @@ describe("Hunk operations (side-by-side)", function()
   -- --------------------------------------------------------------------------
   -- Test 4: discard_hunk reverts working tree and updates diff
   -- --------------------------------------------------------------------------
-  it("discard_hunk reverts working tree file", function()
+  it("discard_hunk refreshes the visible buffer when autoread is disabled", function()
+    vim.o.autoread = false
     repo = create_two_hunk_repo()
     local tabpage, session, explorer = open_codediff_and_wait(repo)
     local lifecycle = require("codediff.ui.lifecycle")
@@ -408,13 +412,165 @@ describe("Hunk operations (side-by-side)", function()
     -- Restore original vim.fn.confirm
     vim.fn.confirm = original_confirm
 
-    -- Wait for the async git operation to complete
-    vim.wait(2000, function() return false end, 100)
+    -- Discard edits the buffer in memory and writes it to disk (VSCode-style),
+    -- so the visible buffer and recomputed diff update without relying on autoread.
+    local refreshed = vim.wait(8000, function()
+      local current = lifecycle.get_session(tabpage)
+      if not current or not current.stored_diff_result or not current.stored_diff_result.changes then
+        return false
+      end
+      local first = vim.api.nvim_buf_get_lines(mod_buf, 0, 1, false)[1]
+      return first == "original line 1" and #current.stored_diff_result.changes == 1
+    end, 100)
 
-    -- Verify file content on disk: line 1 should be reverted to original
+    assert.is_true(refreshed, "Discard should refresh the visible buffer and leave exactly one hunk")
+
     local disk_lines = vim.fn.readfile(repo.path("file1.txt"))
-    assert.equals("original line 1", disk_lines[1], "Line 1 should be reverted to original after discard")
-    assert.equals("MODIFIED line 9", disk_lines[9], "Line 9 should still be modified (only hunk 1 discarded)")
+    local buffer_lines = vim.api.nvim_buf_get_lines(mod_buf, 0, -1, false)
+    assert.equals("original line 1", disk_lines[1], "Line 1 should be reverted on disk")
+    assert.equals("original line 1", buffer_lines[1], "Line 1 should be reverted in the visible buffer")
+    assert.equals("MODIFIED line 9", disk_lines[9], "Line 9 should remain modified on disk")
+    assert.equals("MODIFIED line 9", buffer_lines[9], "Line 9 should remain modified in the visible buffer")
+    assert.is_false(vim.bo[mod_buf].modified, "Buffer should be clean after the discard writes to disk")
+  end)
+
+  it("discard_hunk keeps unrelated buffer edits and saves them to disk (VSCode parity)", function()
+    repo = h.create_temp_git_repo()
+    local base = {}
+    for i = 1, 20 do
+      base[i] = "context line " .. i
+    end
+    base[1] = "original line 1"
+    base[20] = "original line 20"
+
+    repo.write_file("file1.txt", base)
+    repo.git("add file1.txt")
+    repo.git('commit -m "initial"')
+
+    local changed = vim.deepcopy(base)
+    changed[1] = "MODIFIED line 1"
+    changed[20] = "MODIFIED line 20"
+    repo.write_file("file1.txt", changed)
+
+    local tabpage = open_codediff_and_wait(repo)
+    local lifecycle = require("codediff.ui.lifecycle")
+    assert.is_true(wait_for_hunks(tabpage, 2, 8000), "Should start with 2 hunks")
+
+    local _, mod_buf = lifecycle.get_buffers(tabpage)
+    vim.api.nvim_buf_set_lines(mod_buf, 9, 10, false, { "UNSAVED line 10" })
+    require("codediff.ui.auto_refresh").trigger(mod_buf)
+    assert.is_true(wait_for_hunks(tabpage, 3, 8000), "Unsaved edit should add a third hunk")
+    assert.is_true(vim.bo[mod_buf].modified, "Buffer should contain an unsaved edit")
+
+    local discard_fn = get_keymap_fn(mod_buf, "Discard hunk")
+    assert.is_truthy(discard_fn, "discard_hunk keymap callback should be set")
+
+    local original_confirm = vim.fn.confirm
+    vim.fn.confirm = function()
+      return 1
+    end
+    position_cursor_in_modified(tabpage, 1)
+    discard_fn()
+    vim.fn.confirm = original_confirm
+
+    local refreshed = vim.wait(8000, function()
+      local current = lifecycle.get_session(tabpage)
+      if not current or not current.stored_diff_result or not current.stored_diff_result.changes then
+        return false
+      end
+      local lines = vim.api.nvim_buf_get_lines(mod_buf, 0, -1, false)
+      return lines[1] == "original line 1"
+        and lines[10] == "UNSAVED line 10"
+        and #current.stored_diff_result.changes == 2
+    end, 100)
+
+    assert.is_true(refreshed, "Discard should revert its hunk and keep unrelated buffer edits")
+
+    local disk_lines = vim.fn.readfile(repo.path("file1.txt"))
+    local buffer_lines = vim.api.nvim_buf_get_lines(mod_buf, 0, -1, false)
+    assert.equals("original line 1", disk_lines[1], "Discarded hunk should be reverted on disk")
+    assert.equals("UNSAVED line 10", disk_lines[10], "Whole-buffer save persists the unrelated edit to disk (VSCode parity)")
+    assert.equals("UNSAVED line 10", buffer_lines[10], "Unrelated buffer edit remains in the buffer")
+    assert.is_false(vim.bo[mod_buf].modified, "Buffer should be clean after the save")
+  end)
+
+  it("discard_hunk restores deleted lines to buffer and disk exactly once", function()
+    repo = h.create_temp_git_repo()
+    local base = { "line 1", "deleted line 2", "deleted line 3", "line 4" }
+    repo.write_file("file1.txt", base)
+    repo.git("add file1.txt")
+    repo.git('commit -m "initial"')
+    repo.write_file("file1.txt", { "line 1", "line 4" })
+
+    local tabpage = open_codediff_and_wait(repo)
+    local lifecycle = require("codediff.ui.lifecycle")
+    assert.is_true(wait_for_hunks(tabpage, 1, 8000), "Should start with one deletion hunk")
+
+    local session = lifecycle.get_session(tabpage)
+    local _, mod_buf = lifecycle.get_buffers(tabpage)
+    local discard_fn = get_keymap_fn(mod_buf, "Discard hunk")
+    assert.is_truthy(discard_fn, "discard_hunk keymap callback should be set")
+
+    local original_confirm = vim.fn.confirm
+    vim.fn.confirm = function()
+      return 1
+    end
+    position_cursor_in_modified(tabpage, session.stored_diff_result.changes[1].modified.start_line)
+    discard_fn()
+    vim.fn.confirm = original_confirm
+
+    local refreshed = vim.wait(8000, function()
+      local current = lifecycle.get_session(tabpage)
+      if not current or not current.stored_diff_result or not current.stored_diff_result.changes then
+        return false
+      end
+      local lines = vim.api.nvim_buf_get_lines(mod_buf, 0, -1, false)
+      return vim.deep_equal(lines, base) and #current.stored_diff_result.changes == 0
+    end, 100)
+
+    assert.is_true(refreshed, "Discarding a deletion hunk must restore deleted lines exactly once")
+    assert.same(base, vim.fn.readfile(repo.path("file1.txt")))
+    assert.same(base, vim.api.nvim_buf_get_lines(mod_buf, 0, -1, false))
+  end)
+
+  it("discard_hunk removes inserted lines when autoread is disabled", function()
+    vim.o.autoread = false
+    repo = h.create_temp_git_repo()
+    local base = { "line 1", "line 4" }
+    repo.write_file("file1.txt", base)
+    repo.git("add file1.txt")
+    repo.git('commit -m "initial"')
+    repo.write_file("file1.txt", { "line 1", "inserted line 2", "inserted line 3", "line 4" })
+
+    local tabpage = open_codediff_and_wait(repo)
+    local lifecycle = require("codediff.ui.lifecycle")
+    assert.is_true(wait_for_hunks(tabpage, 1, 8000), "Should start with one insertion hunk")
+
+    local session = lifecycle.get_session(tabpage)
+    local _, mod_buf = lifecycle.get_buffers(tabpage)
+    local discard_fn = get_keymap_fn(mod_buf, "Discard hunk")
+    assert.is_truthy(discard_fn, "discard_hunk keymap callback should be set")
+
+    local original_confirm = vim.fn.confirm
+    vim.fn.confirm = function()
+      return 1
+    end
+    position_cursor_in_modified(tabpage, session.stored_diff_result.changes[1].modified.start_line)
+    discard_fn()
+    vim.fn.confirm = original_confirm
+
+    local refreshed = vim.wait(8000, function()
+      local current = lifecycle.get_session(tabpage)
+      if not current or not current.stored_diff_result or not current.stored_diff_result.changes then
+        return false
+      end
+      local lines = vim.api.nvim_buf_get_lines(mod_buf, 0, -1, false)
+      return vim.deep_equal(lines, base) and #current.stored_diff_result.changes == 0
+    end, 100)
+
+    assert.is_true(refreshed, "Discard should remove inserted lines from disk and buffer")
+    assert.same(base, vim.fn.readfile(repo.path("file1.txt")))
+    assert.same(base, vim.api.nvim_buf_get_lines(mod_buf, 0, -1, false))
   end)
 end)
 
@@ -424,12 +580,14 @@ end)
 describe("Hunk operations (inline)", function()
   local repo
   local original_cwd
+  local original_autoread
 
   before_each(function()
     vim.g.mapleader = " "
     require("codediff").setup({ diff = { layout = "inline" } })
     setup_command()
     original_cwd = vim.fn.getcwd()
+    original_autoread = vim.o.autoread
   end)
 
   after_each(function()
@@ -440,6 +598,7 @@ describe("Hunk operations (inline)", function()
     -- Restore default layout for other test suites
     require("codediff").setup({ diff = { layout = "side-by-side" } })
     vim.fn.chdir(original_cwd)
+    vim.o.autoread = original_autoread
     vim.wait(200)
     if repo then
       repo.cleanup()
@@ -539,6 +698,37 @@ describe("Hunk operations (inline)", function()
       "After staging last hunk in inline mode, should switch to staged view. "
         .. "modified_revision=" .. tostring(lifecycle.get_session(tabpage).modified_revision)
         .. ", group=" .. tostring(explorer.current_file_group))
+  end)
+
+  it("discard_hunk refreshes inline mode when autoread is disabled", function()
+    vim.o.autoread = false
+    repo = create_two_hunk_repo()
+    local tabpage = open_codediff_and_wait(repo)
+    local lifecycle = require("codediff.ui.lifecycle")
+    assert.is_true(wait_for_hunks(tabpage, 2, 8000), "Should start with 2 hunks in inline mode")
+
+    local _, mod_buf = lifecycle.get_buffers(tabpage)
+    local discard_fn = get_keymap_fn(mod_buf, "Discard hunk")
+    assert.is_truthy(discard_fn, "discard_hunk keymap callback should be set in inline mode")
+
+    local original_confirm = vim.fn.confirm
+    vim.fn.confirm = function()
+      return 1
+    end
+    position_cursor_in_modified(tabpage, 1)
+    discard_fn()
+    vim.fn.confirm = original_confirm
+
+    local refreshed = vim.wait(8000, function()
+      local current = lifecycle.get_session(tabpage)
+      if not current or not current.stored_diff_result or not current.stored_diff_result.changes then
+        return false
+      end
+      local first = vim.api.nvim_buf_get_lines(mod_buf, 0, 1, false)[1]
+      return first == "original line 1" and #current.stored_diff_result.changes == 1
+    end, 100)
+
+    assert.is_true(refreshed, "Inline discard should refresh the buffer and leave one hunk")
   end)
 
   -- --------------------------------------------------------------------------

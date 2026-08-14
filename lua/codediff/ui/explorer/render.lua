@@ -4,6 +4,7 @@ local M = {}
 local Tree = require("codediff.ui.lib.tree")
 local Split = require("codediff.ui.lib.split")
 local config = require("codediff.config")
+local path = require("codediff.core.path")
 local nodes_module = require("codediff.ui.explorer.nodes")
 local tree_module = require("codediff.ui.explorer.tree")
 local keymaps_module = require("codediff.ui.explorer.keymaps")
@@ -88,6 +89,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
       wrap = false,
       signcolumn = "no",
       foldcolumn = "0",
+      spell = false,
       winfixwidth = true,
       winfixheight = true,
     },
@@ -96,6 +98,14 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
   -- Mount split first to get bufnr
   split:mount()
   pcall(vim.api.nvim_buf_set_name, split.bufnr, "CodeDiff Explorer [" .. tabpage .. "]")
+
+  -- Honor the initial-visibility config: hide the split immediately if requested.
+  -- toggle_explorer (actions.lua) uses split:hide/show to flip this at runtime;
+  -- using split:hide() here matches that lifecycle so the user's toggle keymap
+  -- continues to work correctly.
+  if explorer_config.hidden then
+    split:hide()
+  end
 
   -- Track selected path and group for highlighting
   local selected_path = nil
@@ -172,12 +182,13 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
     dir2 = opts.dir2,
     base_revision = base_revision,
     target_revision = target_revision,
+    pathspec = opts.pathspec, -- Scope (#74): re-applied on every auto-refresh
     status_result = status_result, -- Store initial status result
     on_file_select = nil, -- Will be set below
     current_file_path = nil, -- Track currently selected file
     current_file_group = nil, -- Track currently selected file's group (staged/unstaged)
     current_selection = nil, -- Full file selection used to replay current state
-    is_hidden = false, -- Track visibility state
+    is_hidden = explorer_config.hidden, -- Track visibility state
     visible_groups = vim.deepcopy(explorer_config.visible_groups or { staged = true, unstaged = true, conflicts = true }),
   }
 
@@ -206,22 +217,32 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
 
     -- Dir mode: Compare files from dir1 vs dir2 (no git)
     if is_dir_mode then
-      local original_path = explorer.dir1 .. "/" .. file_path
-      local modified_path = explorer.dir2 .. "/" .. file_path
+      local original = path.make_ref(file_path, explorer.dir1)
+      local modified = path.make_ref(file_path, explorer.dir2)
 
       -- Check if already displaying same file
       local session = lifecycle.get_session(tabpage)
-      if not opts.force and session and session.original_path == original_path and session.modified_path == modified_path then
+      if
+        not opts.force
+        and session
+        and session.original
+        and session.modified
+        and session.original.absolute == original.absolute
+        and session.modified.absolute == modified.absolute
+      then
         return
       end
 
       vim.schedule(function()
+        if explorer.current_file_path ~= file_path then
+          return
+        end
         ---@type SessionConfig
         local session_config = {
           mode = "explorer",
           git_root = nil,
-          original_path = original_path,
-          modified_path = modified_path,
+          original = original,
+          modified = modified,
           original_revision = nil,
           modified_revision = nil,
         }
@@ -230,11 +251,14 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
       return
     end
 
-    local abs_path = git_root .. "/" .. file_path
+    local abs_path = path.make_ref(file_path, git_root).absolute
 
     -- Handle untracked files: show file without diff
     if file_data.status == "??" then
       vim.schedule(function()
+        if explorer.current_file_path ~= file_data.path then
+          return
+        end
         local sess = lifecycle.get_session(tabpage)
         if sess and sess.layout == "inline" then
           require("codediff.ui.view.inline_view").show_single_file(tabpage, abs_path, {
@@ -250,6 +274,9 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
     -- Handle added files: only one side has the file
     if file_data.status == "A" then
       vim.schedule(function()
+        if explorer.current_file_path ~= file_data.path then
+          return
+        end
         local sess = lifecycle.get_session(tabpage)
         local is_inline = sess and sess.layout == "inline"
 
@@ -291,10 +318,19 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
     -- Handle deleted files: show old content without diff
     if file_data.status == "D" then
       vim.schedule(function()
+        if explorer.current_file_path ~= file_data.path then
+          return
+        end
         local sess = lifecycle.get_session(tabpage)
         local is_inline = sess and sess.layout == "inline"
 
-        if base_revision and target_revision and target_revision ~= "WORKING" then
+        -- Whenever the explorer is anchored to a base_revision (single-rev
+        -- like `:CodeDiff HEAD~5` OR revision-revision like `:CodeDiff A B`),
+        -- the deleted file's content lives at base_revision; reading from
+        -- HEAD/:0 yields nothing because the file is already gone there.
+        -- The HEAD/:0 branch is only correct for plain explorer mode
+        -- (no base_revision). Fixes #390.
+        if base_revision then
           if is_inline then
             require("codediff.ui.view.inline_view").show_single_file(tabpage, file_path, {
               revision = base_revision,
@@ -326,7 +362,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
     -- Same file can have different diffs (staged vs HEAD, working vs staged)
     local session = lifecycle.get_session(tabpage)
     if session then
-      local is_same_file = (session.modified_path == abs_path or session.modified_path == file_path or (session.git_root and session.original_path == file_path))
+      local is_same_file = (session.modified and session.modified.absolute == abs_path) or (session.original and session.original.absolute == abs_path)
 
       if is_same_file and not opts.force then
         -- Conflict mode: skip if already showing the same conflict file
@@ -372,12 +408,16 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
     if base_revision and target_revision and target_revision ~= "WORKING" then
       -- Two revision mode: Compare base vs target
       vim.schedule(function()
+        -- Ignore stale async: see comment on the base_revision branch below.
+        if explorer.current_file_path ~= file_path then
+          return
+        end
         ---@type SessionConfig
         local session_config = {
           mode = "explorer",
           git_root = git_root,
-          original_path = old_path or file_path,
-          modified_path = file_path,
+          original = path.make_ref(old_path or file_path, git_root),
+          modified = path.make_ref(file_path, git_root),
           original_revision = base_revision,
           modified_revision = target_revision,
         }
@@ -399,12 +439,19 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
       if base_revision then
         -- Revision mode: Simple comparison of working tree vs base_revision
         vim.schedule(function()
+          -- Ignore stale async: if a newer selection superseded us before this
+          -- scheduled callback ran, `view.update` on the old target would
+          -- clobber the newer selection (buffers get swapped, virtual buffers
+          -- with `bufhidden=wipe` get destroyed mid-load, single_pane resets).
+          if explorer.current_file_path ~= file_path then
+            return
+          end
           ---@type SessionConfig
           local session_config = {
             mode = "explorer",
             git_root = git_root,
-            original_path = old_path or file_path,
-            modified_path = abs_path,
+            original = path.make_ref(old_path or file_path, git_root),
+            modified = path.make_ref(abs_path, git_root),
             original_revision = commit_hash,
             modified_revision = nil,
           }
@@ -414,6 +461,10 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
         -- Merge conflict: Show incoming (:3) vs current (:2), both diffed against base (:1)
         -- Position controlled by config.diff.conflict_ours_position (absolute screen position)
         vim.schedule(function()
+          -- Ignore stale async: see comment on the base_revision branch above.
+          if explorer.current_file_path ~= file_path then
+            return
+          end
           -- Determine conflict buffer positions based on config
           -- conflict_ours_position controls where :2 (OURS) appears on screen
           local ours_position = config.options.diff.conflict_ours_position or "right"
@@ -434,8 +485,8 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
           local session_config = {
             mode = "explorer",
             git_root = git_root,
-            original_path = file_path,
-            modified_path = file_path,
+            original = path.make_ref(file_path, git_root),
+            modified = path.make_ref(file_path, git_root),
             original_revision = original_rev,
             modified_revision = modified_rev,
             conflict = true,
@@ -447,12 +498,16 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
         -- For renames: old_path in HEAD, new path in staging
         -- No pre-fetching needed, virtual files will load via BufReadCmd
         vim.schedule(function()
+          -- Ignore stale async: see comment on the base_revision branch above.
+          if explorer.current_file_path ~= file_path then
+            return
+          end
           ---@type SessionConfig
           local session_config = {
             mode = "explorer",
             git_root = git_root,
-            original_path = old_path or file_path, -- Use old_path if rename
-            modified_path = file_path, -- New path after rename
+            original = path.make_ref(old_path or file_path, git_root), -- Use old_path if rename
+            modified = path.make_ref(file_path, git_root), -- New path after rename
             original_revision = commit_hash,
             modified_revision = ":0",
           }
@@ -475,12 +530,18 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
 
         -- No pre-fetching needed, buffers will load content
         vim.schedule(function()
+          -- Ignore stale async: if a newer selection superseded us before this
+          -- scheduled callback ran, `view.update` on the old target would
+          -- clobber the newer one (resetting single_pane, layout.arrange).
+          if explorer.current_file_path ~= file_path then
+            return
+          end
           ---@type SessionConfig
           local session_config = {
             mode = "explorer",
             git_root = git_root,
-            original_path = file_path,
-            modified_path = abs_path,
+            original = path.make_ref(file_path, git_root),
+            modified = path.make_ref(abs_path, git_root),
             original_revision = original_revision,
             modified_revision = nil,
           }
@@ -511,65 +572,56 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
   -- Setup keymaps (delegated to keymaps module)
   keymaps_module.setup(explorer)
 
-  -- Find a file in the status lists, returns (file, group) or (nil, nil)
-  local function find_file_in_status(path)
-    if status_result.conflicts then
-      for _, f in ipairs(status_result.conflicts) do
-        if f.path == path then
-          return f, "conflicts"
-        end
+  -- Auto-open diff for the node under cursor after j/k (or arrow keys).
+  -- Hooks j/k/<Down>/<Up> instead of CursorMoved so mouse clicks, :N jumps,
+  -- and scrolls don't trigger an open. Buffer-local keymaps die with the
+  -- buffer, so no manual cleanup needed.
+  if explorer_config.auto_open_on_cursor then
+    local function open_under_cursor()
+      if not vim.api.nvim_buf_is_valid(split.bufnr) then
+        return
       end
-    end
-    for _, f in ipairs(status_result.unstaged) do
-      if f.path == path then
-        return f, "unstaged"
+      local node = tree:get_node()
+      if not node or not node.data then
+        return
       end
-    end
-    for _, f in ipairs(status_result.staged) do
-      if f.path == path then
-        return f, "staged"
+      local node_type = node.data.type
+      if node_type == "group" or node_type == "directory" then
+        return
       end
+      if explorer.current_file_path == node.data.path and explorer.current_file_group == node.data.group then
+        return
+      end
+      explorer.on_file_select(node.data)
     end
-    return nil, nil
+    local lifecycle = require("codediff.ui.lifecycle")
+    for _, key in ipairs({ "j", "k", "<Down>", "<Up>" }) do
+      lifecycle.set_buf_keymap(explorer.tabpage, split.bufnr, "n", key, function()
+        local motion = key == "<Down>" and "j" or key == "<Up>" and "k" or key
+        vim.cmd("normal! " .. motion)
+        open_under_cursor()
+      end, { silent = true, desc = "codediff: move and auto-open file" }, { suspendable = false })
+    end
   end
 
-  -- Select initial file: prefer focus_file (current buffer) if changed, else first file
-  local initial_file, initial_file_group
-  local focus_file = opts and opts.focus_file
-  if focus_file then
-    initial_file, initial_file_group = find_file_in_status(focus_file)
-  end
-  if not initial_file then
-    if status_result.conflicts and #status_result.conflicts > 0 then
-      initial_file, initial_file_group = status_result.conflicts[1], "conflicts"
-    elseif #status_result.unstaged > 0 then
-      initial_file, initial_file_group = status_result.unstaged[1], "unstaged"
-    elseif #status_result.staged > 0 then
-      initial_file, initial_file_group = status_result.staged[1], "staged"
+  local visible_files = refresh_module.get_all_files(tree)
+  local initial_file
+  if opts.focus_file then
+    for _, file in ipairs(visible_files) do
+      if file.data.path == opts.focus_file then
+        initial_file = file
+        break
+      end
     end
   end
+  initial_file = initial_file or visible_files[1]
 
   if initial_file then
     vim.schedule(function()
-      -- Scroll explorer to the selected file using tree:get_node(line) lookup
-      if vim.api.nvim_win_is_valid(explorer.winid) and vim.api.nvim_buf_is_valid(explorer.bufnr) then
-        local line_count = vim.api.nvim_buf_line_count(explorer.bufnr)
-        for line = 1, line_count do
-          local node = explorer.tree:get_node(line)
-          if node and node.data and node.data.path == initial_file.path and node.data.group == initial_file_group then
-            vim.api.nvim_win_set_cursor(explorer.winid, { line, 0 })
-            break
-          end
-        end
+      if explorer.winid and vim.api.nvim_win_is_valid(explorer.winid) and initial_file.node._line then
+        vim.api.nvim_win_set_cursor(explorer.winid, { initial_file.node._line, 0 })
       end
-
-      explorer.on_file_select({
-        path = initial_file.path,
-        old_path = initial_file.old_path,
-        status = initial_file.status,
-        git_root = git_root,
-        group = initial_file_group,
-      })
+      explorer.on_file_select(initial_file.data)
     end)
   end
 

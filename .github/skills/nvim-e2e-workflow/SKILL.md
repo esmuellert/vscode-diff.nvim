@@ -12,7 +12,7 @@ This skill enables end-to-end investigation and fixing of Lua plugin issues usin
 - **Plugin name**: codediff (formerly vscode-diff)
 - **Type**: Neovim Lua plugin with native C bindings
 - **Main module**: `require("codediff")`
-- **Test framework**: plenary.nvim
+- **Test framework**: in-tree `tests/framework/` (no external test deps)
 
 ---
 
@@ -93,7 +93,7 @@ SCENARIO_FILE=/tmp/repro.lua nvim --headless -u tests/init.lua -c "luafile scrip
 
 Then run the full test suite:
 ```bash
-./tests/run_plenary_tests.sh
+./tests/run_tests.sh
 ```
 
 ---
@@ -321,13 +321,13 @@ nvim --headless -u tests/init.lua -c "lua print(vim.inspect(require('codediff.co
 
 **Run all tests:**
 ```bash
-./tests/run_plenary_tests.sh
+./tests/run_tests.sh
 ```
 
 **Run single test file:**
 ```bash
 nvim --headless --noplugin -u tests/init.lua \
-  -c "lua require('plenary.test_harness').test_file('tests/explorer_spec.lua', { minimal_init = 'tests/init.lua' })"
+  -c "lua require('tests.framework').run_and_exit('tests/explorer_spec.lua')"
 ```
 
 ---

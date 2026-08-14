@@ -1,5 +1,6 @@
 -- Keymaps for explorer panel
 local config = require("codediff.config")
+local resolve = require("codediff.keymap.resolve")
 local actions_module = require("codediff.ui.explorer.actions")
 local refresh_module = require("codediff.ui.explorer.refresh")
 local tree_utils = require("codediff.ui.lib.tree_utils")
@@ -14,11 +15,19 @@ function M.setup(explorer)
   local git_root = explorer.git_root
 
   local map_options = { noremap = true, silent = true, nowait = true }
-  local explorer_keymaps = config.options.keymaps.explorer or {}
+  local explorer_keymaps = resolve.keymaps_for("explorer")
+
+  -- Panel mappings live on a codediff-owned scratch buffer, so they cannot
+  -- leak into user buffers and must survive tab switches (suspendable=false).
+  -- Required lazily to avoid a module cycle through the lifecycle package.
+  local lifecycle = require("codediff.ui.lifecycle")
+  local function panel_map(lhs, rhs, desc)
+    lifecycle.set_buf_keymap(explorer.tabpage, split.bufnr, "n", lhs, rhs, vim.tbl_extend("force", map_options, { desc = desc }), { suspendable = false })
+  end
 
   -- Toggle expand/collapse or select file
   if explorer_keymaps.select then
-    vim.keymap.set("n", explorer_keymaps.select, function()
+    panel_map(explorer_keymaps.select, function()
       local node = tree:get_node()
       if not node then
         return
@@ -48,22 +57,22 @@ function M.setup(explorer)
           end
         end
       end
-    end, vim.tbl_extend("force", map_options, { buffer = split.bufnr, desc = "Select/toggle entry" }))
+    end, "Select/toggle entry")
   end
 
   -- Double click also works for files
-  vim.keymap.set("n", "<2-LeftMouse>", function()
+  panel_map("<2-LeftMouse>", function()
     local node = tree:get_node()
     if not node or not node.data or node.data.type == "group" or node.data.type == "directory" then
       return
     end
     explorer.on_file_select(node.data)
-  end, vim.tbl_extend("force", map_options, { buffer = split.bufnr, desc = "Select file" }))
+  end, "Select file")
 
   -- Hover to show full path (K key, like LSP hover)
   local hover_win = nil
   if explorer_keymaps.hover then
-    vim.keymap.set("n", explorer_keymaps.hover, function()
+    panel_map(explorer_keymaps.hover, function()
       -- Close existing hover window
       if hover_win and vim.api.nvim_win_is_valid(hover_win) then
         vim.api.nvim_win_close(hover_win, true)
@@ -120,56 +129,56 @@ function M.setup(explorer)
           end
         end,
       })
-    end, vim.tbl_extend("force", map_options, { buffer = split.bufnr, desc = "Show full path" }))
+    end, "Show full path")
   end
 
   -- Refresh explorer (R key)
   if explorer_keymaps.refresh then
-    vim.keymap.set("n", explorer_keymaps.refresh, function()
+    panel_map(explorer_keymaps.refresh, function()
       refresh_module.refresh(explorer)
-    end, vim.tbl_extend("force", map_options, { buffer = split.bufnr, desc = "Refresh explorer" }))
+    end, "Refresh explorer")
   end
 
   -- Toggle view mode (i key) - switch between 'list' and 'tree'
   if explorer_keymaps.toggle_view_mode then
-    vim.keymap.set("n", explorer_keymaps.toggle_view_mode, function()
+    panel_map(explorer_keymaps.toggle_view_mode, function()
       actions_module.toggle_view_mode(explorer)
-    end, vim.tbl_extend("force", map_options, { buffer = split.bufnr, desc = "Toggle list/tree view" }))
+    end, "Toggle list/tree view")
   end
 
   -- Stage all files (S key)
   if explorer_keymaps.stage_all then
-    vim.keymap.set("n", explorer_keymaps.stage_all, function()
+    panel_map(explorer_keymaps.stage_all, function()
       actions_module.stage_all(explorer)
-    end, vim.tbl_extend("force", map_options, { buffer = split.bufnr, desc = "Stage all files" }))
+    end, "Stage all files")
   end
 
   -- Unstage all files (U key)
   if explorer_keymaps.unstage_all then
-    vim.keymap.set("n", explorer_keymaps.unstage_all, function()
+    panel_map(explorer_keymaps.unstage_all, function()
       actions_module.unstage_all(explorer)
-    end, vim.tbl_extend("force", map_options, { buffer = split.bufnr, desc = "Unstage all files" }))
+    end, "Unstage all files")
   end
 
   -- Restore/discard changes (X key)
   if explorer_keymaps.restore then
-    vim.keymap.set("n", explorer_keymaps.restore, function()
+    panel_map(explorer_keymaps.restore, function()
       actions_module.restore_entry(explorer, tree)
-    end, vim.tbl_extend("force", map_options, { buffer = split.bufnr, desc = "Restore/discard changes" }))
+    end, "Restore/discard changes")
   end
 
   -- Toggle Changes (unstaged) group visibility
   if explorer_keymaps.toggle_changes then
-    vim.keymap.set("n", explorer_keymaps.toggle_changes, function()
+    panel_map(explorer_keymaps.toggle_changes, function()
       actions_module.toggle_group(explorer, "unstaged")
-    end, vim.tbl_extend("force", map_options, { buffer = split.bufnr, desc = "Toggle Changes visibility" }))
+    end, "Toggle Changes visibility")
   end
 
   -- Toggle Staged Changes group visibility
   if explorer_keymaps.toggle_staged then
-    vim.keymap.set("n", explorer_keymaps.toggle_staged, function()
+    panel_map(explorer_keymaps.toggle_staged, function()
       actions_module.toggle_group(explorer, "staged")
-    end, vim.tbl_extend("force", map_options, { buffer = split.bufnr, desc = "Toggle Staged Changes visibility" }))
+    end, "Toggle Staged Changes visibility")
   end
 
   -- Fold keymaps (Vim-style: zo/zO/zc/zC/za/zA/zR/zM)
@@ -177,6 +186,7 @@ function M.setup(explorer)
     tree = tree,
     keymaps = explorer_keymaps,
     bufnr = split.bufnr,
+    tabpage = explorer.tabpage,
   })
 
   -- Note: next_file/prev_file keymaps are set via view/keymaps.lua:setup_all_keymaps()

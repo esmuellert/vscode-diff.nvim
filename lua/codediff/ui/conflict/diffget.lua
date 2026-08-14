@@ -25,9 +25,9 @@ local function apply_to_result(result_bufnr, block, lines, base_lines)
 
   -- Method 2: Fallback to content search or original range
   if not start_row then
-    local base_range = block.base_range
+    local range = block.result_range or block.base_range
     local base_content = {}
-    for i = base_range.start_line, base_range.end_line - 1 do
+    for i = range.start_line, range.end_line - 1 do
       table.insert(base_content, base_lines[i] or "")
     end
 
@@ -52,8 +52,8 @@ local function apply_to_result(result_bufnr, block, lines, base_lines)
       start_row = found_start - 1
       end_row = found_start - 1 + #base_content
     else
-      start_row = math.min(base_range.start_line - 1, #result_lines)
-      end_row = math.min(base_range.end_line - 1, #result_lines)
+      start_row = math.min(range.start_line - 1, #result_lines)
+      end_row = math.min(range.end_line - 1, #result_lines)
     end
   end
 

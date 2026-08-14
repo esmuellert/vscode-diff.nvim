@@ -8,6 +8,7 @@ local side_by_side = require("codediff.ui.view.side_by_side")
 local welcome = require("codediff.ui.welcome")
 local navigation = require("codediff.ui.view.navigation")
 local inline = require("codediff.ui.inline")
+local path = require("codediff.core.path")
 
 local function setup_command()
   pcall(vim.api.nvim_del_user_command, "CodeDiff")
@@ -33,8 +34,8 @@ local function create_explorer_placeholder(git_root)
   view.create({
     mode = "explorer",
     git_root = git_root,
-    original_path = "",
-    modified_path = "",
+    original = path.make_ref("", git_root),
+    modified = path.make_ref("", git_root),
     explorer_data = {
       status_result = {
         unstaged = {},
@@ -52,8 +53,8 @@ local function create_standalone_diff(left_lines, right_lines)
   local right = temp_file("layout_toggle_right.txt", right_lines)
   view.create({
     mode = "standalone",
-    original_path = left,
-    modified_path = right,
+    original = path.make_ref(left, nil),
+    modified = path.make_ref(right, nil),
   })
 
   local tabpage = vim.api.nvim_get_current_tabpage()
@@ -112,8 +113,8 @@ local function open_history_and_wait(repo, entry_file)
   view.create({
     mode = "history",
     git_root = repo.dir,
-    original_path = "",
-    modified_path = "",
+    original = path.make_ref("", repo.dir),
+    modified = path.make_ref("", repo.dir),
     history_data = {
       commits = commits,
       range = "",
@@ -332,7 +333,7 @@ describe("Layout toggle", function()
       group = "unstaged",
     }, function(session)
       return session.single_pane == true
-        and session.modified_path == file_path
+        and session.modified.absolute == file_path
         and session.modified_win
         and not session.original_win
         and vim.api.nvim_win_is_valid(session.modified_win)
@@ -341,10 +342,7 @@ describe("Layout toggle", function()
     assert.is_true(view.toggle_layout(tabpage))
     local inline_ready = vim.wait(5000, function()
       local session = lifecycle.get_session(tabpage)
-      return session
-        and session.layout == "inline"
-        and session.original_win == session.modified_win
-        and session.modified_path == file_path
+      return session and session.layout == "inline" and session.original_win == session.modified_win and session.modified.absolute == file_path
     end, 50)
     assert.is_true(inline_ready, "Untracked preview should toggle into inline layout")
 
@@ -354,7 +352,7 @@ describe("Layout toggle", function()
       return session
         and session.layout == "side-by-side"
         and session.single_pane == true
-        and session.modified_path == file_path
+        and session.modified.absolute == file_path
         and session.modified_win
         and not session.original_win
         and vim.api.nvim_win_is_valid(session.modified_win)
@@ -381,7 +379,7 @@ describe("Layout toggle", function()
         and session.original_win
         and not session.modified_win
         and session.original_revision == ":0"
-        and session.original_path == repo.path("gone.txt")
+        and session.original.absolute == repo.path("gone.txt")
         and vim.api.nvim_win_is_valid(session.original_win)
     end)
 
@@ -394,8 +392,8 @@ describe("Layout toggle", function()
         and session.original_win == session.modified_win
         and session.original_bufnr == diff_buf
         and session.original_revision == ":0"
-        and session.original_path == "gone.txt"
-        and session.modified_path == ""
+        and session.original.relative == "gone.txt"
+        and path.is_empty(session.modified)
     end, 50)
     assert.is_true(inline_deleted_ready, "Deleted preview should stay logically on the original side in inline mode")
 
@@ -407,7 +405,7 @@ describe("Layout toggle", function()
         and session.single_pane == true
         and session.original_win
         and not session.modified_win
-        and session.original_path == repo.path("gone.txt")
+        and session.original.absolute == repo.path("gone.txt")
         and vim.api.nvim_win_is_valid(session.original_win)
     end, 50)
     assert.is_true(restored_deleted_ready, "Deleted preview should restore to the original side in side-by-side mode")
@@ -427,10 +425,7 @@ describe("Layout toggle", function()
     assert.is_true(view.toggle_layout(tabpage))
     local inline_welcome = vim.wait(5000, function()
       local session = lifecycle.get_session(tabpage)
-      return session
-        and session.layout == "inline"
-        and session.original_win == session.modified_win
-        and welcome.is_welcome_buffer(session.modified_bufnr)
+      return session and session.layout == "inline" and session.original_win == session.modified_win and welcome.is_welcome_buffer(session.modified_bufnr)
     end, 50)
     assert.is_true(inline_welcome, "Welcome page should toggle into inline layout")
 
@@ -525,8 +520,8 @@ describe("Layout toggle", function()
     vim.api.nvim_buf_set_lines(session.original_bufnr, 0, -1, false, { "line 1", "left again", "line 3" })
     view.update(tabpage, {
       mode = "standalone",
-      original_path = left,
-      modified_path = right,
+      original = path.make_ref(left, nil),
+      modified = path.make_ref(right, nil),
     }, false)
     assert.is_true(h.wait_for_session_ready(tabpage, 10000), "Diff should rerender after manual reset")
 
@@ -577,21 +572,21 @@ describe("Layout toggle", function()
       git_root = repo.dir,
       group = "unstaged",
     }, function(session)
-      return session.modified_path == repo.path("file1.txt")
+      return session.modified.absolute == repo.path("file1.txt")
     end)
 
     assert.is_true(view.toggle_layout(tabpage))
     assert.is_true(navigation.next_file(), "next_file should work after toggling layout")
     local moved_next = vim.wait(10000, function()
       local session = lifecycle.get_session(tabpage)
-      return session and session.modified_path == repo.path("file2.txt")
+      return session and session.modified.absolute == repo.path("file2.txt")
     end, 100)
     assert.is_true(moved_next, "Explorer next_file should move to the next file after toggle")
 
     assert.is_true(navigation.prev_file(), "prev_file should work after toggling layout")
     local moved_prev = vim.wait(10000, function()
       local session = lifecycle.get_session(tabpage)
-      return session and session.modified_path == repo.path("file1.txt")
+      return session and session.modified.absolute == repo.path("file1.txt")
     end, 100)
     assert.is_true(moved_prev, "Explorer prev_file should move back after toggle")
   end)
@@ -610,7 +605,7 @@ describe("Layout toggle", function()
       git_root = repo.dir,
       group = "unstaged",
     }, function(session)
-      return session.modified_path == repo.path("file.txt") and session.layout == "side-by-side"
+      return session.modified.absolute == repo.path("file.txt") and session.layout == "side-by-side"
     end)
 
     assert.is_true(view.toggle_layout(toggled_tabpage))
@@ -646,7 +641,7 @@ describe("Layout toggle", function()
       git_root = repo.dir,
       group = "unstaged",
     }, function(session)
-      return session.modified_path == repo.path("file.txt")
+      return session.modified.absolute == repo.path("file.txt")
         and session.layout == "inline"
         and session.original_win == session.modified_win
         and session.stored_diff_result
@@ -672,7 +667,7 @@ describe("Layout toggle", function()
       git_root = repo.dir,
       group = "unstaged",
     }, function(session)
-      return session.modified_path == repo.path("file.txt")
+      return session.modified.absolute == repo.path("file.txt")
         and session.modified_revision == nil
         and session.modified_bufnr
         and vim.api.nvim_buf_is_valid(session.modified_bufnr)
@@ -705,7 +700,9 @@ describe("Layout toggle", function()
     stage_cb()
 
     -- Spin to let the full async chain complete (git apply → callback → refresh → status → render)
-    vim.wait(10000, function() return false end, 50)
+    vim.wait(10000, function()
+      return false
+    end, 50)
 
     local s = lifecycle.get_session(tabpage)
     assert.is_true(s and s.layout == "inline" and s.modified_revision == ":0", "Staging a hunk should still work after toggle")
@@ -731,16 +728,24 @@ describe("Layout toggle", function()
     unstage_cb()
 
     -- Spin to let the full async chain complete
-    vim.wait(10000, function() return false end, 50)
+    vim.wait(10000, function()
+      return false
+    end, 50)
 
     local s = lifecycle.get_session(tabpage)
     assert.is_true(s and s.modified_revision == nil, "Unstaging a hunk should still work after toggling back")
   end)
 
-  -- SKIPPED: requires two back-to-back async git operations (apply + status)
-  -- which is unreliable on Windows CI. Re-enable when test helper API supports
-  -- deterministic async chains.
-  pending("keeps discard hunk working after toggle", function()
+  it("keeps discard hunk working after toggle", function()
+    -- Regression: after `t` toggles layout to inline, the discard-hunk
+    -- callback (bound to `K` by the outer describe's before_each) must still
+    -- fire against the correct buffer AND the follow-up refresh must observe
+    -- that the file now matches HEAD (no diff → welcome page). The prior
+    -- `pending(...)` marked this out because the assertion used
+    -- `vim.wait(10000, function() return false end)` — an unconditional 10s
+    -- sleep that raced with the two-step async chain (git apply → status
+    -- refresh → re-render). This version uses a real predicate on the
+    -- welcome buffer, so it terminates as soon as the chain lands.
     repo = h.create_temp_git_repo()
     repo.write_file("file.txt", { "line 1", "line 2", "line 3" })
     repo.git("add file.txt")
@@ -754,7 +759,7 @@ describe("Layout toggle", function()
       git_root = repo.dir,
       group = "unstaged",
     }, function(session)
-      return session.modified_path == repo.path("file.txt")
+      return session.modified.absolute == repo.path("file.txt")
         and session.modified_revision == nil
         and session.modified_bufnr
         and vim.api.nvim_buf_is_valid(session.modified_bufnr)
@@ -782,21 +787,38 @@ describe("Layout toggle", function()
     local session = lifecycle.get_session(tabpage)
     move_cursor_to_hunk(session.modified_win, session.modified_bufnr, session.stored_diff_result.changes[1].modified)
 
-    local old_select = vim.ui.select
-    vim.ui.select = function(items, _, on_choice)
-      on_choice(items[1])
-    end
+    -- discard_hunk pops a confirm dialog via `vim.fn.confirm`; in headless
+    -- that returns 0 (no user input). Stub it to auto-select "Discard" (the
+    -- 1st option in "&Discard\n&Cancel") so the async chain proceeds unattended.
+    local old_confirm = vim.fn.confirm
+    vim.fn.confirm = function() return 1 end
 
     local discard_cb = get_buffer_mapping_callback(vim.api.nvim_win_get_buf(session.modified_win), "K")
     assert.is_function(discard_cb, "discard_hunk mapping should exist after toggle")
     discard_cb()
 
-    vim.wait(10000, function() return false end, 50)
+    -- Deterministic wait for the full chain: git apply --reverse writes the
+    -- working tree back to HEAD, the refresh callback re-runs `git status`,
+    -- the empty result triggers the welcome page. Poll for that terminal
+    -- state instead of sleeping a flat 10s (fixes the Windows-CI flake called
+    -- out in the previous `pending` comment).
+    local welcome_ready = vim.wait(15000, function()
+      local s = lifecycle.get_session(tabpage)
+      return s
+        and s.modified_bufnr
+        and vim.api.nvim_buf_is_valid(s.modified_bufnr)
+        and welcome.is_welcome_buffer(s.modified_bufnr)
+    end, 100)
 
-    vim.ui.select = old_select
+    vim.fn.confirm = old_confirm
 
-    local s = lifecycle.get_session(tabpage)
-    assert.is_true(s and welcome.is_welcome_buffer(s.modified_bufnr), "Discarding the last hunk after toggle should restore a clean welcome state")
+    assert.is_true(welcome_ready,
+      "discard_hunk after layout toggle should end in the welcome buffer once the async chain completes")
+    -- Sanity: the working tree really does match HEAD again (git-level check
+    -- so we don't confuse a stale UI with actual discard success).
+    local worktree = table.concat(vim.fn.readfile(repo.path("file.txt")), "\n")
+    assert.equal("line 1\nline 2\nline 3", worktree,
+      "working-tree file must be restored to its HEAD content after discard_hunk")
   end)
 
   it("does not persist the layout override across separate CodeDiff runs", function()

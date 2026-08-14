@@ -5,6 +5,7 @@ local accessors = require("codediff.ui.lifecycle.accessors")
 local session = require("codediff.ui.lifecycle.session")
 local state = require("codediff.ui.lifecycle.state")
 local welcome_window = require("codediff.ui.view.welcome_window")
+local compat = require("codediff.core.compat")
 
 -- Autocmd group for cleanup
 local augroup = vim.api.nvim_create_augroup("codediff_lifecycle", { clear = true })
@@ -46,8 +47,8 @@ local function cleanup_diff(tabpage)
   state.restore_buffer_state(diff.original_bufnr, diff.original_state)
   state.restore_buffer_state(diff.modified_bufnr, diff.modified_state)
 
-  -- Remove tab-scoped keymaps from all tracked buffers
-  accessors.clear_tab_keymaps(tabpage)
+  -- Hand every mapped key back to whatever owned it before codediff
+  accessors.dispose_keymaps(tabpage)
 
   -- Call explorer's cleanup function to stop file watchers
   if diff.explorer and diff.explorer._cleanup_auto_refresh then
@@ -56,8 +57,8 @@ local function cleanup_diff(tabpage)
 
   -- Send didClose notifications for virtual buffers
   -- Compute URIs on-demand since we don't store them anymore
-  local original_virtual_uri = session.compute_virtual_uri(diff.git_root, diff.original_revision, diff.original_path)
-  local modified_virtual_uri = session.compute_virtual_uri(diff.git_root, diff.modified_revision, diff.modified_path)
+  local original_virtual_uri = session.compute_virtual_uri(diff.git_root, diff.original_revision, diff.original.relative)
+  local modified_virtual_uri = session.compute_virtual_uri(diff.git_root, diff.modified_revision, diff.modified.relative)
 
   -- Get LSP clients from any valid buffer
   local ref_bufnr = vim.api.nvim_buf_is_valid(diff.original_bufnr) and diff.original_bufnr or diff.modified_bufnr
@@ -66,12 +67,12 @@ local function cleanup_diff(tabpage)
   for _, client in ipairs(clients) do
     if client.server_capabilities.semanticTokensProvider then
       if original_virtual_uri then
-        pcall(client.notify, "textDocument/didClose", {
+        pcall(compat.lsp_notify, client, "textDocument/didClose", {
           textDocument = { uri = original_virtual_uri },
         })
       end
       if modified_virtual_uri then
-        pcall(client.notify, "textDocument/didClose", {
+        pcall(compat.lsp_notify, client, "textDocument/didClose", {
           textDocument = { uri = modified_virtual_uri },
         })
       end
@@ -119,6 +120,11 @@ local function cleanup_diff(tabpage)
   pcall(vim.api.nvim_del_augroup_by_name, "codediff_lifecycle_tab_" .. tabpage)
   pcall(vim.api.nvim_del_augroup_by_name, "codediff_working_sync_" .. tabpage)
   pcall(vim.api.nvim_del_augroup_by_name, "CodeDiffConflictSigns_" .. tabpage)
+
+  -- Tear down the scroll-sync group for this tab
+  pcall(function()
+    require("codediff.ui.scroll").teardown(tabpage)
+  end)
 
   -- Remove from tracking
   active_diffs[tabpage] = nil
@@ -198,17 +204,58 @@ function M.setup_autocmds()
   vim.api.nvim_create_autocmd("BufEnter", {
     group = augroup,
     callback = function()
-      local current_tab = vim.api.nvim_get_current_tabpage()
-      local active_diffs = session.get_active_diffs()
-      local diff = active_diffs[current_tab]
-
-      if diff then
-        local diff_win_count = count_diff_windows()
-        local is_single_window = diff.single_pane == true or diff.layout == "inline"
-        local threshold = is_single_window and 0 or 1
-        if diff_win_count <= threshold then
-          cleanup_diff(current_tab)
+      local tabpage = vim.api.nvim_get_current_tabpage()
+      -- Skip scheduling work when this tab has no diff session
+      if not session.get_active_diffs()[tabpage] then
+        return
+      end
+      -- Changing the window layout is not allowed inside BufEnter (E1312), so defer
+      vim.schedule(function()
+        -- Bail if the user switched tabs before this ran; cleanup targets the event's tab
+        if vim.api.nvim_get_current_tabpage() ~= tabpage then
+          return
         end
+        local diff = session.get_active_diffs()[tabpage]
+        if diff then
+          local diff_win_count = count_diff_windows()
+          local is_single_window = diff.single_pane == true or diff.layout == "inline"
+          local threshold = is_single_window and 0 or 1
+          if diff_win_count <= threshold then
+            cleanup_diff(tabpage)
+          end
+        end
+      end)
+    end,
+  })
+
+  -- A wiped buffer takes its mappings with it. Drop the bookkeeping so slots
+  -- do not accumulate for buffers that no longer exist.
+  vim.api.nvim_create_autocmd("BufWipeout", {
+    group = augroup,
+    callback = function(args)
+      if args.buf then
+        require("codediff.keymap").forget_buffer(args.buf)
+        for _, diff in pairs(session.get_active_diffs()) do
+          if diff.keymaps then
+            diff.keymaps:forget_buffer(args.buf)
+          end
+        end
+      end
+    end,
+  })
+
+  -- Re-pin panel widths on terminal/tmux resize for every active diff session
+  -- (see issue #346). VimResized is editor-global, so one autocmd handles all
+  -- tabs; layout.arrange() is a no-op for tabs without a session.
+  vim.api.nvim_create_autocmd("VimResized", {
+    group = augroup,
+    callback = function()
+      local ok_l, layout = pcall(require, "codediff.ui.layout")
+      if not ok_l then
+        return
+      end
+      for tabpage, _ in pairs(session.get_active_diffs()) do
+        pcall(layout.arrange, tabpage)
       end
     end,
   })
@@ -223,7 +270,7 @@ end
 -- Aggressive cleanup for quitting neovim from the last diff tab.
 -- Deletes ALL codediff-owned buffers (explorer, scratch placeholders, virtual,
 -- result) so session-persistence plugins don't save them.
-function M.cleanup_for_quit(tabpage)
+local function cleanup_for_quit(tabpage)
   tabpage = tabpage or vim.api.nvim_get_current_tabpage()
   local active_diffs = session.get_active_diffs()
   local diff = active_diffs[tabpage]
@@ -263,6 +310,31 @@ function M.cleanup_for_quit(tabpage)
       end
     end
   end
+end
+
+function M.close(tabpage)
+  tabpage = tabpage or vim.api.nvim_get_current_tabpage()
+  local diff = session.get_active_diffs()[tabpage]
+  if not diff or not vim.api.nvim_tabpage_is_valid(tabpage) then
+    return false
+  end
+  if not accessors.confirm_close_with_unsaved(tabpage) then
+    return false
+  end
+
+  if diff.exit_on_close then
+    cleanup_for_quit(tabpage)
+    vim.cmd("qall")
+    return true
+  end
+
+  if #vim.api.nvim_list_tabpages() == 1 then
+    vim.cmd("tabnew")
+  end
+  local tab_nr = vim.api.nvim_tabpage_get_number(tabpage)
+  vim.cmd(tab_nr .. "tabclose")
+  cleanup_diff(tabpage)
+  return true
 end
 
 -- Cleanup all active diffs (useful for plugin unload/reload)

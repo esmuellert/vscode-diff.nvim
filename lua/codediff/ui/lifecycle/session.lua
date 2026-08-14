@@ -6,6 +6,9 @@ local config = require("codediff.config")
 local virtual_file = require("codediff.core.virtual_file")
 local accessors = require("codediff.ui.lifecycle.accessors")
 local welcome_window = require("codediff.ui.view.welcome_window")
+-- Eagerly loaded: sessions are created from scheduled callbacks that may run
+-- after the CWD changed, and a first-time require would fail there.
+local keymap = require("codediff.keymap")
 
 -- Track active diff sessions
 -- Structure: {
@@ -13,12 +16,13 @@ local welcome_window = require("codediff.ui.view.welcome_window")
 --     original_bufnr, modified_bufnr, original_win, modified_win,
 --     mode = "standalone" | "explorer",
 --     git_root = string?,
---     original_path = string,
---     modified_path = string,
+--     original = Path,
+--     modified = Path,
 --     original_revision = string?, -- nil | "WORKING" | "STAGED" | commit_hash
 --     modified_revision = string?,
 --     original_state, modified_state,
 --     suspended = bool,
+--     single_side = "original" | "modified" | nil,
 --     stored_diff_result = table,
 --     changedtick = { original = number, modified = number },
 --     mtime = { original = number?, modified = number? },
@@ -55,8 +59,8 @@ function M.create_session(
   tabpage,
   mode,
   git_root,
-  original_path,
-  modified_path,
+  original,
+  modified,
   original_revision,
   modified_revision,
   original_bufnr,
@@ -64,7 +68,8 @@ function M.create_session(
   original_win,
   modified_win,
   lines_diff,
-  reapply_keymaps
+  reapply_keymaps,
+  exit_on_close
 )
   local state = require("codediff.ui.lifecycle.state")
   -- Save buffer states
@@ -76,8 +81,8 @@ function M.create_session(
     -- Mode & Git Context (immutable)
     mode = mode,
     git_root = git_root,
-    original_path = original_path,
-    modified_path = modified_path,
+    original = original,
+    modified = modified,
     original_revision = original_revision,
     modified_revision = modified_revision,
 
@@ -91,7 +96,9 @@ function M.create_session(
 
     -- Lifecycle state
     layout = "side-by-side",
+    exit_on_close = exit_on_close == true,
     suspended = false,
+    single_side = nil,
     stored_diff_result = lines_diff,
     changedtick = {
       original = vim.api.nvim_buf_get_changedtick(original_bufnr),
@@ -110,6 +117,9 @@ function M.create_session(
     result_win = nil,
     conflict_files = {}, -- Tracks files opened in conflict mode for unsaved warning
     reapply_keymaps = reapply_keymaps,
+    -- Owns every mapping this session installs, so teardown can hand each key
+    -- back to whatever owned it before codediff.
+    keymaps = keymap.new("codediff-session:" .. tostring(tabpage)),
   }
 
   welcome_window.capture_session_profiles(active_diffs[tabpage])
@@ -194,6 +204,15 @@ function M.create_session(
         local current_tab = vim.api.nvim_get_current_tabpage()
         if current_tab == tabpage and active_diffs[tabpage] then
           local sess = active_diffs[tabpage]
+          -- resume_diff tears the session down when a pane was wiped while we
+          -- were away; let it run first so we never reinstall mappings onto a
+          -- session that is about to disappear.
+          local panes_valid = vim.api.nvim_buf_is_valid(sess.original_bufnr) and vim.api.nvim_buf_is_valid(sess.modified_bufnr)
+          if not panes_valid then
+            state.resume_diff(tabpage)
+            return
+          end
+          accessors.restore_tab_keymaps(tabpage)
           if sess.reapply_keymaps then
             pcall(sess.reapply_keymaps)
           end

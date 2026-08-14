@@ -6,6 +6,8 @@ local lifecycle = require("codediff.ui.lifecycle")
 local virtual_file = require("codediff.core.virtual_file")
 local auto_refresh = require("codediff.ui.auto_refresh")
 local config = require("codediff.config")
+local core = require("codediff.ui.core")
+local path = require("codediff.core.path")
 
 -- Eagerly load explorer and history to avoid lazy require failures
 -- when CWD changes in vim.schedule callbacks
@@ -22,6 +24,8 @@ local welcome_window = require("codediff.ui.view.welcome_window")
 
 local is_virtual_revision = helpers.is_virtual_revision
 local prepare_buffer = helpers.prepare_buffer
+local show_real_file_buffer = helpers.show_real_file_buffer
+local open_real_file = helpers.open_real_file
 local compute_and_render = render.compute_and_render
 local compute_and_render_conflict = render.compute_and_render_conflict
 local setup_auto_refresh = render.setup_auto_refresh
@@ -44,8 +48,7 @@ function M.create(session_config, filetype, on_ready)
 
   -- For explorer mode with empty paths OR dir mode (git_root == nil with explorer_data),
   -- or history mode, create empty panes and skip buffer setup
-  local is_explorer_placeholder = session_config.mode == "explorer"
-    and ((session_config.original_path == "" or session_config.original_path == nil) or (not session_config.git_root and session_config.explorer_data))
+  local is_explorer_placeholder = session_config.mode == "explorer" and (path.is_empty(session_config.original) or (not session_config.git_root and session_config.explorer_data))
 
   local is_history_placeholder = session_config.mode == "history" and session_config.history_data
 
@@ -84,31 +87,41 @@ function M.create(session_config, filetype, on_ready)
     local original_is_virtual = is_virtual_revision(session_config.original_revision)
     local modified_is_virtual = is_virtual_revision(session_config.modified_revision)
 
-    original_info = prepare_buffer(original_is_virtual, session_config.git_root, session_config.original_revision, session_config.original_path)
-    modified_info = prepare_buffer(modified_is_virtual, session_config.git_root, session_config.modified_revision, session_config.modified_path)
+    original_info = prepare_buffer(original_is_virtual, session_config.git_root, session_config.original_revision, session_config.original)
+    modified_info = prepare_buffer(modified_is_virtual, session_config.git_root, session_config.modified_revision, session_config.modified)
 
     initial_buf = vim.api.nvim_get_current_buf()
     original_win = vim.api.nvim_get_current_win()
 
     -- Load original buffer
-    if original_info.needs_edit then
-      local cmd = original_is_virtual and "edit! " or "edit "
-      vim.cmd(cmd .. vim.fn.fnameescape(original_info.target))
-      original_info.bufnr = vim.api.nvim_get_current_buf()
+    if original_is_virtual then
+      if original_info.needs_edit then
+        vim.cmd("edit! " .. vim.fn.fnameescape(original_info.target))
+        original_info.bufnr = vim.api.nvim_get_current_buf()
+      else
+        vim.api.nvim_win_set_buf(original_win, original_info.bufnr)
+      end
+    elseif original_info.needs_edit then
+      original_info.bufnr = open_real_file(original_win, original_info.target)
     else
-      vim.api.nvim_win_set_buf(original_win, original_info.bufnr)
+      show_real_file_buffer(original_win, original_info.bufnr)
     end
 
     vim.cmd(split_cmd)
     modified_win = vim.api.nvim_get_current_win()
 
     -- Load modified buffer
-    if modified_info.needs_edit then
-      local cmd = modified_is_virtual and "edit! " or "edit "
-      vim.cmd(cmd .. vim.fn.fnameescape(modified_info.target))
-      modified_info.bufnr = vim.api.nvim_get_current_buf()
+    if modified_is_virtual then
+      if modified_info.needs_edit then
+        vim.cmd("edit! " .. vim.fn.fnameescape(modified_info.target))
+        modified_info.bufnr = vim.api.nvim_get_current_buf()
+      else
+        vim.api.nvim_win_set_buf(modified_win, modified_info.bufnr)
+      end
+    elseif modified_info.needs_edit then
+      modified_info.bufnr = open_real_file(modified_win, modified_info.target)
     else
-      vim.api.nvim_win_set_buf(modified_win, modified_info.bufnr)
+      show_real_file_buffer(modified_win, modified_info.bufnr)
     end
     welcome_window.sync(original_win)
     welcome_window.sync(modified_win)
@@ -155,7 +168,8 @@ function M.create(session_config, filetype, on_ready)
         end
         local is_explorer = lifecycle.get_mode(tabpage) == "explorer"
         setup_all_keymaps(tabpage, ob, mb, is_explorer)
-      end
+      end,
+      session_config.exit_on_close
     )
   else
     -- Normal mode: Full rendering
@@ -192,7 +206,7 @@ function M.create(session_config, filetype, on_ready)
         local git = require("codediff.core.git")
         local base_revision = ":1"
 
-        git.get_file_content(base_revision, session_config.git_root, session_config.original_path, function(err, base_lines)
+        git.get_file_content(base_revision, session_config.git_root, session_config.original.relative, function(err, base_lines)
           -- For add/add conflicts (AA), there's no base version - use empty base
           if err then
             base_lines = {}
@@ -216,8 +230,8 @@ function M.create(session_config, filetype, on_ready)
                 tabpage,
                 session_config.mode,
                 session_config.git_root,
-                session_config.original_path,
-                session_config.modified_path,
+                session_config.original,
+                session_config.modified,
                 session_config.original_revision,
                 session_config.modified_revision,
                 original_info.bufnr,
@@ -233,10 +247,9 @@ function M.create(session_config, filetype, on_ready)
                   setup_all_keymaps(tabpage, ob, mb, false)
                   local conflict = require("codediff.ui.conflict")
                   conflict.setup_keymaps(tabpage)
-                end
+                end,
+                session_config.exit_on_close
               )
-              -- Setup auto-refresh for consistency (both buffers are virtual in conflict mode)
-              setup_auto_refresh(original_info.bufnr, modified_info.bufnr, true, true)
 
               -- Setup result window and keymaps
               local success = setup_conflict_result_window(tabpage, session_config, original_win, modified_win, base_lines, conflict_diffs, false)
@@ -274,8 +287,8 @@ function M.create(session_config, filetype, on_ready)
             tabpage,
             session_config.mode,
             session_config.git_root,
-            session_config.original_path,
-            session_config.modified_path,
+            session_config.original,
+            session_config.modified,
             session_config.original_revision,
             session_config.modified_revision,
             original_info.bufnr,
@@ -290,7 +303,8 @@ function M.create(session_config, filetype, on_ready)
               end
               local is_explorer = lifecycle.get_mode(tabpage) == "explorer"
               setup_all_keymaps(tabpage, ob, mb, is_explorer)
-            end
+            end,
+            session_config.exit_on_close
           )
           -- Enable auto-refresh for real file buffers only
           setup_auto_refresh(original_info.bufnr, modified_info.bufnr, original_is_virtual, modified_is_virtual)
@@ -364,9 +378,7 @@ function M.create(session_config, filetype, on_ready)
 
   -- Setup panels (explorer sidebar, history panel)
   panel.setup_explorer(tabpage, session_config, original_win, modified_win)
-  panel.setup_history(tabpage, session_config, original_win, modified_win, original_info.bufnr, modified_info.bufnr, function(tp, ob, mb)
-    setup_all_keymaps(tp, ob, mb, false)
-  end)
+  panel.setup_history(tabpage, session_config, original_win, modified_win)
 
   -- Emit CodeDiffOpen User autocmd
   vim.api.nvim_exec_autocmds("User", {
@@ -403,6 +415,7 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
   if not session then
     return false
   end
+  session.single_side = nil
 
   -- Get existing buffers and windows
   local old_original_buf, old_modified_buf = lifecycle.get_buffers(tabpage)
@@ -463,8 +476,8 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
   local modified_is_virtual = is_virtual_revision(session_config.modified_revision)
 
   -- Prepare new buffer information
-  local original_info = prepare_buffer(original_is_virtual, session_config.git_root, session_config.original_revision, session_config.original_path)
-  local modified_info = prepare_buffer(modified_is_virtual, session_config.git_root, session_config.modified_revision, session_config.modified_path)
+  local original_info = prepare_buffer(original_is_virtual, session_config.git_root, session_config.original_revision, session_config.original)
+  local modified_info = prepare_buffer(modified_is_virtual, session_config.git_root, session_config.modified_revision, session_config.modified)
 
   -- Determine if we need to wait for virtual file content
   local wait_state = {
@@ -495,7 +508,7 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
       local git = require("codediff.core.git")
       local base_revision = ":1"
 
-      git.get_file_content(base_revision, session_config.git_root, session_config.original_path, function(err, base_lines)
+      git.get_file_content(base_revision, session_config.git_root, session_config.original.relative, function(err, base_lines)
         if err then
           base_lines = {}
         end
@@ -510,8 +523,6 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
             lifecycle.update_revisions(tabpage, session_config.original_revision, session_config.modified_revision)
             lifecycle.update_diff_result(tabpage, conflict_diffs.base_to_modified_diff)
             lifecycle.update_changedtick(tabpage, vim.api.nvim_buf_get_changedtick(original_info.bufnr), vim.api.nvim_buf_get_changedtick(modified_info.bufnr))
-            setup_auto_refresh(original_info.bufnr, modified_info.bufnr, true, true)
-
             local is_explorer_mode = session.mode == "explorer"
             local success = setup_conflict_result_window(tabpage, session_config, original_win, modified_win, base_lines, conflict_diffs, true)
             if success then
@@ -599,18 +610,14 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
           original_info.bufnr = vim.api.nvim_get_current_buf()
         end
       else
-        local bufnr = vim.fn.bufadd(original_info.target)
-        vim.fn.bufload(bufnr)
-        original_info.bufnr = bufnr
-        vim.api.nvim_win_set_buf(original_win, original_info.bufnr)
+        original_info.bufnr = open_real_file(original_win, original_info.target)
       end
     else
       if vim.api.nvim_buf_is_valid(original_info.bufnr) then
-        vim.api.nvim_win_set_buf(original_win, original_info.bufnr)
-        if not original_is_virtual then
-          vim.api.nvim_buf_call(original_info.bufnr, function()
-            vim.cmd("checktime")
-          end)
+        if original_is_virtual then
+          vim.api.nvim_win_set_buf(original_win, original_info.bufnr)
+        else
+          show_real_file_buffer(original_win, original_info.bufnr)
         end
       else
         if original_is_virtual then
@@ -618,10 +625,7 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
           vim.cmd("edit! " .. vim.fn.fnameescape(original_info.target))
           original_info.bufnr = vim.api.nvim_get_current_buf()
         else
-          local bufnr = vim.fn.bufadd(original_info.target)
-          vim.fn.bufload(bufnr)
-          original_info.bufnr = bufnr
-          vim.api.nvim_win_set_buf(original_win, original_info.bufnr)
+          original_info.bufnr = open_real_file(original_win, original_info.target)
         end
       end
     end
@@ -639,18 +643,14 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
           modified_info.bufnr = vim.api.nvim_get_current_buf()
         end
       else
-        local bufnr = vim.fn.bufadd(modified_info.target)
-        vim.fn.bufload(bufnr)
-        modified_info.bufnr = bufnr
-        vim.api.nvim_win_set_buf(modified_win, modified_info.bufnr)
+        modified_info.bufnr = open_real_file(modified_win, modified_info.target)
       end
     else
       if vim.api.nvim_buf_is_valid(modified_info.bufnr) then
-        vim.api.nvim_win_set_buf(modified_win, modified_info.bufnr)
-        if not modified_is_virtual then
-          vim.api.nvim_buf_call(modified_info.bufnr, function()
-            vim.cmd("checktime")
-          end)
+        if modified_is_virtual then
+          vim.api.nvim_win_set_buf(modified_win, modified_info.bufnr)
+        else
+          show_real_file_buffer(modified_win, modified_info.bufnr)
         end
       else
         if modified_is_virtual then
@@ -658,10 +658,7 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
           vim.cmd("edit! " .. vim.fn.fnameescape(modified_info.target))
           modified_info.bufnr = vim.api.nvim_get_current_buf()
         else
-          local bufnr = vim.fn.bufadd(modified_info.target)
-          vim.fn.bufload(bufnr)
-          modified_info.bufnr = bufnr
-          vim.api.nvim_win_set_buf(modified_win, modified_info.bufnr)
+          modified_info.bufnr = open_real_file(modified_win, modified_info.target)
         end
       end
     end
@@ -671,7 +668,7 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
   welcome_window.sync(modified_win)
 
   -- Update lifecycle session metadata
-  lifecycle.update_paths(tabpage, session_config.original_path, session_config.modified_path)
+  lifecycle.update_paths(tabpage, session_config.original, session_config.modified)
 
   -- Delete old virtual buffers if they were virtual AND are not reused
   if lifecycle.is_original_virtual(tabpage) and old_original_buf ~= original_info.bufnr and old_original_buf ~= modified_info.bufnr then
@@ -694,33 +691,77 @@ end
 -- Single-file display (no diff) for explorer special cases
 -- ============================================================================
 
+--- True when the pane already shows exactly what this call would render.
+--- Explorer refreshes re-select the file that is already open. For real diffs
+--- on_file_select short-circuits that, but untracked/added/deleted files return
+--- before reaching its guard, so the window was torn down and rebuilt on every
+--- refresh, and the layout pass at the end of the rebuild discarded any pane
+--- the user had resized. Comparing the displayed buffer covers path and
+--- revision at once, since virtual revisions resolve to distinct buffers.
+---@param session table
+---@param opts table
+---@return boolean
+local function single_file_unchanged(session, opts)
+  if not session.single_pane then
+    return false
+  end
+  if session.single_side ~= (opts.highlight ~= false and opts.keep or nil) then
+    return false
+  end
+  local keep_win = opts.keep == "original" and session.original_win or session.modified_win
+  local other_win = opts.keep == "original" and session.modified_win or session.original_win
+  if other_win and vim.api.nvim_win_is_valid(other_win) then
+    return false
+  end
+  if not keep_win or not vim.api.nvim_win_is_valid(keep_win) then
+    return false
+  end
+  return vim.api.nvim_win_get_buf(keep_win) == opts.load_bufnr
+end
+
 --- Core implementation for showing a single file without diff.
 --- Closes the empty pane and loads the file into the remaining pane.
 ---@param tabpage number
----@param opts { keep: "original"|"modified", load_bufnr: number, original_path: string, modified_path: string, original_revision: string?, modified_revision: string? }
+---@param opts { keep: "original"|"modified", load_bufnr: number, original_path: string, modified_path: string, original_revision: string?, modified_revision: string?, highlight: boolean? }
 local function show_single_file(tabpage, opts)
   local session = lifecycle.get_session(tabpage)
   if not session then
     return
   end
 
+  if single_file_unchanged(session, opts) then
+    return
+  end
+
   lifecycle.update_layout(tabpage, "side-by-side")
   local orig_win, mod_win = lifecycle.get_windows(tabpage)
-  local highlights = require("codediff.ui.highlights")
 
   -- Clear highlights from current session buffers
   local old_orig_buf, old_mod_buf = lifecycle.get_buffers(tabpage)
-  if old_orig_buf and vim.api.nvim_buf_is_valid(old_orig_buf) then
-    vim.api.nvim_buf_clear_namespace(old_orig_buf, highlights.ns_highlight, 0, -1)
-    vim.api.nvim_buf_clear_namespace(old_orig_buf, highlights.ns_filler, 0, -1)
+  if old_orig_buf then
+    auto_refresh.disable(old_orig_buf)
+    lifecycle.clear_highlights(old_orig_buf)
   end
-  if old_mod_buf and vim.api.nvim_buf_is_valid(old_mod_buf) then
-    vim.api.nvim_buf_clear_namespace(old_mod_buf, highlights.ns_highlight, 0, -1)
-    vim.api.nvim_buf_clear_namespace(old_mod_buf, highlights.ns_filler, 0, -1)
+  if old_mod_buf then
+    auto_refresh.disable(old_mod_buf)
+    lifecycle.clear_highlights(old_mod_buf)
   end
 
   -- Mark single-pane BEFORE closing window (prevents cleanup trigger)
   session.single_pane = true
+
+  -- Leaving conflict mode: close the result window too, mirroring M.update.
+  -- Without this the 3rd conflict pane survives under the single-file view, and
+  -- returning to the conflict file reuses that stale window whose buffer still
+  -- has unsaved merge edits, so `:edit` fails with E37. Closing is forced so it
+  -- also works when 'hidden' is off; the buffer only becomes hidden, never
+  -- unloaded, so in-progress merge edits are preserved.
+  local _, old_result_win = lifecycle.get_result(tabpage)
+  if old_result_win and vim.api.nvim_win_is_valid(old_result_win) then
+    vim.w[old_result_win].codediff_restore = nil
+    pcall(vim.api.nvim_win_close, old_result_win, true)
+  end
+  lifecycle.set_result(tabpage, nil, nil)
 
   -- Close the unused window
   local keep_win, close_win
@@ -738,15 +779,22 @@ local function show_single_file(tabpage, opts)
     close_win = nil
   end
 
+  -- Load the file into the kept window BEFORE closing the other one. Virtual
+  -- buffers (from load_virtual_file) carry `bufhidden = "wipe"` so they get
+  -- wiped as soon as they have no window; closing close_win first would leave
+  -- the freshly-created virtual buffer with no window, wiping it before we can
+  -- set it into keep_win — producing "Invalid buffer id" (#498).
+  if keep_win and vim.api.nvim_win_is_valid(keep_win) then
+    show_real_file_buffer(keep_win, opts.load_bufnr)
+  end
+
   if close_win and vim.api.nvim_win_is_valid(close_win) then
     vim.w[close_win].codediff_restore = nil
     vim.api.nvim_win_close(close_win, true)
     close_win = nil
   end
 
-  -- Load the file into the kept window
   if keep_win and vim.api.nvim_win_is_valid(keep_win) then
-    vim.api.nvim_win_set_buf(keep_win, opts.load_bufnr)
     welcome_window.sync(keep_win)
 
     if opts.keep == "original" then
@@ -765,9 +813,13 @@ local function show_single_file(tabpage, opts)
     local mod_bufnr = opts.keep == "modified" and opts.load_bufnr or empty_buf
 
     lifecycle.update_buffers(tabpage, orig_bufnr, mod_bufnr)
-    lifecycle.update_paths(tabpage, opts.original_path or "", opts.modified_path or "")
+    lifecycle.update_paths(tabpage, path.make_ref(opts.original_path or "", session.git_root), path.make_ref(opts.modified_path or "", session.git_root))
     lifecycle.update_revisions(tabpage, opts.original_revision, opts.modified_revision)
     lifecycle.update_diff_result(tabpage, { changes = {}, moves = {} })
+    session.single_side = opts.highlight ~= false and opts.keep or nil
+    if session.single_side then
+      core.render_whole_file(opts.load_bufnr, session.single_side)
+    end
 
     local view_keymaps = require("codediff.ui.view.keymaps")
     view_keymaps.setup_all_keymaps(tabpage, orig_bufnr, mod_bufnr, session.mode == "explorer")
@@ -852,6 +904,7 @@ end
 function M.show_welcome(tabpage, load_bufnr)
   show_single_file(tabpage, {
     keep = "modified",
+    highlight = false,
     load_bufnr = load_bufnr,
   })
 end

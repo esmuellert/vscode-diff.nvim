@@ -47,7 +47,7 @@ end
 -- @param is_update boolean: true if updating existing view (may reuse result window)
 -- @return boolean: success
 function M.setup_conflict_result_window(tabpage, session_config, original_win, modified_win, base_lines, conflict_diffs, is_update)
-  local abs_path = session_config.git_root .. "/" .. session_config.original_path
+  local abs_path = session_config.original.absolute
   local result_win, result_bufnr
 
   -- Check if result window already exists (only in update mode)
@@ -70,6 +70,19 @@ function M.setup_conflict_result_window(tabpage, session_config, original_win, m
   end
 
   -- Load real file buffer in result window
+  -- `:edit` acts on the current window and fails with E37 when the buffer it
+  -- would abandon has unsaved changes -- which the result buffer always has
+  -- once auto-merged content is applied. Window creation can also leave a
+  -- different window current (win_splitmove). Pin the result window and park a
+  -- throwaway scratch in it first, so the edit can never be refused. The real
+  -- buffer is only hidden, so in-progress merge edits survive.
+  if vim.api.nvim_win_is_valid(result_win) then
+    vim.api.nvim_set_current_win(result_win)
+    if vim.bo[vim.api.nvim_get_current_buf()].modified then
+      vim.api.nvim_win_set_buf(result_win, vim.api.nvim_create_buf(false, true))
+    end
+  end
+
   -- Use silent and swapfile handling to avoid prompts
   local old_shortmess = vim.o.shortmess
   vim.o.shortmess = old_shortmess .. "A"
@@ -83,34 +96,49 @@ function M.setup_conflict_result_window(tabpage, session_config, original_win, m
 
   result_bufnr = vim.api.nvim_get_current_buf()
 
-  -- Reset buffer content to BASE (only if buffer has conflict markers)
-  local current_content = vim.api.nvim_buf_get_lines(result_bufnr, 0, -1, false)
-  local has_conflict_markers = false
-  for _, line in ipairs(current_content) do
-    if line:match("^<<<<<<<") or line:match("^=======") or line:match("^>>>>>>>") then
-      has_conflict_markers = true
-      break
-    end
-  end
+  -- Compute the auto-merged result: BASE + every non-conflicting change from
+  -- both sides applied. Only true two-sided conflicts remain as BASE for the
+  -- user to resolve. This matches VSCode's MergeEditorModel.computeAutoMergedResult.
+  -- conflict_diffs.conflict_blocks (from compute_merge_fillers_and_conflicts) is
+  -- the visual filler list for the side panes; the Result-buffer-oriented blocks
+  -- (with result_range) come from compute_auto_merged_result.
+  local merge_alignment = require("codediff.ui.merge_alignment")
+  local result_lines, result_conflict_blocks = merge_alignment.compute_auto_merged_result(
+    conflict_diffs.base_to_original_diff,
+    conflict_diffs.base_to_modified_diff,
+    base_lines,
+    conflict_diffs.original_lines,
+    conflict_diffs.modified_lines
+  )
 
-  if has_conflict_markers then
-    vim.api.nvim_buf_set_lines(result_bufnr, 0, -1, false, base_lines)
-    vim.bo[result_bufnr].modified = true
-  end
+  -- Replace the result buffer (which currently contains the raw file with
+  -- `<<<<<<<`/`=======`/`>>>>>>>` markers) with the auto-merged content.
+  -- We always replace in the conflict path so the markers never persist into
+  -- a manual save.
+  vim.api.nvim_buf_set_lines(result_bufnr, 0, -1, false, result_lines)
+  vim.bo[result_bufnr].modified = true
 
   -- Set window options for result
   vim.wo[result_win].wrap = false
   vim.wo[result_win].cursorline = true
 
-  -- Enable scrollbind for result window
+  -- Add the result window to the structural scroll-sync group (all 3 panes).
   vim.api.nvim_win_set_cursor(result_win, { 1, 0 })
-  vim.wo[result_win].scrollbind = true
+  local scroll = require("codediff.ui.scroll")
+  scroll.bind(tabpage, { original_win, modified_win, result_win })
+  scroll.resync(tabpage, modified_win)
 
   -- Update lifecycle with result buffer/window FIRST
   -- (This must happen before setting winbar so ensure_no_winbar knows we're in conflict mode)
   lifecycle.set_result(tabpage, result_bufnr, result_win)
-  lifecycle.set_result_base_lines(tabpage, base_lines)
-  lifecycle.set_conflict_blocks(tabpage, conflict_diffs.conflict_blocks)
+  -- result_base_lines is the seed of the Result buffer (the auto-merged
+  -- content), used by is_block_active to decide whether a conflict region is
+  -- still in its initial unresolved state. merge_base_lines keeps the true
+  -- merge base (stage :1) for operations that need merge-base coordinates
+  -- such as accept_both's smart-combine and discard.
+  lifecycle.set_result_base_lines(tabpage, result_lines)
+  lifecycle.set_merge_base_lines(tabpage, base_lines)
+  lifecycle.set_conflict_blocks(tabpage, result_conflict_blocks)
   lifecycle.track_conflict_file(tabpage, abs_path)
 
   -- Arrange all windows now that lifecycle knows about result_win

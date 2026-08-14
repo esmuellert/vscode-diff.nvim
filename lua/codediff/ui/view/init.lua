@@ -25,13 +25,14 @@ end
 ---@class SessionConfig
 ---@field mode "standalone"|"explorer"|"history"
 ---@field git_root string?
----@field original_path string
----@field modified_path string
+---@field original Path
+---@field modified Path
 ---@field original_revision string?
 ---@field modified_revision string?
 ---@field conflict boolean? For merge conflict mode: render both sides against base
 ---@field layout "side-by-side"|"inline"? Optional per-invocation layout override
----@field explorer_data table? For explorer mode: { status_result }
+---@field exit_on_close boolean? Exit Neovim when this session closes
+---@field explorer_data table? For explorer mode: { status_result, focus_file, pathspec }
 ---@field history_data table? For history mode: { commits, range, file_path, line_range }
 ---@field line_range table? For history line-range mode: { start_line, end_line }
 

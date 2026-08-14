@@ -33,7 +33,12 @@ function M.make_repeatable(fn)
   end
 end
 
---- Check if a conflict block is currently active (content matches base)
+--- Check if a conflict block is currently active (content matches the
+--- auto-merged seed for this conflict region).
+--- The Result buffer is seeded with the auto-merged content from
+--- compute_auto_merged_result(); for unresolved conflicts that seed is the
+--- BASE slice. A block is "active" when the result buffer at the tracked
+--- range still equals that seed slice — i.e. the user hasn't resolved it yet.
 --- @param session table The diff session
 --- @param block table The conflict block
 --- @return boolean is_active
@@ -56,18 +61,19 @@ function M.is_block_active(session, block)
 
   local current_lines = vim.api.nvim_buf_get_lines(session.result_bufnr, start_row, end_row, false)
 
-  -- 2. Get expected base content from session
-  local base_lines = session.result_base_lines
-  if not base_lines then
+  -- 2. Get expected seed content from the auto-merged Result content stored
+  -- in session.result_base_lines. result_range marks where this block's BASE
+  -- slice was placed in the auto-merged seed. Fall back to base_range against
+  -- a pure-BASE seed if result_range is absent (legacy paths).
+  local seed_lines = session.result_base_lines
+  if not seed_lines then
     return true
-  end -- Default to active if no base lines
+  end
 
   local expected_lines = {}
-  -- base_range is 1-based, inclusive-exclusive logic?
-  -- In `apply_to_result`, we used: for i = base_range.start_line, base_range.end_line - 1
-  -- Let's match that.
-  for i = block.base_range.start_line, block.base_range.end_line - 1 do
-    table.insert(expected_lines, base_lines[i] or "")
+  local range = block.result_range or block.base_range
+  for i = range.start_line, range.end_line - 1 do
+    table.insert(expected_lines, seed_lines[i] or "")
   end
 
   -- 3. Compare
@@ -254,8 +260,15 @@ function M.initialize_tracking(result_bufnr, conflict_blocks)
   vim.api.nvim_buf_clear_namespace(result_bufnr, tracking_ns, 0, -1)
 
   for _, block in ipairs(conflict_blocks) do
-    local start_line = block.base_range.start_line - 1
-    local end_line = block.base_range.end_line - 1
+    -- Anchor the extmark at the conflict's position in the *auto-merged*
+    -- Result buffer (result_range), not its position in pure BASE. The two
+    -- differ as soon as any non-conflicting one-sided change was auto-applied
+    -- earlier in the file, because that shifts every later conflict's line
+    -- number in the Result buffer. Legacy callers without result_range fall
+    -- back to base_range (which assumes a pure-BASE seed).
+    local range = block.result_range or block.base_range
+    local start_line = range.start_line - 1
+    local end_line = range.end_line - 1
 
     -- Create extmark with gravity: right (adjusts as text is inserted before it)
     -- We want to track the *range* of this block.

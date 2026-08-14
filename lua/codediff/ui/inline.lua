@@ -4,9 +4,14 @@ local M = {}
 
 local config = require("codediff.config")
 local highlights = require("codediff.ui.highlights")
+local gutter_signs = require("codediff.ui.gutter_signs")
+local compat = require("codediff.core.compat")
 
 -- Dedicated namespace for inline diff (separate from side-by-side namespaces)
 M.ns_inline = vim.api.nvim_create_namespace("codediff-inline")
+
+-- Allow deleted-line virt_lines to scroll horizontally with the window
+local virt_lines_overflow = vim.fn.has("nvim-0.11") == 1 and "scroll" or nil
 
 -- Cache for merged highlight groups (syntax fg + diff bg)
 local merged_hl_cache = {}
@@ -126,7 +131,7 @@ local function utf16_col_to_byte_col(line, utf16_col)
   if not line or utf16_col <= 1 then
     return utf16_col
   end
-  local ok, byte_idx = pcall(vim.str_byteindex, line, utf16_col - 1, true)
+  local ok, byte_idx = pcall(compat.str_byteindex_utf16, line, utf16_col - 1)
   if ok then
     return byte_idx + 1
   end
@@ -378,6 +383,7 @@ end
 function M.render_inline_diff(bufnr, diff_result, original_lines, modified_lines, opts)
   -- Clear previous inline decorations
   vim.api.nvim_buf_clear_namespace(bufnr, M.ns_inline, 0, -1)
+  gutter_signs.clear_buffer(bufnr)
   -- Clear merged highlight cache on re-render (colorscheme may have changed)
   merged_hl_cache = {}
 
@@ -429,6 +435,7 @@ function M.render_inline_diff(bufnr, diff_result, original_lines, modified_lines
       pcall(vim.api.nvim_buf_set_extmark, bufnr, M.ns_inline, anchor_line, 0, {
         virt_lines = virt_lines,
         virt_lines_above = true,
+        virt_lines_overflow = virt_lines_overflow,
         priority = highlight_priority,
       })
     end
@@ -467,6 +474,7 @@ end
 function M.clear(bufnr)
   if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
     vim.api.nvim_buf_clear_namespace(bufnr, M.ns_inline, 0, -1)
+    gutter_signs.clear_buffer(bufnr)
   end
 end
 

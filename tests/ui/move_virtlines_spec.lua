@@ -5,6 +5,7 @@
 local core = require("codediff.ui.core")
 local diff_module = require("codediff.core.diff")
 local highlights = require("codediff.ui.highlights")
+local path = require("codediff.core.path")
 local ns_highlight = require("codediff.ui.highlights").ns_highlight
 local ns_filler = require("codediff.ui.highlights").ns_filler
 
@@ -250,8 +251,8 @@ describe("Move annotation virt_lines", function()
 
     view.create({
       mode = "standalone",
-      original_path = "scripts/test_pairs/block_moved_down/original.txt",
-      modified_path = "scripts/test_pairs/block_moved_down/modified.txt",
+      original = path.make_ref("scripts/test_pairs/block_moved_down/original.txt", nil),
+      modified = path.make_ref("scripts/test_pairs/block_moved_down/modified.txt", nil),
     })
     vim.cmd("redraw")
     vim.wait(500)
@@ -309,8 +310,8 @@ describe("Move annotation virt_lines", function()
 
     view.create({
       mode = "standalone",
-      original_path = "scripts/test_pairs/simple_swap/original.txt",
-      modified_path = "scripts/test_pairs/simple_swap/modified.txt",
+      original = path.make_ref("scripts/test_pairs/simple_swap/original.txt", nil),
+      modified = path.make_ref("scripts/test_pairs/simple_swap/modified.txt", nil),
     })
     vim.cmd("redraw")
     vim.wait(500)
@@ -364,8 +365,8 @@ describe("Move annotation virt_lines", function()
 
           view.create({
             mode = "standalone",
-            original_path = orig,
-            modified_path = mod,
+            original = path.make_ref(orig, nil),
+            modified = path.make_ref(mod, nil),
           })
           vim.cmd("redraw")
           vim.wait(500)

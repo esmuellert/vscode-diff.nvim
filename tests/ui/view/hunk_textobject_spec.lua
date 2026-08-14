@@ -5,6 +5,7 @@ local view = require("codediff.ui.view")
 local diff_module = require("codediff.core.diff")
 local highlights = require("codediff.ui.highlights")
 local lifecycle = require("codediff.ui.lifecycle")
+local path = require("codediff.core.path")
 
 describe("Hunk Textobject", function()
   local left_path, right_path
@@ -23,8 +24,8 @@ describe("Hunk Textobject", function()
     view.create({
       mode = "standalone",
       git_root = nil,
-      original_path = left_path,
-      modified_path = right_path,
+      original = path.make_ref(left_path, nil),
+      modified = path.make_ref(right_path, nil),
       original_revision = nil,
       modified_revision = nil,
     })

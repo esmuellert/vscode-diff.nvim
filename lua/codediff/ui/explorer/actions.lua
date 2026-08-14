@@ -168,10 +168,94 @@ function M.toggle_view_mode(explorer)
   -- Update config
   config.options.explorer.view_mode = new_mode
 
-  -- Refresh to rebuild tree with new mode
-  refresh_module.refresh(explorer)
+  -- View-mode change is client-only: git status is unchanged, so the async
+  -- refresh() path would hit the deep_equal skip introduced in #486 and
+  -- silently no-op. Rebuild synchronously from the cached status instead
+  -- (same pattern as toggle_group) so the new mode takes effect immediately.
+  refresh_module.rebuild_from_cache(explorer)
 
   vim.notify("Explorer view: " .. new_mode, vim.log.levels.INFO)
+end
+
+-- Swap the current file between its staged and unstaged variant.
+--
+-- When a file has both staged and unstaged changes, the explorer lists it
+-- twice — once under "Changes" and once under "Staged Changes" — and users
+-- have to hunt for the sibling entry to compare the two views (issue #352).
+-- This action jumps directly to that sibling.
+--
+-- Only meaningful in Status Mode (no revisions). In revision, dir, or
+-- staged-only (--staged) modes there's no "other side" to swap to, so this
+-- notifies the user and does nothing.
+--
+-- @param explorer the explorer object (from lifecycle.get_explorer)
+-- @return true if the swap happened, false otherwise
+function M.toggle_staged_view(explorer)
+  if not explorer then
+    return false
+  end
+  if not explorer.git_root then
+    vim.notify("Toggle staged view only available in git mode", vim.log.levels.WARN)
+    return false
+  end
+  -- Status Mode is the only mode with distinct staged/unstaged groups.
+  if explorer.base_revision or explorer.target_revision then
+    vim.notify("Toggle staged view only available in Status Mode (:CodeDiff with no revision)", vim.log.levels.WARN)
+    return false
+  end
+
+  local current_path = explorer.current_file_path
+  local current_group = explorer.current_file_group
+
+  if not current_path or not current_group then
+    vim.notify("No file selected", vim.log.levels.WARN)
+    return false
+  end
+  if current_group ~= "staged" and current_group ~= "unstaged" then
+    vim.notify("Current file has no staged/unstaged counterpart", vim.log.levels.WARN)
+    return false
+  end
+
+  local target_group = (current_group == "staged") and "unstaged" or "staged"
+  local status_result = explorer.status_result or {}
+  local target_list = status_result[target_group] or {}
+
+  local target_file
+  for _, f in ipairs(target_list) do
+    if f.path == current_path then
+      target_file = f
+      break
+    end
+  end
+
+  if not target_file then
+    local label = (target_group == "staged") and "staged" or "unstaged"
+    vim.notify(string.format("No %s changes for %s", label, current_path), vim.log.levels.INFO)
+    return false
+  end
+
+  -- Move cursor to the sibling entry in the tree so `]f`/`[f` and refresh
+  -- have a consistent anchor (matches navigate_next/prev behavior).
+  if explorer.winid and vim.api.nvim_win_is_valid(explorer.winid) then
+    local line = find_node_line(explorer, target_file.path, target_group)
+    if line then
+      local current_win = vim.api.nvim_get_current_win()
+      vim.api.nvim_set_current_win(explorer.winid)
+      vim.api.nvim_win_set_cursor(explorer.winid, { line, 0 })
+      if current_win ~= explorer.winid and vim.api.nvim_win_is_valid(current_win) then
+        vim.api.nvim_set_current_win(current_win)
+      end
+    end
+  end
+
+  explorer.on_file_select({
+    path = target_file.path,
+    old_path = target_file.old_path,
+    status = target_file.status,
+    git_root = explorer.git_root,
+    group = target_group,
+  })
+  return true
 end
 
 -- Toggle visibility of a group (staged/unstaged/conflicts)
@@ -181,7 +265,10 @@ function M.toggle_group(explorer, group_name)
   end
 
   explorer.visible_groups[group_name] = not explorer.visible_groups[group_name]
-  refresh_module.refresh(explorer)
+  -- Group visibility changed but git status did not: rebuild the tree
+  -- synchronously from the cached status so the hidden/shown group takes effect
+  -- immediately (navigation reads the tree, so this also keeps ]f/[f correct).
+  refresh_module.rebuild_from_cache(explorer)
 
   local state = explorer.visible_groups[group_name] and "shown" or "hidden"
   local label = ({ staged = "Staged Changes", unstaged = "Changes", conflicts = "Merge Changes" })[group_name] or group_name

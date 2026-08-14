@@ -26,12 +26,14 @@ function M.setup_explorer(tabpage, session_config, original_win, modified_win)
 
   local explorer_opts = {}
   if not session_config.git_root then
-    explorer_opts.dir1 = session_config.original_path
-    explorer_opts.dir2 = session_config.modified_path
+    explorer_opts.dir1 = session_config.original.absolute
+    explorer_opts.dir2 = session_config.modified.absolute
   end
   if session_config.explorer_data.focus_file then
     explorer_opts.focus_file = session_config.explorer_data.focus_file
   end
+  -- Scope (#74): carry the pathspec so auto-refresh re-applies it (see refresh.lua).
+  explorer_opts.pathspec = session_config.explorer_data.pathspec
 
   local explorer_obj =
     explorer_module.create(status_result, session_config.git_root, tabpage, nil, session_config.original_revision, session_config.modified_revision, explorer_opts)
@@ -55,10 +57,7 @@ end
 ---@param session_config SessionConfig
 ---@param original_win number
 ---@param modified_win number
----@param original_bufnr number
----@param modified_bufnr number
----@param setup_keymaps_fn function
-function M.setup_history(tabpage, session_config, original_win, modified_win, original_bufnr, modified_bufnr, setup_keymaps_fn)
+function M.setup_history(tabpage, session_config, original_win, modified_win)
   if not (session_config.mode == "history" and session_config.history_data) then
     return
   end
@@ -85,9 +84,6 @@ function M.setup_history(tabpage, session_config, original_win, modified_win, or
   end
 
   layout.arrange(tabpage)
-
-  -- History mode needs keymaps set after session is created
-  setup_keymaps_fn(tabpage, original_bufnr, modified_bufnr)
 end
 
 return M

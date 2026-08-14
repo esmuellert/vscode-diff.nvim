@@ -9,6 +9,24 @@ local function get_plugin_root()
   return path_util.get_plugin_root()
 end
 
+-- Detect whether we're running under Termux on Android. Termux presents as
+-- Linux via `ffi.os` and via `uname -s`, but its ABI is bionic libc — not the
+-- glibc our normal `linux-*` binaries link against — so a glibc-linked .so
+-- fails to `dlopen` with "library libm.so.6 not found" (#333). Detection
+-- follows the standard Termux conventions: TERMUX_VERSION is only ever set by
+-- Termux, and PREFIX points inside its filesystem layout.
+local function is_termux()
+  local termux_version = vim.fn.getenv("TERMUX_VERSION")
+  if termux_version ~= vim.NIL and termux_version ~= "" then
+    return true
+  end
+  local prefix = vim.fn.getenv("PREFIX")
+  if type(prefix) == "string" and prefix:match("^/data/data/com%.termux") then
+    return true
+  end
+  return false
+end
+
 -- Detect OS
 local function detect_os()
   local ffi = require("ffi")
@@ -16,6 +34,10 @@ local function detect_os()
     return "windows"
   elseif ffi.os == "OSX" then
     return "macos"
+  elseif is_termux() then
+    -- Termux runs on Android's bionic libc; we ship a separate NDK-built
+    -- binary for it so downloads point at the right ABI.
+    return "android"
   else
     return "linux"
   end
@@ -536,17 +558,17 @@ end
 
 -- Check if library needs update
 function M.needs_update()
-  -- Check libgomp first - if missing, we need to run installer regardless of main library status
-  if not check_system_libgomp() then
-    return true
-  end
-
   local plugin_root = get_plugin_root()
 
   -- Check unversioned first - assume manual build is always up to date
   local unversioned_lib = get_unversioned_lib_filename()
   if vim.fn.filereadable(plugin_root .. "/" .. unversioned_lib) == 1 then
     return false
+  end
+
+  -- Check libgomp - if missing, we need to run installer regardless of main library status
+  if not check_system_libgomp() then
+    return true
   end
 
   local current_version = get_current_version()

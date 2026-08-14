@@ -10,7 +10,10 @@ local signs = require("codediff.ui.conflict.signs")
 --- @param result_bufnr number Result buffer
 --- @param block table Conflict block with base_range and optional extmark_id
 --- @param lines table Lines to insert
---- @param base_lines table Original BASE content (for fallback)
+--- @param base_lines table Result-buffer seed content (auto-merged result),
+---                       used only for the content-search fallback when the
+---                       extmark is invalid. Indexed by result_range, falling
+---                       back to base_range for legacy paths.
 local function apply_to_result(result_bufnr, block, lines, base_lines)
   local start_row, end_row
 
@@ -25,22 +28,21 @@ local function apply_to_result(result_bufnr, block, lines, base_lines)
 
   -- Method 2: Fallback to content search or original range
   if not start_row then
-    local base_range = block.base_range
-    -- We need to find where this base_range maps to in the current result buffer
-    -- The result buffer starts as BASE, so initially base_range maps 1:1
-    -- After edits, we need to track the offset
-
+    -- The result buffer seed (base_lines here) is the auto-merged Result, so
+    -- the slice for this conflict lives at result_range (which equals the
+    -- original BASE slice for unresolved conflict regions). Fall back to
+    -- base_range for legacy callers that never set result_range.
+    local range = block.result_range or block.base_range
     -- For simplicity, we'll re-apply based on content matching
-    -- Find the base content in the result buffer
+    -- Find the seed slice in the result buffer
     local base_content = {}
-    for i = base_range.start_line, base_range.end_line - 1 do
+    for i = range.start_line, range.end_line - 1 do
       table.insert(base_content, base_lines[i] or "")
     end
 
     local result_lines = vim.api.nvim_buf_get_lines(result_bufnr, 0, -1, false)
 
-    -- Search for the base content in result buffer
-    -- This is a simple approach; VSCode uses more sophisticated tracking
+    -- Search for the seed content in result buffer
     local found_start = nil
     for i = 1, #result_lines - #base_content + 1 do
       local match = true
@@ -61,9 +63,8 @@ local function apply_to_result(result_bufnr, block, lines, base_lines)
       end_row = found_start - 1 + #base_content
     else
       -- Fallback: try to find by approximate position
-      -- Use base_range directly (works if no prior edits)
-      start_row = math.min(base_range.start_line - 1, #result_lines)
-      end_row = math.min(base_range.end_line - 1, #result_lines)
+      start_row = math.min(range.start_line - 1, #result_lines)
+      end_row = math.min(range.end_line - 1, #result_lines)
     end
   end
 
@@ -230,8 +231,12 @@ local function smart_combine_inputs(session, block, first_input)
     return a_priority < b_priority
   end)
 
-  -- Get full buffer contents (VSCode uses textModel.getValueInRange on full models)
-  local base_bufnr = session.result_bufnr -- Result buffer starts as BASE content
+  -- Get input buffer contents (VSCode uses textModel.getValueInRange on full models).
+  -- For the merge base we use session.merge_base_lines (true stage-:1 content)
+  -- rather than reading from result_bufnr — the Result buffer is now seeded
+  -- with the auto-merged content, so its line numbers no longer match
+  -- base_range.
+  local base_lines = session.merge_base_lines or session.result_base_lines or {}
   local input1_bufnr = session.original_bufnr
   local input2_bufnr = session.modified_bufnr
 
@@ -263,10 +268,27 @@ local function smart_combine_inputs(session, block, first_input)
     end
   end
 
+  -- Helper: get text from a string array (base_lines) between two 1-based
+  -- positions. Mirrors get_value_in_range but for in-memory line tables.
+  local function get_value_in_lines(source, start_line, start_col, end_line, end_col)
+    if start_line > end_line then
+      return ""
+    end
+    if start_line == end_line then
+      return (source[start_line] or ""):sub(start_col, end_col - 1)
+    end
+    local out = {}
+    out[1] = (source[start_line] or ""):sub(start_col)
+    for i = start_line + 1, end_line - 1 do
+      out[#out + 1] = source[i] or ""
+    end
+    out[#out + 1] = (source[end_line] or ""):sub(1, end_col - 1)
+    return table.concat(out, "\n")
+  end
+
   -- Build result text by walking through base and applying edits
   -- This matches VSCode's editsToLineRangeEdit function
   local base_range = block.base_range
-  local base_lines = session.result_base_lines or {}
   local result_text = ""
 
   -- Start position: VSCode starts at end of line before base_range if exists
@@ -289,8 +311,9 @@ local function smart_combine_inputs(session, block, first_input)
       return nil -- Overlap detected, cannot combine
     end
 
-    -- Get base text from current position to edit start
-    local original_text = get_value_in_range(base_bufnr, current_line, current_col, diff_start_line, diff_start_col)
+    -- Get base text from current position to edit start (read from base_lines,
+    -- not from result_bufnr, since the Result buffer no longer mirrors BASE)
+    local original_text = get_value_in_lines(base_lines, current_line, current_col, diff_start_line, diff_start_col)
 
     -- Handle virtual newline if edit starts past end of file
     if diff_start_line > #base_lines then
@@ -320,7 +343,7 @@ local function smart_combine_inputs(session, block, first_input)
     end_col = #(base_lines[end_line] or "") + 1
   end
 
-  local remaining_text = get_value_in_range(base_bufnr, current_line, current_col, end_line, end_col)
+  local remaining_text = get_value_in_lines(base_lines, current_line, current_col, end_line, end_col)
   result_text = result_text .. remaining_text
 
   -- Split result into lines (like VSCode's splitLines)
@@ -468,8 +491,10 @@ function M.discard(tabpage)
     return false
   end
 
-  -- Get base content for this range
-  local base_lines = session.result_base_lines
+  -- Get base content for this range. session.merge_base_lines holds the true
+  -- merge base (stage :1) so we can index it by base_range coordinates
+  -- regardless of what's been auto-merged into the Result seed.
+  local base_lines = session.merge_base_lines or session.result_base_lines
   if not base_lines then
     vim.notify("[codediff] No base lines available", vim.log.levels.ERROR)
     return false
@@ -486,7 +511,9 @@ function M.discard(tabpage)
     return false
   end
 
-  apply_to_result(result_bufnr, block, base_content, base_lines)
+  -- apply_to_result indexes its base_lines parameter by result_range for the
+  -- content-search fallback, so pass the Result seed (auto-merged content).
+  apply_to_result(result_bufnr, block, base_content, session.result_base_lines or base_lines)
   signs.refresh_all_conflict_signs(session)
   auto_refresh.refresh_result_now(result_bufnr)
   return true
@@ -656,8 +683,11 @@ function M.discard_all(tabpage)
   end
 
   local result_bufnr = session.result_bufnr
-  local base_lines = session.result_base_lines
-  if not result_bufnr or not base_lines then
+  local seed_lines = session.result_base_lines
+  -- Use the true merge base for the slice we write back; the seed only feeds
+  -- the content-search fallback in apply_to_result.
+  local base_lines = session.merge_base_lines or seed_lines
+  if not result_bufnr or not seed_lines or not base_lines then
     vim.notify("[codediff] No result buffer or base lines", vim.log.levels.ERROR)
     return false
   end
@@ -677,7 +707,7 @@ function M.discard_all(tabpage)
         table.insert(base_content, base_lines[j] or "")
       end
 
-      apply_to_result(result_bufnr, block, base_content, base_lines)
+      apply_to_result(result_bufnr, block, base_content, seed_lines)
       count = count + 1
     end
   end)

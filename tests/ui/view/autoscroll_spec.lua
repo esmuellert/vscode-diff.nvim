@@ -5,6 +5,7 @@ local render = require("codediff.ui")
 local view = require("codediff.ui.view")
 local diff = require('codediff.core.diff')
 local lifecycle = require("codediff.ui.lifecycle")
+local path = require("codediff.core.path")
 
 -- Helper function to get platform-agnostic temp directory
 local function get_temp_dir()
@@ -25,8 +26,8 @@ local function create_test_diff_view(left_lines, right_lines, left_path, right_p
   local session_config = {
     mode = "standalone",  -- view.create will create new tab
     git_root = nil,
-    original_path = left_path,
-    modified_path = right_path,
+    original = path.make_ref(left_path, nil),
+    modified = path.make_ref(right_path, nil),
     original_revision = nil,  -- Real files, not virtual
     modified_revision = nil,
   }

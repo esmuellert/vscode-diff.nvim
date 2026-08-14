@@ -36,6 +36,36 @@ File explorer mode (git status by default):
   :CodeDiff main HEAD
 <
 
+Target another repository (explorer and history modes):   *codediff-repo*
+>vim
+  :CodeDiff --repo ~/code/other-repo
+  :CodeDiff --repo ~/code/other-repo main
+  :CodeDiff -C ~/code/other-repo history
+<
+Operate on the repository containing the given path (its root or any
+subdirectory) instead of the current buffer/cwd. `-C` is a git-style alias.
+
+Scope to a subdirectory or path:                          *codediff-pathspec*
+>vim
+  :CodeDiff v1.0.1 v1.0.2 -- modules/network
+  :CodeDiff -- src/api
+  :CodeDiff main... -- packages/ui
+<
+Append `-- <path>` to narrow the explorer file list to a subtree, like
+`git diff <rev> <rev> -- <path>`. Paths are git pathspecs relative to the
+repository root; multiple paths and git glob syntax are supported. Composes
+with merge-base (`...`) and --repo/-C.
+
+Show only staged changes:                                  *codediff-staged*
+>vim
+  :CodeDiff --staged           " index vs HEAD (--cached is an alias)
+  :CodeDiff --staged HEAD~3    " index vs another revision
+<
+Inside the default `:CodeDiff` explorer, `gS`
+(`keymaps.view.toggle_staged_view`) jumps between the staged and unstaged
+view of the current file (#352).
+
+
 Git diff mode (current buffer vs revision):
 >vim
   :CodeDiff file HEAD
@@ -130,6 +160,26 @@ Set the layout in your config:
   })
 <
 
+                                                      *codediff-filler-text*
+Filler appearance~
+
+Alignment rows keep corresponding content at the same vertical position in
+side-by-side and conflict views. By default, these rows use a repeated
+slash pattern. Set a different text pattern or use an empty string to keep
+the alignment rows blank:
+>lua
+  require("codediff").setup({
+    diff = { filler_text = "· " },
+  })
+
+  require("codediff").setup({
+    diff = { filler_text = "" },
+  })
+<
+
+Non-empty patterns use the CodeDiffFiller highlight group. Inline deleted
+lines and move annotations are not filler rows and are unaffected.
+
                                                       *codediff-moved-code*
 Moved code detection~
 
@@ -186,6 +236,7 @@ Setup entry point:
     },
     diff = {
       layout = "side-by-side",
+      filler_text = "╱",
       disable_inlay_hints = true,
       max_computation_time_ms = 5000,
       hide_merge_artifacts = false,
@@ -193,13 +244,22 @@ Setup entry point:
       conflict_result_height = 30,
       conflict_result_width_ratio = { 1, 1, 1 },
       jump_to_first_change = true,
+      highlight_added_deleted_files = false,
       highlight_priority = 100,
+      gutter_signs = false,
       compute_moves = false,
+      compact_context_lines = 3,
+      compact_sync_folds = true,
+      compact = false,
+      cycle_hunks_across_files = false,
     },
     explorer = {
       position = "left",
+      hidden = false,
       width = 40,
       height = 15,
+      auto_refresh = true,
+      auto_open_on_cursor = false,
       indent_markers = true,
       icons = {
         folder_closed = "",
@@ -209,6 +269,19 @@ Setup entry point:
       flatten_dirs = true,
       file_filter = {
         ignore = { ".git/**", ".jj/**" },
+      },
+      untracked = "all",  -- "all", "normal" (collapse dirs), or "no" (skip untracked; use for huge work trees like GIT_WORK_TREE=$HOME, #389)
+      status_right_margin = 1,
+      line_stats = {
+        enabled = false,
+        count_untracked = false,
+        max_untracked_bytes = 1024 * 1024,
+      },
+      ellipsis = "…",
+      formatters = {
+        file = nil,
+        folder = nil,
+        group = nil,
       },
       visible_groups = {
         staged = true,
@@ -230,10 +303,12 @@ Setup entry point:
         open_in_prev_tab = "gf",
         close_on_open_in_prev_tab = false,
         toggle_stage = "-",
+        toggle_staged_view = "gS",
         hunk_textobject = "ih",
         show_help = "g?",
         align_move = "gm",
         toggle_layout = "t",
+        toggle_compact = "gc",
       },
       explorer = {
         select = "<CR>",
@@ -280,6 +355,142 @@ Setup entry point:
   })
 <
 
+EXPLORER LINE STATISTICS                  *codediff-explorer-line-statistics*
+
+Explorer line statistics are disabled by default because they require extra Git
+queries and consume space in the default 40-column Explorer. With `enabled =
+true`, tracked files show Git numstat counts and group headings show totals in
+status, one-revision, and two-revision modes. Untracked files have no stats
+unless `count_untracked = true`; files larger than `max_untracked_bytes` are not
+read (1 MiB by default).
+
+Files use `+12 -4` (`bin` for binary files); group headings use `Changes (3 ·
++42 -8)`. Aggregate folder and group stats contain `files_changed`,
+`insertions`, `deletions`, `binary_files`, and `unavailable_files`.
+
+EXPLORER LINE FORMATTERS                    *codediff-explorer-line-formatters*
+
+`explorer.formatters.file`, `folder`, and `group` replace the complete
+corresponding explorer row. Each callback receives row metadata and returns a
+layout:
+>lua
+  {
+    left = {
+      {
+        segments = { { text = "name.lua", hl = "Normal" } },
+        truncate_priority = 2,
+      },
+    },
+    right = {
+      {
+        segments = { { text = "M", hl = "CodeDiffStatusModified" } },
+      },
+    },
+    min_gap = 2,
+  }
+<
+
+A region contains styled `segments`. A numeric `truncate_priority` makes it
+truncatable; lower priorities truncate first. Regions without one stay fixed
+unless all content cannot fit. The renderer measures display cells, truncates
+with `explorer.ellipsis` (default `…`), right-aligns `right`, and preserves
+`min_gap` when space permits. The built-in file formatter truncates the
+directory, filename, then stats while keeping status fixed. The ellipsis can
+contain multiple characters and is clipped display-width-aware when necessary.
+
+Each segment is `{ text = string, hl? = highlight }`. `hl` accepts a Neovim
+highlight group, a `#RGB`/`#RRGGBB` foreground color, or a highlight definition
+such as `{ fg = "#3fb950", bold = true }`. Omitted highlights use `Normal`;
+selected file rows retain their selection background.
+
+File contexts contain `path`, `filename`, `directory`, `old_path`, `group`,
+`stats`, `status`, `status_hl`, `status_right_margin`, `indent`, `indent_hl`,
+`icon`, and `icon_hl`.
+
+Folder contexts contain `name`, `path`, `group`, `file_count`, `stats`, `files`,
+`indent`, `indent_hl`, `icon`, `icon_hl`, and `expanded`. Group contexts contain
+`name`, `label`, `file_count`, `stats`, `files`, and `expanded`. `stats` is nil
+when line statistics are disabled.
+
+Folder and group `files` contain `{ path, old_path, group, status, stats }`
+entries for every represented file. Built-in callbacks are exported by
+`codediff.ui.explorer.formatters` and return fresh layouts that can be assigned
+directly or wrapped.
+
+Example: replace only group rows and right-align the file count:
+>lua
+  require("codediff").setup({
+    explorer = {
+      formatters = {
+        group = function(ctx)
+          return {
+            left = {{
+              segments = {{
+                text = " " .. ctx.label,
+                hl = "CodeDiffExplorerTreeGroup",
+              }},
+              truncate_priority = 1,
+            }},
+            right = {{
+              segments = {{
+                text = ctx.file_count .. " files",
+                hl = "Number",
+              }},
+            }},
+          }
+        end,
+      },
+    },
+  })
+<
+
+==============================================================================
+GUTTER SIGNS                                         *codediff-gutter-signs*
+
+Gutter signs are disabled by default and require Neovim 0.10+, because a sign
+extmark spanning several lines only decorates every line from 0.10 on. When
+enabled, they appear in every window displaying a buffer used by an active
+CodeDiff view. CodeDiff removes them when the view is suspended or closed.
+
+>lua
+  -- Disabled by default; existing move annotations remain.
+  gutter_signs = false
+
+  -- Enabled defaults.
+  gutter_signs = {
+    insert_text = "＋",
+    delete_text = "－",
+    highlight_numbers = true,
+    changed_priority = 100,
+    unchanged_priority = nil,
+  }
+
+  -- Hide other Neovim signs with lower priorities.
+  gutter_signs = {
+    changed_priority = 100,
+    unchanged_priority = 7,
+  }
+<
+
+Place `gutter_signs` under `diff`. `insert_text` and `delete_text` must each
+occupy one or two display cells, as measured by strdisplaywidth(), because
+Neovim limits sign text to two display cells. The fullwidth defaults each
+occupy two display cells. A rejected sign is skipped with a warning and the
+rest of the diff still renders.
+
+CodeDiff does not modify signcolumn or statuscolumn. This example keeps a sign
+column and places signs after line numbers:
+
+>lua
+  vim.opt.signcolumn = "yes"
+  vim.opt.statuscolumn = "%C%=%l %s"
+<
+
+`signcolumn = "yes:2"` allows a second sign on each line. Changed signs use
+priority 100 by default. An unchanged blocker at priority 99 can hide
+lower-priority Gitsigns, remote signs, diagnostics, debugger signs, and other
+signs across unchanged lines while changed signs still win.
+
 ==============================================================================
 HIGHLIGHT GROUPS                                     *codediff-highlight-groups*
 
@@ -288,7 +499,7 @@ CodeDiff defines highlight groups matching VSCode's diff colors:
 - CodeDiffLineDelete - light red background for deleted lines
 - CodeDiffCharInsert - deep/dark green for inserted characters
 - CodeDiffCharDelete - deep/dark red for deleted characters
-- CodeDiffFiller - gray foreground for filler line slashes (///)
+- CodeDiffFiller - gray foreground for non-empty filler line patterns
 - CodeDiffLineMove - background for moved lines (derived from DiffChange)
 - CodeDiffCharMove - character-level highlight for moved text
 - CodeDiffMoveFrom - sign/annotation color for move source
@@ -297,9 +508,15 @@ CodeDiff defines highlight groups matching VSCode's diff colors:
 - CodeDiffHelpKey - key bindings in keymap help (links to Special)
 - CodeDiffHelpSep - separators in keymap help (links to NonText)
 - CodeDiffHelpDesc - descriptions in keymap help (links to Normal)
+- CodeDiffGutterInsert - Gutter insert sign (defaults to CodeDiffLineInsert)
+- CodeDiffGutterDelete - Gutter delete sign (defaults to CodeDiffLineDelete)
+- CodeDiffGutterInsertNumber - Gutter insert line number (defaults to CodeDiffCharInsert)
+- CodeDiffGutterDeleteNumber - Gutter delete line number (defaults to CodeDiffCharDelete)
 
 Default behavior:
 - Uses DiffAdd and DiffDelete for line-level highlights
+- Full-file highlighting for added, untracked, and deleted files is disabled by default
+- Set diff.highlight_added_deleted_files = true to enable it with line_insert and line_delete
 - Character-level highlights auto-adjusted based on vim.o.background:
   - Dark themes: brightness multiplied by 1.4
   - Light themes: brightness multiplied by 0.92
@@ -329,6 +546,10 @@ Explorer & history git status highlights (customizable):
 - CodeDiffStatusUntracked   Untracked files (links to DiagnosticInfo)
 - CodeDiffStatusConflict    Conflicting files (links to DiagnosticError)
 - CodeDiffExplorerSelected  Selected file background (links to Visual)
+- CodeDiffExplorerStatFiles File counts (links to Number)
+- CodeDiffExplorerStatInsertions Insertions (links to Added or DiagnosticOk)
+- CodeDiffExplorerStatDeletions Deletions (links to Removed or DiagnosticError)
+- CodeDiffExplorerStatBinary Binary labels (links to NonText)
 
 Override in your config or colorscheme:
 >lua

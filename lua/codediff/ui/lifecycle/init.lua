@@ -23,7 +23,7 @@ M.create_session = session.create_session
 -- Delegate to cleanup module
 M.setup_autocmds = cleanup.setup_autocmds
 M.cleanup = cleanup.cleanup
-M.cleanup_for_quit = cleanup.cleanup_for_quit
+M.close = cleanup.close
 M.cleanup_all = cleanup.cleanup_all
 M.setup = cleanup.setup
 
@@ -41,6 +41,7 @@ M.is_modified_virtual = accessors.is_modified_virtual
 M.is_suspended = accessors.is_suspended
 M.get_explorer = accessors.get_explorer
 M.get_result_base_lines = accessors.get_result_base_lines
+M.get_merge_base_lines = accessors.get_merge_base_lines
 M.get_result = accessors.get_result
 M.get_conflict_blocks = accessors.get_conflict_blocks
 M.get_conflict_files = accessors.get_conflict_files
@@ -59,11 +60,22 @@ M.update_revisions = accessors.update_revisions
 M.set_explorer = accessors.set_explorer
 M.set_result = accessors.set_result
 M.set_result_base_lines = accessors.set_result_base_lines
+M.set_merge_base_lines = accessors.set_merge_base_lines
 M.set_conflict_blocks = accessors.set_conflict_blocks
 M.track_conflict_file = accessors.track_conflict_file
 M.confirm_close_with_unsaved = accessors.confirm_close_with_unsaved
 M.set_tab_keymap = accessors.set_tab_keymap
+M.set_buf_keymap = accessors.set_buf_keymap
+M.del_buf_keymap = accessors.del_buf_keymap
+M.owns_keymap = accessors.owns_keymap
+M.documented_keymaps = accessors.documented_keymaps
+M.begin_keymap_scope = accessors.begin_keymap_scope
+M.end_keymap_scope = accessors.end_keymap_scope
+M.release_keymap_scope = accessors.release_keymap_scope
+M.detach_keymap_buffer = accessors.detach_keymap_buffer
 M.clear_tab_keymaps = accessors.clear_tab_keymaps
+M.restore_tab_keymaps = accessors.restore_tab_keymaps
+M.dispose_keymaps = accessors.dispose_keymaps
 M.setup_auto_sync_on_file_switch = accessors.setup_auto_sync_on_file_switch
 
 return M

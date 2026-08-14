@@ -24,6 +24,22 @@ local function adjust_brightness(color, factor)
   return r * 65536 + g * 256 + b
 end
 
+-- Read the effective background color of a highlight group as Neovim's renderer
+-- would resolve it. Some colorschemes (e.g. built-in `sorbet`) define DiffAdd /
+-- DiffDelete using `fg` plus `reverse = true`; Neovim's renderer swaps fg<->bg
+-- at draw time, so the visually-correct "background" comes from `fg`. Just
+-- reading `hl.bg` produces black/default for those schemes (issue #366).
+-- Returns gui_bg, cterm_bg (either may be nil if neither side is defined).
+local function effective_bg(hl)
+  if not hl then
+    return nil, nil
+  end
+  local gui = (hl.reverse and hl.fg) or hl.bg
+  local cterm_reverse = (hl.cterm and hl.cterm.reverse) or hl.reverse
+  local cterm = (cterm_reverse and hl.ctermfg) or hl.ctermbg
+  return gui, cterm
+end
+
 -- Resolve color from config value (supports highlight group name or direct color)
 -- Returns a table suitable for nvim_set_hl (e.g., { bg = 0x2ea043 })
 local function resolve_color(value, fallback_gui, fallback_cterm)
@@ -55,9 +71,10 @@ local function resolve_color(value, fallback_gui, fallback_cterm)
     else
       -- Assume it's a highlight group name
       local hl = vim.api.nvim_get_hl(0, { name = value, link = false })
+      local gui, cterm = effective_bg(hl)
       return {
-        bg = hl.bg or fallback_gui,
-        ctermbg = hl.ctermbg or fallback_cterm,
+        bg = gui or fallback_gui,
+        ctermbg = cterm or fallback_cterm,
       }
     end
   elseif type(value) == "number" then
@@ -66,6 +83,38 @@ local function resolve_color(value, fallback_gui, fallback_cterm)
   end
 
   return { bg = fallback_gui, ctermbg = fallback_cterm }
+end
+
+local function is_highlight_group(value)
+  return type(value) == "string" and not value:match("^#%x%x%x%x%x%x$") and not value:match("^#%x%x%x$")
+end
+
+local function effective_colors(fg, bg, reverse, fallback_bg)
+  if reverse then
+    return bg, fg or fallback_bg
+  end
+  return fg, bg or fallback_bg
+end
+
+-- Unlike line highlights, configured character groups retain all attributes; fallbacks only fill missing backgrounds.
+local function resolve_char_highlight(configured_value, fallback_bg, fallback_cterm_bg)
+  if not is_highlight_group(configured_value) then
+    return resolve_color(configured_value, fallback_bg, fallback_cterm_bg)
+  end
+
+  local source = vim.api.nvim_get_hl(0, { name = configured_value, link = false })
+  local result = vim.deepcopy(source)
+  local cterm_reverse = (source.cterm and source.cterm.reverse) or source.reverse
+
+  result.fg, result.bg = effective_colors(source.fg, source.bg, source.reverse, fallback_bg)
+  result.ctermfg, result.ctermbg = effective_colors(source.ctermfg, source.ctermbg, cterm_reverse, fallback_cterm_bg)
+
+  result.reverse = nil
+  if result.cterm then
+    result.cterm.reverse = nil
+  end
+
+  return result
 end
 
 -- Returns the base 256 color palette index of rgb color cube where r, g, b are 0-5 inclusive.
@@ -98,7 +147,7 @@ function M.setup()
 
   if opts.char_insert then
     -- Explicit char_insert provided - use it directly
-    char_insert_color = resolve_color(opts.char_insert, 0x2a4556, base256_color(0, 2, 0))
+    char_insert_color = resolve_char_highlight(opts.char_insert, 0x2a4556, base256_color(0, 2, 0))
   else
     -- Derive from line_insert with brightness adjustment
     char_insert_color = {
@@ -109,7 +158,7 @@ function M.setup()
 
   if opts.char_delete then
     -- Explicit char_delete provided - use it directly
-    char_delete_color = resolve_color(opts.char_delete, 0x4b2a3d, base256_color(2, 0, 0))
+    char_delete_color = resolve_char_highlight(opts.char_delete, 0x4b2a3d, base256_color(2, 0, 0))
   else
     -- Derive from line_delete with brightness adjustment
     char_delete_color = {
@@ -121,9 +170,25 @@ function M.setup()
   vim.api.nvim_set_hl(0, "CodeDiffCharInsert", char_insert_color)
   vim.api.nvim_set_hl(0, "CodeDiffCharDelete", char_delete_color)
 
+  vim.api.nvim_set_hl(0, "CodeDiffGutterInsert", { link = "CodeDiffLineInsert", default = true })
+  vim.api.nvim_set_hl(0, "CodeDiffGutterDelete", { link = "CodeDiffLineDelete", default = true })
+
+  -- Neovim applies number_hl_group to virtual lines anchored to the same buffer line.
+  -- Keep these groups foreground-only so filler rows do not inherit a colored number-column background.
+  vim.api.nvim_set_hl(0, "CodeDiffGutterInsertNumber", {
+    fg = char_insert_color.bg,
+    ctermfg = char_insert_color.ctermbg,
+    default = true,
+  })
+  vim.api.nvim_set_hl(0, "CodeDiffGutterDeleteNumber", {
+    fg = char_delete_color.bg,
+    ctermfg = char_delete_color.ctermbg,
+    default = true,
+  })
+
   -- Moved code highlights (derived from DiffChange — the standard "changed" color)
   local diff_change_hl = vim.api.nvim_get_hl(0, { name = "DiffChange", link = false })
-  local move_fallback = diff_change_hl.bg or 0x4f5258
+  local move_fallback = effective_bg(diff_change_hl) or 0x4f5258
   local line_move_color = resolve_color(opts.line_move, move_fallback, base256_color(0, 0, 2))
   vim.api.nvim_set_hl(0, "CodeDiffLineMove", line_move_color)
 
@@ -188,6 +253,13 @@ function M.setup()
     return ok and hl and (hl.fg or hl.foreground)
   end
 
+  local insertion_highlight = hl_exists("Added") and "Added" or "DiagnosticOk"
+  local deletion_highlight = hl_exists("Removed") and "Removed" or "DiagnosticError"
+  vim.api.nvim_set_hl(0, "CodeDiffExplorerStatFiles", { link = "Number", default = true })
+  vim.api.nvim_set_hl(0, "CodeDiffExplorerStatInsertions", { link = insertion_highlight, default = true })
+  vim.api.nvim_set_hl(0, "CodeDiffExplorerStatDeletions", { link = deletion_highlight, default = true })
+  vim.api.nvim_set_hl(0, "CodeDiffExplorerStatBinary", { link = "NonText", default = true })
+
   -- Helper to set conflict sign highlight with user config as priority 0
   -- @param hl_name string The highlight group name to set
   -- @param user_value string|nil User config value (highlight group or hex color)
@@ -242,6 +314,19 @@ function M.setup()
     link = "FloatTitle",
     default = true,
   })
+
+  -- Re-derive when the user switches colorscheme at runtime. Without this, the
+  -- CodeDiffLineInsert/Delete colors are frozen to whatever scheme was active
+  -- at first setup() and look wrong under any later :colorscheme change.
+  if not M._colorscheme_autocmd_installed then
+    vim.api.nvim_create_autocmd("ColorScheme", {
+      group = vim.api.nvim_create_augroup("codediff_highlights", { clear = true }),
+      callback = function()
+        M.setup()
+      end,
+    })
+    M._colorscheme_autocmd_installed = true
+  end
 end
 
 return M

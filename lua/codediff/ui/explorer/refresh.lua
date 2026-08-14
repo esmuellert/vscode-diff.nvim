@@ -4,135 +4,95 @@ local M = {}
 local config = require("codediff.config")
 local tree_module = require("codediff.ui.explorer.tree")
 local welcome = require("codediff.ui.welcome")
--- Setup auto-refresh triggers for explorer
--- Returns a cleanup function that should be called when the explorer is destroyed
+-- Setup auto-refresh triggers for explorer.
+-- Returns a cleanup function that should be called when the explorer is destroyed.
+--
+-- Runs an explicit 500ms poll while the explorer is visible. This replaces the
+-- earlier `.git/` fs_event watcher, which had a self-triggering loop: our own
+-- `git status` briefly created `.git/index.lock`, waking the watcher and
+-- firing another refresh. That loop delivered ~2 refreshes/second by
+-- accident; #480 killed it by filtering `*.lock` events, but the filter also
+-- suppressed the events that signal external working-tree changes (e.g. a
+-- terminal `touch new_file.txt`), so those stopped showing up until the user
+-- focused the explorer. The formal poll restores instant detection with the
+-- same worst-case CPU profile as the old bug, minus the self-triggering
+-- mechanics, and lets us drop the whole watcher plumbing.
 function M.setup_auto_refresh(explorer, tabpage)
-  local refresh_timer = nil
-  local debounce_ms = 500 -- Wait 500ms after last event
-  local git_watcher = nil
+  local explorer_config = config.options.explorer or {}
+  if explorer_config.auto_refresh == false then
+    explorer._cleanup_auto_refresh = function() end
+    return
+  end
+
+  local poll_interval_ms = 500
+
+  local uv = vim.uv or vim.loop
+  local poll_timer = uv.new_timer()
   local group = vim.api.nvim_create_augroup("CodeDiffExplorerRefresh_" .. tabpage, { clear = true })
 
   local function cleanup()
-    if refresh_timer then
-      vim.fn.timer_stop(refresh_timer)
-      refresh_timer = nil
-    end
-    if git_watcher then
+    if poll_timer then
       pcall(function()
-        git_watcher:stop()
+        poll_timer:stop()
       end)
-      -- On Windows, we must close the handle to release file locks
       pcall(function()
-        git_watcher:close()
+        poll_timer:close()
       end)
-      git_watcher = nil
+      poll_timer = nil
     end
     pcall(vim.api.nvim_del_augroup_by_id, group)
   end
 
-  -- Store cleanup function on explorer so it can be called from lifecycle cleanup
   explorer._cleanup_auto_refresh = cleanup
 
-  local function debounced_refresh()
-    -- Cancel pending refresh
-    if refresh_timer then
-      vim.fn.timer_stop(refresh_timer)
+  local function tick()
+    if not vim.api.nvim_tabpage_is_valid(tabpage) then
+      return
     end
-
-    -- Schedule new refresh
-    refresh_timer = vim.fn.timer_start(debounce_ms, function()
-      -- Only refresh if tabpage still exists and explorer is visible
-      if vim.api.nvim_tabpage_is_valid(tabpage) and not explorer.is_hidden then
-        M.refresh(explorer)
-        local auto_refresh = require("codediff.ui.auto_refresh")
-        auto_refresh.sync_mutable_buffers(tabpage)
-      end
-      refresh_timer = nil
-    end)
-  end
-
-  -- Auto-refresh when explorer buffer is entered (user focuses explorer window)
-  vim.api.nvim_create_autocmd("BufEnter", {
-    group = group,
-    buffer = explorer.bufnr,
-    callback = function()
-      if vim.api.nvim_tabpage_is_valid(tabpage) then
-        debounced_refresh()
-      end
-    end,
-  })
-
-  -- Watch .git directory for changes (git mode only)
-  -- Dir mode skips this - relies on BufEnter refresh only
-  if explorer.git_root then
-    local git = require("codediff.core.git")
-    git.get_git_dir(explorer.git_root, function(err, git_dir)
-      if err or not git_dir then
+    if explorer.is_hidden then
+      return
+    end
+    -- Skip ticks whose target directory is gone or not yet a git repo.
+    -- This closes two race windows that used to emit a noisy
+    -- `vim.notify("Failed to refresh: fatal: not a git repository ...", ERROR)`
+    -- to the user (and to test stderr):
+    --   1. A tab is closing but the timer is still scheduled between the
+    --      `after_each`-triggered `rm -rf repo` and the TabClosed autocmd
+    --      running the cleanup — a stale tick fires against the deleted
+    --      directory.
+    --   2. First tick after :CodeDiff on a slow filesystem (Windows CI):
+    --      the explorer opens before `git init` has finished writing
+    --      `.git/`, and the first 500ms tick beats the initialization.
+    -- Either way, a poll aimed at a directory that isn't a git repo now is
+    -- correctly a no-op — the next tick (500ms later) either finds the repo
+    -- or the tab is gone. A user who `rm -rf`s their own repo behind the
+    -- explorer gets silence, not an error dialog.
+    local git_root = explorer.git_root
+    if git_root and git_root ~= "" then
+      if vim.fn.isdirectory(git_root) == 0 then
         return
       end
-
-      -- Schedule to main thread to safely call Neovim APIs
-      vim.schedule(function()
-        -- Check if directory still exists (may be deleted in tests)
-        if vim.fn.isdirectory(git_dir) ~= 1 then
-          return
-        end
-
-        -- Check if tabpage is still valid (may be closed before async callback)
-        if not vim.api.nvim_tabpage_is_valid(tabpage) then
-          return
-        end
-
-        local uv = vim.uv or vim.loop
-        git_watcher = uv.new_fs_event()
-        if git_watcher then
-          local ok = pcall(function()
-            git_watcher:start(
-              git_dir,
-              {},
-              vim.schedule_wrap(function(watch_err, filename, events)
-                if watch_err then
-                  return
-                end
-                if not vim.api.nvim_tabpage_is_valid(tabpage) or explorer.is_hidden then
-                  return
-                end
-                if vim.api.nvim_get_current_tabpage() == tabpage then
-                  debounced_refresh()
-                else
-                  explorer._pending_refresh = true
-                end
-              end)
-            )
-          end)
-          if not ok then
-            -- Failed to start watcher, clean it up
-            pcall(function()
-              git_watcher:close()
-            end)
-            git_watcher = nil
-          end
-        end
-      end)
-    end)
+      -- `.git` may be either a directory (normal repo) or a file (worktrees,
+      -- submodules — `gitdir: <path>` pointer). Missing on both counts means
+      -- the directory exists but isn't a repo yet.
+      local dot_git = git_root .. "/.git"
+      if vim.fn.isdirectory(dot_git) == 0 and vim.fn.filereadable(dot_git) == 0 then
+        return
+      end
+    end
+    M.refresh(explorer)
+    local auto_refresh = require("codediff.ui.auto_refresh")
+    auto_refresh.sync_mutable_buffers(tabpage)
   end
 
-  -- Clean up on tab close
+  if poll_timer then
+    poll_timer:start(poll_interval_ms, poll_interval_ms, vim.schedule_wrap(tick))
+  end
+
   vim.api.nvim_create_autocmd("TabClosed", {
     group = group,
     pattern = tostring(tabpage),
     callback = cleanup,
-  })
-
-  -- Flush pending refresh when returning to the codediff tab
-  vim.api.nvim_create_autocmd("TabEnter", {
-    group = group,
-    callback = function()
-      if explorer._pending_refresh and vim.api.nvim_get_current_tabpage() == tabpage then
-        explorer._pending_refresh = nil
-        debounced_refresh()
-      end
-    end,
   })
 
   return cleanup
@@ -218,6 +178,46 @@ local function restore_collapsed_state(tree, collapsed, root_nodes)
   end
 end
 
+-- Rebuild the explorer tree from a status_result and re-render, honoring the
+-- current group visibility. Runs synchronously (no vim.schedule), so callers in
+-- a normal context — e.g. toggling a group — get an immediately consistent tree.
+local function rebuild_tree(explorer, status_result, collapsed_state)
+  local root_nodes = tree_module.create_tree_data(status_result, explorer.git_root, explorer.base_revision, not explorer.git_root, explorer.visible_groups)
+
+  -- Expand all groups
+  for _, node in ipairs(root_nodes) do
+    node:expand()
+  end
+
+  -- Update tree
+  explorer.tree:set_nodes(root_nodes)
+
+  -- For tree mode, expand directories after setting nodes
+  local explorer_config = config.options.explorer or {}
+  if explorer_config.view_mode == "tree" then
+    local function expand_all_dirs(parent_node)
+      if not parent_node:has_children() then
+        return
+      end
+      for _, child_id in ipairs(parent_node:get_child_ids()) do
+        local child = explorer.tree:get_node(child_id)
+        if child and child.data and child.data.type == "directory" then
+          child:expand()
+          expand_all_dirs(child)
+        end
+      end
+    end
+    for _, node in ipairs(root_nodes) do
+      expand_all_dirs(node)
+    end
+  end
+
+  -- Restore user's collapsed state (must be after expand_all_dirs)
+  restore_collapsed_state(explorer.tree, collapsed_state, root_nodes)
+
+  explorer.tree:render()
+end
+
 -- Refresh explorer with updated git status
 function M.refresh(explorer)
   local git = require("codediff.core.git")
@@ -246,41 +246,33 @@ function M.refresh(explorer)
         return
       end
 
-      -- Rebuild tree nodes using same structure as create_tree_data
-      local root_nodes = tree_module.create_tree_data(status_result, explorer.git_root, explorer.base_revision, not explorer.git_root, explorer.visible_groups)
-
-      -- Expand all groups
-      for _, node in ipairs(root_nodes) do
-        node:expand()
+      -- Skip the whole downstream refresh (tree rebuild, re-selection,
+      -- mutable-buffer sync) when the status is identical to the previous
+      -- tick. `git status` still runs every tick so coverage is unchanged;
+      -- this only avoids UI churn (tree re-render, re-selection re-running
+      -- layout.arrange, extmark rewrites) that would flicker the interface
+      -- and can interrupt the user (manual pane sizes reset, tree flatten
+      -- flake, cursor jumps) even though nothing actually changed.
+      if vim.deep_equal(status_result, explorer.status_result) then
+        return
       end
 
-      -- Update tree
-      explorer.tree:set_nodes(root_nodes)
+      -- Rebuild tree nodes (honors group visibility) and re-render.
+      rebuild_tree(explorer, status_result, collapsed_state)
 
-      -- For tree mode, expand directories after setting nodes
-      local explorer_config = config.options.explorer or {}
-      if explorer_config.view_mode == "tree" then
-        local function expand_all_dirs(parent_node)
-          if not parent_node:has_children() then
-            return
+      -- #347: remember the reviewed file's slot in its group (from the previous
+      -- status) so re-selection can advance to whatever replaces it after a
+      -- full stage/unstage, instead of chasing the file into another group.
+      local prev_group = explorer.current_file_group
+      local prev_index = nil
+      if prev_group then
+        for i, f in ipairs((explorer.status_result or {})[prev_group] or {}) do
+          if f.path == explorer.current_file_path then
+            prev_index = i
+            break
           end
-          for _, child_id in ipairs(parent_node:get_child_ids()) do
-            local child = explorer.tree:get_node(child_id)
-            if child and child.data and child.data.type == "directory" then
-              child:expand()
-              expand_all_dirs(child)
-            end
-          end
-        end
-        for _, node in ipairs(root_nodes) do
-          expand_all_dirs(node)
         end
       end
-
-      -- Restore user's collapsed state (must be after expand_all_dirs)
-      restore_collapsed_state(explorer.tree, collapsed_state, root_nodes)
-
-      explorer.tree:render()
 
       -- Update status result for file selection logic
       explorer.status_result = status_result
@@ -315,6 +307,12 @@ function M.refresh(explorer)
       if explorer.current_file_path and total_files > 0 then
         local found_file = nil
         local found_group = nil
+        local group_lists = {
+          unstaged = status_result.unstaged,
+          staged = status_result.staged,
+          conflicts = status_result.conflicts,
+        }
+        local current_group = explorer.current_file_group
         -- Search helper: look in a specific status list
         local function search_group(files, group_name)
           for _, f in ipairs(files or {}) do
@@ -325,16 +323,20 @@ function M.refresh(explorer)
           return nil, nil
         end
         -- Search same group first (preferred — e.g. hunk staging keeps file in same group)
-        local current_group = explorer.current_file_group
         if current_group then
-          local group_lists = {
-            unstaged = status_result.unstaged,
-            staged = status_result.staged,
-            conflicts = status_result.conflicts,
-          }
           found_file, found_group = search_group(group_lists[current_group], current_group)
         end
-        -- If not in same group, search all groups
+        -- #347: the reviewed file was fully staged/unstaged and left its group.
+        -- Advance to the file now occupying its slot in the SAME group — stage
+        -- jumps to the next unstaged file, unstage to the next staged file —
+        -- instead of chasing the file into another group.
+        if not found_file and current_group and prev_index then
+          local same_group = group_lists[current_group]
+          if same_group and #same_group > 0 then
+            found_file, found_group = same_group[math.min(prev_index, #same_group)], current_group
+          end
+        end
+        -- Otherwise the file moved to another group (or was resolved): follow it.
         if not found_file then
           found_file, found_group = search_group(status_result.conflicts, "conflicts")
         end
@@ -370,13 +372,36 @@ function M.refresh(explorer)
     local dir_mod = require("codediff.core.dir")
     local diff = dir_mod.diff_directories(explorer.dir1, explorer.dir2)
     process_result(nil, diff.status_result)
+  elseif explorer.target_revision == ":0" then
+    -- Staged-only mode (--staged): index vs base_revision. `git diff base :0`
+    -- isn't a valid rev-pair; use `git diff --cached base` instead.
+    git.get_diff_staged(explorer.base_revision, explorer.git_root, process_result, explorer.pathspec)
   elseif explorer.base_revision and explorer.target_revision and explorer.target_revision ~= "WORKING" then
-    git.get_diff_revisions(explorer.base_revision, explorer.target_revision, explorer.git_root, process_result)
+    git.get_diff_revisions_with_line_stats(explorer.base_revision, explorer.target_revision, explorer.git_root, process_result, explorer.pathspec)
   elseif explorer.base_revision then
-    git.get_diff_revision(explorer.base_revision, explorer.git_root, process_result)
+    git.get_diff_revision_with_line_stats(explorer.base_revision, explorer.git_root, process_result, explorer.pathspec)
   else
-    git.get_status(explorer.git_root, process_result)
+    git.get_status_with_line_stats(explorer.git_root, process_result, explorer.pathspec)
   end
+end
+
+-- Rebuild the tree synchronously from the cached status_result. Used when only
+-- group visibility changed (gs/gu): hiding or showing a group needs no new git
+-- data, so we re-render immediately from the last known status instead of
+-- waiting for an async git refresh. This keeps the tree — and navigation, which
+-- reads it — consistent the moment visibility toggles.
+function M.rebuild_from_cache(explorer)
+  if not explorer or not explorer.winid or not vim.api.nvim_win_is_valid(explorer.winid) then
+    return
+  end
+  local status_result = explorer.status_result
+  if not status_result then
+    -- No cached status yet; fall back to a full (async) refresh.
+    M.refresh(explorer)
+    return
+  end
+  local collapsed_state = collect_collapsed_state(explorer.tree)
+  rebuild_tree(explorer, status_result, collapsed_state)
 end
 
 -- Get flat list of all files from tree (unstaged + staged)
