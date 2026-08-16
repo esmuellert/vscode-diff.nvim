@@ -628,7 +628,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
   -- Setup auto-refresh
   refresh_module.setup_auto_refresh(explorer, tabpage)
 
--- Empty working tree (explorer.open_on_empty): the explorer opened with zero
+  -- Empty working tree (explorer.open_on_empty): the explorer opened with zero
   -- files. Render the welcome banner in the diff panes (instead of blank
   -- scratch buffers) so the state is legible. This mirrors what a refresh
   -- shows when the tree later becomes empty. should_show_welcome() also rejects
