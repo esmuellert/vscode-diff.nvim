@@ -628,6 +628,15 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
   -- Setup auto-refresh
   refresh_module.setup_auto_refresh(explorer, tabpage)
 
+-- Empty working tree (explorer.open_on_empty): the explorer opened with zero
+  -- files. Render the welcome banner in the diff panes (instead of blank
+  -- scratch buffers) so the state is legible. This mirrors what a refresh
+  -- shows when the tree later becomes empty. should_show_welcome() also rejects
+  -- dir mode, so directory comparisons are unaffected.
+  if should_show_welcome(explorer) then
+    show_welcome_page(explorer)
+  end
+
   -- Re-render on window resize for dynamic width
   vim.api.nvim_create_autocmd("WinResized", {
     callback = function()

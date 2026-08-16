@@ -372,12 +372,18 @@ local function handle_explorer(revision, revision2, global_opts, pathspec)
 
         -- Check if there are any changes (including conflicts)
         local has_conflicts = status_result.conflicts and #status_result.conflicts > 0
-        if #status_result.unstaged == 0 and #status_result.staged == 0 and not has_conflicts then
+        local is_empty = #status_result.unstaged == 0
+          and #status_result.staged == 0
+          and not has_conflicts
+        if is_empty and not config.options.explorer.open_on_empty then
           vim.notify("No changes to show", vim.log.levels.INFO)
           return
         end
 
-        -- Create explorer view with empty diff panes initially
+        -- Create explorer view with empty diff panes initially.
+        -- When open_on_empty is true and is_empty, status_result still has its
+        -- (empty) unstaged/staged/conflicts arrays, so the explorer renders
+        -- empty groups rather than nil-ing out.
 
         ---@type SessionConfig
         local session_config = {
@@ -486,7 +492,7 @@ local function handle_explorer_staged(revision, global_opts, pathspec)
             return
           end
 
-          if #status_result.staged == 0 then
+          if #status_result.staged == 0 and not config.options.explorer.open_on_empty then
             vim.notify("No staged changes to show", vim.log.levels.INFO)
             return
           end

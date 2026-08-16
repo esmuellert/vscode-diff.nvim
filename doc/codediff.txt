@@ -259,6 +259,7 @@ Setup entry point:
       width = 40,
       height = 15,
       auto_refresh = true,
+      open_on_empty = false,  -- Open the explorer even when the working tree is clean (empty file list + diff panes)
       auto_open_on_cursor = false,
       indent_markers = true,
       icons = {
