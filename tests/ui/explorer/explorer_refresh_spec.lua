@@ -1,19 +1,5 @@
--- Two independent explorer regressions, both fixed in the file-refresh path.
---
--- 1. Idle refresh loop: the explorer watches .git to notice external changes,
---    but its own `git status` momentarily writes .git/index.lock, which woke
---    the watcher and triggered another status, indefinitely (~2 refreshes/sec
---    while completely idle). The watcher now ignores *.lock events.
---
--- 2. Single-file resize reset: untracked/added/deleted files render in a single
---    pane via show_single_file. A refresh re-selects the open file; real
---    two-pane diffs short-circuit that, but the single-file statuses rebuilt
---    the window every time and the layout pass discarded any manual sizing.
---    show_single_file now skips the rebuild when nothing changed.
---
--- Split from tests/ui/explorer/explorer_spec.lua so the two describe blocks
--- (one for open/layout, one for refresh) can run as independent workers under
--- the framework's per-file parallelism.
+-- Explorer polling, refresh serialization, external-change detection, and
+-- single-file layout stability.
 
 local config = require("codediff.config")
 local h = dofile("tests/helpers.lua")
@@ -36,6 +22,9 @@ describe("Explorer refresh and single-file stability", function()
   local temp_dir
   local original_cwd
   local original_get_status_with_line_stats
+  local original_new_timer
+  local original_refresh
+  local original_sync_mutable_buffers
 
   local function open(focus_file)
     local lifecycle = require("codediff.ui.lifecycle")
@@ -96,9 +85,22 @@ describe("Explorer refresh and single-file stability", function()
   end)
 
   after_each(function()
+    if original_new_timer then
+      local uv = vim.uv or vim.loop
+      uv.new_timer = original_new_timer
+      original_new_timer = nil
+    end
+    if original_refresh then
+      require("codediff.ui.explorer.refresh").refresh = original_refresh
+      original_refresh = nil
+    end
     if original_get_status_with_line_stats then
       require("codediff.core.git").get_status_with_line_stats = original_get_status_with_line_stats
       original_get_status_with_line_stats = nil
+    end
+    if original_sync_mutable_buffers then
+      require("codediff.ui.auto_refresh").sync_mutable_buffers = original_sync_mutable_buffers
+      original_sync_mutable_buffers = nil
     end
     require("codediff.ui.lifecycle").cleanup_all()
     vim.cmd("tabnew")
@@ -110,17 +112,54 @@ describe("Explorer refresh and single-file stability", function()
     end
   end)
 
+  it("accepts boolean and numeric auto-refresh settings", function()
+    local refresh = require("codediff.ui.explorer.refresh")
+    local uv = vim.uv or vim.loop
+    local started
+    original_new_timer = uv.new_timer
+    uv.new_timer = function()
+      return {
+        start = function(_, timeout, interval)
+          started = { timeout = timeout, interval = interval }
+        end,
+        stop = function() end,
+        close = function() end,
+      }
+    end
+
+    config.options.explorer.auto_refresh = true
+    local default_explorer = {}
+    refresh.setup_auto_refresh(default_explorer, vim.api.nvim_get_current_tabpage())
+    assert.are.same({ timeout = 500, interval = 500 }, started)
+    default_explorer._cleanup_auto_refresh()
+
+    started = nil
+    config.options.explorer.auto_refresh = 1250
+    local custom_explorer = {}
+    refresh.setup_auto_refresh(custom_explorer, vim.api.nvim_get_current_tabpage())
+    assert.are.same({ timeout = 1250, interval = 1250 }, started)
+    custom_explorer._cleanup_auto_refresh()
+
+    started = nil
+    config.options.explorer.auto_refresh = false
+    local disabled_explorer = {}
+    refresh.setup_auto_refresh(disabled_explorer, vim.api.nvim_get_current_tabpage())
+    assert.is_nil(started)
+    assert.is_function(disabled_explorer._cleanup_auto_refresh)
+    disabled_explorer._cleanup_auto_refresh()
+  end)
+
+  it("rejects invalid auto-refresh settings", function()
+    local refresh = require("codediff.ui.explorer.refresh")
+    for _, value in ipairs({ 0, -1, 1.5, "false", {} }) do
+      config.options.explorer.auto_refresh = value
+      local ok, err = pcall(refresh.setup_auto_refresh, {}, vim.api.nvim_get_current_tabpage())
+      assert.is_false(ok)
+      assert.is_truthy(tostring(err):find("positive integer", 1, true))
+    end
+  end)
+
   it("polls at a bounded, deterministic cadence while idle", function()
-    -- The old .git/ watcher self-triggered off its own index.lock writes at
-    -- roughly 2 refreshes/second — an accidental loop, not a designed cadence.
-    -- #480 killed that loop with a `*.lock` filter, but the filter also
-    -- suppressed events for external working-tree changes (e.g. `touch`
-    -- from another terminal), so those stopped surfacing until the user
-    -- refocused the explorer. The current design is an explicit 500ms poll:
-    -- same detection latency, deterministic idle cost, no self-triggering.
-    -- This test guards the *polling contract*: the tick fires steadily and
-    -- doesn't drift wildly (either much faster, i.e. a self-trigger loop
-    -- returning, or much slower, i.e. the timer stopping).
     local refresh_module = require("codediff.ui.explorer.refresh")
     local _, explorer = open("file1.txt")
     select_and_settle(explorer, "file1.txt", "M", "unstaged", { force = true })
@@ -129,15 +168,16 @@ describe("Explorer refresh and single-file stability", function()
     end)
 
     local count = 0
-    local orig = refresh_module.refresh
+    original_refresh = refresh_module.refresh
     refresh_module.refresh = function(e)
       count = count + 1
-      return orig(e)
+      return original_refresh(e)
     end
     vim.wait(4000, function()
       return false
     end)
-    refresh_module.refresh = orig
+    refresh_module.refresh = original_refresh
+    original_refresh = nil
 
     -- Expected ~8 refreshes at 500ms cadence over 4s; allow a generous window
     -- for scheduler jitter and coalesced ticks.
@@ -147,6 +187,7 @@ describe("Explorer refresh and single-file stability", function()
 
   it("coalesces overlapping refreshes into one follow-up", function()
     local refresh = require("codediff.ui.explorer.refresh")
+    local auto_refresh = require("codediff.ui.auto_refresh")
     local git = require("codediff.core.git")
     local _, explorer = open("file1.txt")
     select_and_settle(explorer, "file1.txt", "M", "unstaged", { force = true })
@@ -158,11 +199,18 @@ describe("Explorer refresh and single-file stability", function()
     )
 
     original_get_status_with_line_stats = git.get_status_with_line_stats
+    original_sync_mutable_buffers = auto_refresh.sync_mutable_buffers
     local callbacks = {}
+    local sync_callbacks = {}
     local calls = 0
+    local sync_calls = 0
     git.get_status_with_line_stats = function(_, callback)
       calls = calls + 1
       callbacks[calls] = callback
+    end
+    auto_refresh.sync_mutable_buffers = function(_, callback)
+      sync_calls = sync_calls + 1
+      sync_callbacks[sync_calls] = callback
     end
 
     refresh.refresh(explorer)
@@ -171,8 +219,16 @@ describe("Explorer refresh and single-file stability", function()
     assert.are.equal(1, calls, "overlapping refreshes must share one Git scan")
 
     callbacks[1](nil, vim.deepcopy(explorer.status_result))
+    assert.is_true(
+      vim.wait(1000, function()
+        return sync_calls == 1
+      end, 20),
+      "mutable buffer sync should start after status processing"
+    )
     refresh.refresh(explorer)
-    assert.are.equal(1, calls, "refresh must stay serialized until result processing finishes")
+    assert.are.equal(1, calls, "refresh must stay serialized until mutable buffers settle")
+
+    sync_callbacks[1]()
     assert.is_true(
       vim.wait(1000, function()
         return calls == 2
@@ -181,9 +237,13 @@ describe("Explorer refresh and single-file stability", function()
     )
 
     callbacks[2](nil, vim.deepcopy(explorer.status_result))
-    vim.wait(100, function()
-      return false
-    end)
+    assert.is_true(vim.wait(1000, function()
+      return sync_calls == 2
+    end, 20))
+    sync_callbacks[2]()
+    assert.is_true(vim.wait(1000, function()
+      return explorer._refresh_in_flight == false
+    end, 20))
     assert.are.equal(2, calls, "multiple overlaps must coalesce into one follow-up")
   end)
 
@@ -223,11 +283,6 @@ describe("Explorer refresh and single-file stability", function()
   end)
 
   it("picks up an externally-created untracked file automatically", function()
-    -- Regression guard for the post-#480 behavior: after #480 killed the
-    -- .git/ watcher's self-triggering loop with a `*.lock` filter, external
-    -- working-tree changes (a `touch` from another terminal) stopped surfacing
-    -- until the user refocused the explorer. The polling replacement restores
-    -- automatic detection.
     local _, explorer = open("file1.txt")
     select_and_settle(explorer, "file1.txt", "M", "unstaged", { force = true })
     vim.wait(800, function()

@@ -115,7 +115,7 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
       hidden = false,  -- Initial visibility state
       width = 40,         -- Width when position is "left" (columns)
       height = 15,        -- Height when position is "bottom" (lines)
-      auto_refresh = true,  -- Auto-refresh file list on focus / git index changes (set false to avoid lag in huge repos; R still refreshes manually)
+      auto_refresh = true,  -- true = poll every 500ms, false = disable, positive integer = custom interval in milliseconds
       indent_markers = true,  -- Show indent markers in tree view (│, ├, └)
       initial_focus = "explorer",  -- Initial focus: "explorer", "original", or "modified"
       icons = {

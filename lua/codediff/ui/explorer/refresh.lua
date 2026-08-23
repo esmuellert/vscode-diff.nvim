@@ -4,23 +4,15 @@ local M = {}
 local config = require("codediff.config")
 local tree_module = require("codediff.ui.explorer.tree")
 local welcome = require("codediff.ui.welcome")
--- Setup auto-refresh triggers for explorer.
+-- Poll the repository while the explorer is visible. The interval defaults to
+-- 500ms and can be configured or disabled with explorer.auto_refresh.
 -- Returns a cleanup function that should be called when the explorer is destroyed.
---
--- Runs an explicit 500ms poll while the explorer is visible. This replaces the
--- earlier `.git/` fs_event watcher, which had a self-triggering loop: our own
--- `git status` briefly created `.git/index.lock`, waking the watcher and
--- firing another refresh. That loop delivered ~2 refreshes/second by
--- accident; #480 killed it by filtering `*.lock` events, but the filter also
--- suppressed the events that signal external working-tree changes (e.g. a
--- terminal `touch new_file.txt`), so those stopped showing up until the user
--- focused the explorer. The formal poll restores instant detection with the
--- same worst-case CPU profile as the old bug, minus the self-triggering
--- mechanics, and lets us drop the whole watcher plumbing.
 function M.setup_auto_refresh(explorer, tabpage)
   local explorer_config = config.options.explorer or {}
   explorer._refresh_closed = false
-  if explorer_config.auto_refresh == false then
+  local auto_refresh = explorer_config.auto_refresh
+  assert(type(auto_refresh) == "boolean" or type(auto_refresh) == "number", "explorer.auto_refresh must be true, false, or a positive integer in milliseconds")
+  if auto_refresh == false then
     explorer._cleanup_auto_refresh = function()
       explorer._refresh_closed = true
       explorer._refresh_pending = false
@@ -28,7 +20,8 @@ function M.setup_auto_refresh(explorer, tabpage)
     return
   end
 
-  local poll_interval_ms = 500
+  local poll_interval_ms = type(auto_refresh) == "number" and auto_refresh or 500
+  assert(poll_interval_ms >= 1 and poll_interval_ms == math.floor(poll_interval_ms), "explorer.auto_refresh must be true, false, or a positive integer in milliseconds")
 
   local uv = vim.uv or vim.loop
   local poll_timer = uv.new_timer()
@@ -58,21 +51,7 @@ function M.setup_auto_refresh(explorer, tabpage)
     if explorer.is_hidden then
       return
     end
-    -- Skip ticks whose target directory is gone or not yet a git repo.
-    -- This closes two race windows that used to emit a noisy
-    -- `vim.notify("Failed to refresh: fatal: not a git repository ...", ERROR)`
-    -- to the user (and to test stderr):
-    --   1. A tab is closing but the timer is still scheduled between the
-    --      `after_each`-triggered `rm -rf repo` and the TabClosed autocmd
-    --      running the cleanup — a stale tick fires against the deleted
-    --      directory.
-    --   2. First tick after :CodeDiff on a slow filesystem (Windows CI):
-    --      the explorer opens before `git init` has finished writing
-    --      `.git/`, and the first 500ms tick beats the initialization.
-    -- Either way, a poll aimed at a directory that isn't a git repo now is
-    -- correctly a no-op — the next tick (500ms later) either finds the repo
-    -- or the tab is gone. A user who `rm -rf`s their own repo behind the
-    -- explorer gets silence, not an error dialog.
+    -- Missing or incomplete repositories are retried on the next poll.
     local git_root = explorer.git_root
     if git_root and git_root ~= "" then
       if vim.fn.isdirectory(git_root) == 0 then
@@ -87,8 +66,6 @@ function M.setup_auto_refresh(explorer, tabpage)
       end
     end
     M.refresh(explorer)
-    local auto_refresh = require("codediff.ui.auto_refresh")
-    auto_refresh.sync_mutable_buffers(tabpage)
   end
 
   if poll_timer then
@@ -226,9 +203,7 @@ function M.refresh(explorer)
     return
   end
 
-  -- Coalesce refreshes while the previous Git scan is still running. Slow
-  -- repositories can take longer than the 500ms polling interval; without
-  -- this guard each tick starts another scan and can exhaust process handles.
+  -- Coalesce refreshes that take longer than the configured polling interval.
   if explorer._refresh_in_flight then
     explorer._refresh_pending = true
     return
@@ -254,6 +229,10 @@ function M.refresh(explorer)
         end
       end
 
+      local function sync_mutable_buffers()
+        require("codediff.ui.auto_refresh").sync_mutable_buffers(explorer.tabpage, finish)
+      end
+
       if explorer._refresh_closed then
         finish()
         return
@@ -264,15 +243,14 @@ function M.refresh(explorer)
         return
       end
 
-      -- Skip the whole downstream refresh (tree rebuild, re-selection,
-      -- mutable-buffer sync) when the status is identical to the previous
-      -- tick. `git status` still runs every tick so coverage is unchanged;
-      -- this only avoids UI churn (tree re-render, re-selection re-running
+      -- Skip tree rebuild and re-selection when the status is identical to
+      -- the previous tick. `git status` still runs every tick so coverage is
+      -- unchanged; this only avoids UI churn (tree re-render, re-selection,
       -- layout.arrange, extmark rewrites) that would flicker the interface
       -- and can interrupt the user (manual pane sizes reset, tree flatten
       -- flake, cursor jumps) even though nothing actually changed.
       if vim.deep_equal(status_result, explorer.status_result) then
-        finish()
+        sync_mutable_buffers()
         return
       end
 
@@ -382,7 +360,7 @@ function M.refresh(explorer)
           show_welcome_page(explorer)
         end
       end
-      finish()
+      sync_mutable_buffers()
     end)
   end
 

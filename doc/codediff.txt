@@ -258,7 +258,7 @@ Setup entry point:
       hidden = false,
       width = 40,
       height = 15,
-      auto_refresh = true,
+      auto_refresh = true,  -- true = 500ms, false = disabled, positive integer = interval in ms
       auto_open_on_cursor = false,
       indent_markers = true,
       icons = {

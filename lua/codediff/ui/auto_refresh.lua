@@ -333,13 +333,16 @@ function M.refresh_result_now(bufnr)
 end
 
 -- Sync mutable revision buffers (:0-:3) with current git index content.
--- Called when .git directory changes. Only writes if content actually changed,
--- which triggers TextChanged → auto_refresh recomputes diff automatically.
+-- Only writes if content actually changed, which triggers TextChanged and
+-- recomputes the diff automatically.
 -- @param tabpage number: Tabpage whose session buffers to sync
-function M.sync_mutable_buffers(tabpage)
+-- @param callback function|nil: Called after all mutable buffers settle
+function M.sync_mutable_buffers(tabpage, callback)
+  callback = callback or function() end
   local lifecycle = require("codediff.ui.lifecycle")
   local session = lifecycle.get_session(tabpage)
   if not session then
+    callback()
     return
   end
 
@@ -349,47 +352,47 @@ function M.sync_mutable_buffers(tabpage)
     return revision and revision:match("^:[0-3]$")
   end
 
-  local function sync_buffer(bufnr, revision, path)
-    if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
-      return
+  local remaining = 2
+  local function done()
+    remaining = remaining - 1
+    if remaining == 0 then
+      callback()
     end
-    if not is_mutable(revision) or not path or path == "" then
+  end
+
+  local function sync_buffer(bufnr, revision, path)
+    if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) or not is_mutable(revision) or not path or path == "" then
+      done()
       return
     end
 
     git.get_file_content(revision, session.git_root, path, function(err, lines)
       vim.schedule(function()
-        if err or not lines then
-          return
-        end
-        if not vim.api.nvim_buf_is_valid(bufnr) then
-          return
-        end
-
-        -- Only write if content actually changed
-        local current_lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-        if #current_lines == #lines then
-          local same = true
-          for i = 1, #lines do
-            if current_lines[i] ~= lines[i] then
-              same = false
-              break
+        if not err and lines and vim.api.nvim_buf_is_valid(bufnr) then
+          local current_lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+          local same = #current_lines == #lines
+          if same then
+            for i = 1, #lines do
+              if current_lines[i] ~= lines[i] then
+                same = false
+                break
+              end
             end
           end
-          if same then
-            return
+
+          if not same then
+            local was_modifiable = vim.bo[bufnr].modifiable
+            local was_readonly = vim.bo[bufnr].readonly
+            vim.bo[bufnr].readonly = false
+            vim.bo[bufnr].modifiable = true
+            vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+            vim.bo[bufnr].modifiable = was_modifiable
+            vim.bo[bufnr].readonly = was_readonly
+            -- TextChanged doesn't fire on nowrite/nofile buffers, trigger explicitly
+            M.trigger(bufnr)
           end
         end
-
-        local was_modifiable = vim.bo[bufnr].modifiable
-        local was_readonly = vim.bo[bufnr].readonly
-        vim.bo[bufnr].readonly = false
-        vim.bo[bufnr].modifiable = true
-        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
-        vim.bo[bufnr].modifiable = was_modifiable
-        vim.bo[bufnr].readonly = was_readonly
-        -- TextChanged doesn't fire on nowrite/nofile buffers, trigger explicitly
-        M.trigger(bufnr)
+        done()
       end)
     end)
   end
