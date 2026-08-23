@@ -19,8 +19,12 @@ local welcome = require("codediff.ui.welcome")
 -- mechanics, and lets us drop the whole watcher plumbing.
 function M.setup_auto_refresh(explorer, tabpage)
   local explorer_config = config.options.explorer or {}
+  explorer._refresh_closed = false
   if explorer_config.auto_refresh == false then
-    explorer._cleanup_auto_refresh = function() end
+    explorer._cleanup_auto_refresh = function()
+      explorer._refresh_closed = true
+      explorer._refresh_pending = false
+    end
     return
   end
 
@@ -31,6 +35,8 @@ function M.setup_auto_refresh(explorer, tabpage)
   local group = vim.api.nvim_create_augroup("CodeDiffExplorerRefresh_" .. tabpage, { clear = true })
 
   local function cleanup()
+    explorer._refresh_closed = true
+    explorer._refresh_pending = false
     if poll_timer then
       pcall(function()
         poll_timer:stop()
@@ -206,6 +212,10 @@ end
 function M.refresh(explorer)
   local git = require("codediff.core.git")
 
+  if explorer._refresh_closed then
+    return
+  end
+
   -- Skip refresh if explorer is hidden
   if explorer.is_hidden then
     return
@@ -216,6 +226,15 @@ function M.refresh(explorer)
     return
   end
 
+  -- Coalesce refreshes while the previous Git scan is still running. Slow
+  -- repositories can take longer than the 500ms polling interval; without
+  -- this guard each tick starts another scan and can exhaust process handles.
+  if explorer._refresh_in_flight then
+    explorer._refresh_pending = true
+    return
+  end
+  explorer._refresh_in_flight = true
+
   -- Get current selection to restore it after refresh
   local current_node = explorer.tree:get_node()
   local current_path = current_node and current_node.data and current_node.data.path
@@ -225,8 +244,23 @@ function M.refresh(explorer)
 
   local function process_result(err, status_result)
     vim.schedule(function()
+      local function finish()
+        explorer._refresh_in_flight = false
+        if explorer._refresh_pending and not explorer._refresh_closed then
+          explorer._refresh_pending = false
+          M.refresh(explorer)
+        else
+          explorer._refresh_pending = false
+        end
+      end
+
+      if explorer._refresh_closed then
+        finish()
+        return
+      end
       if err then
         vim.notify("Failed to refresh: " .. err, vim.log.levels.ERROR)
+        finish()
         return
       end
 
@@ -238,6 +272,7 @@ function M.refresh(explorer)
       -- and can interrupt the user (manual pane sizes reset, tree flatten
       -- flake, cursor jumps) even though nothing actually changed.
       if vim.deep_equal(status_result, explorer.status_result) then
+        finish()
         return
       end
 
@@ -347,6 +382,7 @@ function M.refresh(explorer)
           show_welcome_page(explorer)
         end
       end
+      finish()
     end)
   end
 

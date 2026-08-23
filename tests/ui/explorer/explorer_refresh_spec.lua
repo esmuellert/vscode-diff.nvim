@@ -35,6 +35,7 @@ end
 describe("Explorer refresh and single-file stability", function()
   local temp_dir
   local original_cwd
+  local original_get_status_with_line_stats
 
   local function open(focus_file)
     local lifecycle = require("codediff.ui.lifecycle")
@@ -95,6 +96,10 @@ describe("Explorer refresh and single-file stability", function()
   end)
 
   after_each(function()
+    if original_get_status_with_line_stats then
+      require("codediff.core.git").get_status_with_line_stats = original_get_status_with_line_stats
+      original_get_status_with_line_stats = nil
+    end
     require("codediff.ui.lifecycle").cleanup_all()
     vim.cmd("tabnew")
     vim.cmd("tabonly")
@@ -138,6 +143,83 @@ describe("Explorer refresh and single-file stability", function()
     -- for scheduler jitter and coalesced ticks.
     assert.is_true(count >= 5, "poll must actually tick, got " .. count)
     assert.is_true(count <= 12, "poll must not exceed the 500ms cadence, got " .. count)
+  end)
+
+  it("coalesces overlapping refreshes into one follow-up", function()
+    local refresh = require("codediff.ui.explorer.refresh")
+    local git = require("codediff.core.git")
+    local _, explorer = open("file1.txt")
+    select_and_settle(explorer, "file1.txt", "M", "unstaged", { force = true })
+    assert.is_true(
+      vim.wait(3000, function()
+        return explorer._refresh_in_flight ~= true
+      end, 50),
+      "initial refresh should settle"
+    )
+
+    original_get_status_with_line_stats = git.get_status_with_line_stats
+    local callbacks = {}
+    local calls = 0
+    git.get_status_with_line_stats = function(_, callback)
+      calls = calls + 1
+      callbacks[calls] = callback
+    end
+
+    refresh.refresh(explorer)
+    refresh.refresh(explorer)
+    refresh.refresh(explorer)
+    assert.are.equal(1, calls, "overlapping refreshes must share one Git scan")
+
+    callbacks[1](nil, vim.deepcopy(explorer.status_result))
+    refresh.refresh(explorer)
+    assert.are.equal(1, calls, "refresh must stay serialized until result processing finishes")
+    assert.is_true(
+      vim.wait(1000, function()
+        return calls == 2
+      end, 20),
+      "overlap should schedule one follow-up scan"
+    )
+
+    callbacks[2](nil, vim.deepcopy(explorer.status_result))
+    vim.wait(100, function()
+      return false
+    end)
+    assert.are.equal(2, calls, "multiple overlaps must coalesce into one follow-up")
+  end)
+
+  it("drops pending refreshes when the explorer is closed", function()
+    local refresh = require("codediff.ui.explorer.refresh")
+    local git = require("codediff.core.git")
+    local _, explorer = open("file1.txt")
+    select_and_settle(explorer, "file1.txt", "M", "unstaged", { force = true })
+    assert.is_true(
+      vim.wait(3000, function()
+        return explorer._refresh_in_flight ~= true
+      end, 50),
+      "initial refresh should settle"
+    )
+
+    original_get_status_with_line_stats = git.get_status_with_line_stats
+    local callback
+    local calls = 0
+    git.get_status_with_line_stats = function(_, cb)
+      calls = calls + 1
+      callback = cb
+    end
+
+    refresh.refresh(explorer)
+    refresh.refresh(explorer)
+    assert.are.equal(1, calls)
+
+    require("codediff.ui.lifecycle").cleanup_all()
+    callback(nil, vim.deepcopy(explorer.status_result))
+    vim.wait(100, function()
+      return false
+    end)
+
+    assert.are.equal(1, calls, "cleanup must cancel the pending follow-up")
+    assert.is_false(explorer._refresh_in_flight)
+    assert.is_false(explorer._refresh_pending)
   end)
 
   it("picks up an externally-created untracked file automatically", function()
