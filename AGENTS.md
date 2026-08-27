@@ -30,4 +30,8 @@
 
 ## Path-Specific Instructions
 
-Path-specific instructions are defined in `.github/copilot-instructions.md` files within respective directories.
+Path-specific instructions live in `.github/instructions/*.instructions.md`, scoped by the `applyTo` glob in each file's frontmatter.
+
+## Skills
+
+Reusable workflows live in `.agents/skills/*/SKILL.md`, discovered automatically by Copilot, pi, Codex, Cursor, and Gemini CLI.

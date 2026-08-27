@@ -220,7 +220,8 @@ describe("Render View", function()
     for _ = 1, 30 do
       vim.cmd("normal! \5") -- <C-e>
     end
-    -- Headless has no UI, so WinScrolled does not fire on its own.
+    -- Synchronous spec execution never returns to the main loop, so
+    -- WinScrolled is not dispatched. Fire it manually.
     vim.api.nvim_exec_autocmds("WinScrolled", {})
 
     assert.is_true(topline(mod_win) > 1, "the diff pane should have scrolled")
