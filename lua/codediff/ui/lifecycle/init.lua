@@ -77,6 +77,5 @@ M.detach_keymap_buffer = keymaps.detach_keymap_buffer
 M.clear_tab_keymaps = keymaps.clear_tab_keymaps
 M.restore_tab_keymaps = keymaps.restore_tab_keymaps
 M.dispose_keymaps = keymaps.dispose_keymaps
-M.setup_auto_sync_on_file_switch = accessors.setup_auto_sync_on_file_switch
 
 return M

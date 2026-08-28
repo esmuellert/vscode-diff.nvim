@@ -312,8 +312,8 @@ function M.create(session_config, filetype, on_ready)
           -- Setup all keymaps in one place (centralized)
           setup_all_keymaps(tabpage, original_info.bufnr, modified_info.bufnr, false)
 
-          -- Setup auto-sync on file switch (after session is complete!)
-          lifecycle.setup_auto_sync_on_file_switch(tabpage, original_is_virtual, modified_is_virtual)
+          -- Re-target the diff if the working window switches files
+          require("codediff.ui.auto_sync").setup(tabpage, original_is_virtual, modified_is_virtual)
 
           -- Signal that view is ready
           if on_ready then
