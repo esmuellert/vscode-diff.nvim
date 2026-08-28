@@ -284,9 +284,7 @@ local function handle_history(range, file_path, flags, line_range, global_opts)
 
   local function open_history(git_root)
     -- Build options for commit list
-    local history_opts = {
-      no_merges = true,
-    }
+    local history_opts = {}
 
     -- Apply reverse flag if present
     if flags.reverse then
@@ -339,6 +337,7 @@ local function handle_history(range, file_path, flags, line_range, global_opts)
             range = range,
             file_path = history_opts.path,
             base_revision = flags.base,
+            reverse = history_opts.reverse,
             line_range = line_range,
           },
         }

@@ -104,8 +104,11 @@ end
 -- files: array of { path, status, old_path }
 -- commit_hash: the commit hash these files belong to
 -- git_root: absolute path to git repository root
-function M.create_list_file_nodes(files, commit_hash, git_root)
+function M.create_list_file_nodes(files, commit_data, git_root)
   local file_nodes = {}
+  local commit_hash = commit_data.hash
+  local parent_revision = commit_data.parent_revision
+  local parent_count = commit_data.parent_count
 
   for i, file in ipairs(files) do
     local icon, icon_color = M.get_file_icon(file.path)
@@ -125,6 +128,8 @@ function M.create_list_file_nodes(files, commit_hash, git_root)
         status_color = status_info.color,
         git_root = git_root,
         commit_hash = commit_hash,
+        parent_revision = parent_revision,
+        parent_count = parent_count,
         is_last = i == #files,
         indent_state = { i == #files },
       },
@@ -138,9 +143,12 @@ end
 -- files: array of { path, status, old_path }
 -- commit_hash: the commit hash these files belong to
 -- git_root: absolute path to git repository root
-function M.create_tree_file_nodes(files, commit_hash, git_root)
+function M.create_tree_file_nodes(files, commit_data, git_root)
   -- Build directory structure
   local dir_tree = {}
+  local commit_hash = commit_data.hash
+  local parent_revision = commit_data.parent_revision
+  local parent_count = commit_data.parent_count
 
   for _, file in ipairs(files) do
     local parts = {}
@@ -231,6 +239,8 @@ function M.create_tree_file_nodes(files, commit_hash, git_root)
             status_color = status_info.color,
             git_root = git_root,
             commit_hash = commit_hash,
+            parent_revision = parent_revision,
+            parent_count = parent_count,
             indent_state = node_indent_state,
           },
         })
