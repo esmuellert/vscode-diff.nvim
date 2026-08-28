@@ -123,8 +123,8 @@ describe("explorer scroll independence", function()
     for _ = 1, 80 do
       vim.cmd("normal! \5") -- <C-e>
     end
-    -- Headless has no UI, so WinScrolled does not fire on its own; fire it so
-    -- the scroll-sync actually runs (as it would with a real UI).
+    -- Synchronous spec execution never returns to the main loop, so
+    -- WinScrolled is not dispatched. Fire it manually.
     vim.api.nvim_exec_autocmds("WinScrolled", {})
     vim.cmd("redraw")
 
