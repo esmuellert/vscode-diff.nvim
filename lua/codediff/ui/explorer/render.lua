@@ -188,6 +188,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
     current_file_path = nil, -- Track currently selected file
     current_file_group = nil, -- Track currently selected file's group (staged/unstaged)
     current_selection = nil, -- Full file selection used to replay current state
+    selection_generation = 0, -- Reject async work superseded by a newer selection of the same path
     is_hidden = explorer_config.hidden, -- Track visibility state
     visible_groups = vim.deepcopy(explorer_config.visible_groups or { staged = true, unstaged = true, conflicts = true }),
   }
@@ -203,6 +204,11 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
     local old_path = file_data.old_path -- For renames: path in original revision
     local group = file_data.group or "unstaged"
     local jump = not opts.no_jump and config.options.diff.jump_to_first_change
+    local selection_generation = explorer.selection_generation
+
+    local function selection_is_current()
+      return explorer.selection_generation == selection_generation and explorer.current_file_path == file_path
+    end
 
     -- Emit CodeDiffFileSelect User autocmd
     vim.api.nvim_exec_autocmds("User", {
@@ -234,7 +240,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
       end
 
       vim.schedule(function()
-        if explorer.current_file_path ~= file_path then
+        if not selection_is_current() then
           return
         end
         ---@type SessionConfig
@@ -256,7 +262,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
     -- Handle untracked files: show file without diff
     if file_data.status == "??" then
       vim.schedule(function()
-        if explorer.current_file_path ~= file_data.path then
+        if not selection_is_current() then
           return
         end
         local sess = lifecycle.get_session(tabpage)
@@ -274,7 +280,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
     -- Handle added files: only one side has the file
     if file_data.status == "A" then
       vim.schedule(function()
-        if explorer.current_file_path ~= file_data.path then
+        if not selection_is_current() then
           return
         end
         local sess = lifecycle.get_session(tabpage)
@@ -318,7 +324,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
     -- Handle deleted files: show old content without diff
     if file_data.status == "D" then
       vim.schedule(function()
-        if explorer.current_file_path ~= file_data.path then
+        if not selection_is_current() then
           return
         end
         local sess = lifecycle.get_session(tabpage)
@@ -409,7 +415,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
       -- Two revision mode: Compare base vs target
       vim.schedule(function()
         -- Ignore stale async: see comment on the base_revision branch below.
-        if explorer.current_file_path ~= file_path then
+        if not selection_is_current() then
           return
         end
         ---@type SessionConfig
@@ -429,6 +435,9 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
     -- Use base_revision if provided, otherwise default to HEAD
     local target_revision_single = base_revision or "HEAD"
     git.resolve_revision(target_revision_single, git_root, function(err_resolve, commit_hash)
+      if not selection_is_current() then
+        return
+      end
       if err_resolve then
         vim.schedule(function()
           vim.notify(err_resolve, vim.log.levels.ERROR)
@@ -443,7 +452,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
           -- scheduled callback ran, `view.update` on the old target would
           -- clobber the newer selection (buffers get swapped, virtual buffers
           -- with `bufhidden=wipe` get destroyed mid-load, single_pane resets).
-          if explorer.current_file_path ~= file_path then
+          if not selection_is_current() then
             return
           end
           ---@type SessionConfig
@@ -462,7 +471,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
         -- Position controlled by config.diff.conflict_ours_position (absolute screen position)
         vim.schedule(function()
           -- Ignore stale async: see comment on the base_revision branch above.
-          if explorer.current_file_path ~= file_path then
+          if not selection_is_current() then
             return
           end
           -- Determine conflict buffer positions based on config
@@ -499,7 +508,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
         -- No pre-fetching needed, virtual files will load via BufReadCmd
         vim.schedule(function()
           -- Ignore stale async: see comment on the base_revision branch above.
-          if explorer.current_file_path ~= file_path then
+          if not selection_is_current() then
             return
           end
           ---@type SessionConfig
@@ -533,7 +542,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
           -- Ignore stale async: if a newer selection superseded us before this
           -- scheduled callback ran, `view.update` on the old target would
           -- clobber the newer one (resetting single_pane, layout.arrange).
-          if explorer.current_file_path ~= file_path then
+          if not selection_is_current() then
             return
           end
           ---@type SessionConfig
@@ -553,6 +562,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
 
   -- Wrap on_file_select to track current file and group
   explorer.on_file_select = function(file_data, opts)
+    explorer.selection_generation = explorer.selection_generation + 1
     explorer.current_file_path = file_data.path
     explorer.current_file_group = file_data.group
     explorer.current_selection = vim.deepcopy(file_data)
