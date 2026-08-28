@@ -5,6 +5,7 @@ local M = {}
 local config = require("codediff.config")
 local virtual_file = require("codediff.core.virtual_file")
 local accessors = require("codediff.ui.lifecycle.accessors")
+local keymaps = require("codediff.ui.lifecycle.keymaps")
 local welcome_window = require("codediff.ui.view.welcome_window")
 -- Eagerly loaded: sessions are created from scheduled callbacks that may run
 -- after the CWD changed, and a first-time require would fail there.
@@ -191,7 +192,7 @@ function M.create_session(
     callback = function()
       local current_tab = vim.api.nvim_get_current_tabpage()
       if current_tab == tabpage then
-        accessors.clear_tab_keymaps(tabpage)
+        keymaps.clear_tab_keymaps(tabpage)
         state.suspend_diff(tabpage)
       end
     end,
@@ -212,7 +213,7 @@ function M.create_session(
             state.resume_diff(tabpage)
             return
           end
-          accessors.restore_tab_keymaps(tabpage)
+          keymaps.restore_tab_keymaps(tabpage)
           if sess.reapply_keymaps then
             pcall(sess.reapply_keymaps)
           end

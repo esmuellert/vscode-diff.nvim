@@ -13,6 +13,7 @@ local session = require("codediff.ui.lifecycle.session")
 local state = require("codediff.ui.lifecycle.state")
 local cleanup = require("codediff.ui.lifecycle.cleanup")
 local accessors = require("codediff.ui.lifecycle.accessors")
+local keymaps = require("codediff.ui.lifecycle.keymaps")
 
 -- Delegate to state module
 M.clear_highlights = state.clear_buffer_highlights
@@ -64,18 +65,18 @@ M.set_merge_base_lines = accessors.set_merge_base_lines
 M.set_conflict_blocks = accessors.set_conflict_blocks
 M.track_conflict_file = accessors.track_conflict_file
 M.confirm_close_with_unsaved = accessors.confirm_close_with_unsaved
-M.set_tab_keymap = accessors.set_tab_keymap
-M.set_buf_keymap = accessors.set_buf_keymap
-M.del_buf_keymap = accessors.del_buf_keymap
-M.owns_keymap = accessors.owns_keymap
-M.documented_keymaps = accessors.documented_keymaps
-M.begin_keymap_scope = accessors.begin_keymap_scope
-M.end_keymap_scope = accessors.end_keymap_scope
-M.release_keymap_scope = accessors.release_keymap_scope
-M.detach_keymap_buffer = accessors.detach_keymap_buffer
-M.clear_tab_keymaps = accessors.clear_tab_keymaps
-M.restore_tab_keymaps = accessors.restore_tab_keymaps
-M.dispose_keymaps = accessors.dispose_keymaps
+M.set_tab_keymap = keymaps.set_tab_keymap
+M.set_buf_keymap = keymaps.set_buf_keymap
+M.del_buf_keymap = keymaps.del_buf_keymap
+M.owns_keymap = keymaps.owns_keymap
+M.documented_keymaps = keymaps.documented_keymaps
+M.begin_keymap_scope = keymaps.begin_keymap_scope
+M.end_keymap_scope = keymaps.end_keymap_scope
+M.release_keymap_scope = keymaps.release_keymap_scope
+M.detach_keymap_buffer = keymaps.detach_keymap_buffer
+M.clear_tab_keymaps = keymaps.clear_tab_keymaps
+M.restore_tab_keymaps = keymaps.restore_tab_keymaps
+M.dispose_keymaps = keymaps.dispose_keymaps
 M.setup_auto_sync_on_file_switch = accessors.setup_auto_sync_on_file_switch
 
 return M
