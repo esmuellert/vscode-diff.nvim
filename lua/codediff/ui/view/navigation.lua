@@ -195,7 +195,7 @@ function M.next_file()
     return false
   end
 
-  local is_history_mode = session and session.mode == "history"
+  local is_history_mode = session and session.panel ~= nil and session.panel.name == "history"
 
   if is_history_mode then
     local history = require("codediff.ui.history")
@@ -224,7 +224,7 @@ function M.prev_file()
     return false
   end
 
-  local is_history_mode = session and session.mode == "history"
+  local is_history_mode = session and session.panel ~= nil and session.panel.name == "history"
 
   if is_history_mode then
     local history = require("codediff.ui.history")

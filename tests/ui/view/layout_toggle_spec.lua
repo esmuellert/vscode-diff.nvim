@@ -32,17 +32,19 @@ end
 
 local function create_explorer_placeholder(git_root)
   view.create({
-    mode = "explorer",
+    panel = {
+      name = "explorer",
+      data = {
+        status_result = {
+          unstaged = {},
+          staged = {},
+          conflicts = {},
+        },
+      },
+    },
     git_root = git_root,
     original = path.make_ref("", git_root),
     modified = path.make_ref("", git_root),
-    explorer_data = {
-      status_result = {
-        unstaged = {},
-        staged = {},
-        conflicts = {},
-      },
-    },
   })
 
   return vim.api.nvim_get_current_tabpage()
@@ -52,7 +54,6 @@ local function create_standalone_diff(left_lines, right_lines)
   local left = temp_file("layout_toggle_left.txt", left_lines)
   local right = temp_file("layout_toggle_right.txt", right_lines)
   view.create({
-    mode = "standalone",
     original = path.make_ref(left, nil),
     modified = path.make_ref(right, nil),
   })
@@ -111,15 +112,17 @@ local function open_history_and_wait(repo, entry_file)
   assert.is_true(commits and #commits > 0, "History should contain commits")
 
   view.create({
-    mode = "history",
+    panel = {
+      name = "history",
+      data = {
+        commits = commits,
+        range = "",
+        file_path = file_path,
+      },
+    },
     git_root = repo.dir,
     original = path.make_ref("", repo.dir),
     modified = path.make_ref("", repo.dir),
-    history_data = {
-      commits = commits,
-      range = "",
-      file_path = file_path,
-    },
   }, "")
 
   local tabpage
@@ -128,7 +131,7 @@ local function open_history_and_wait(repo, entry_file)
     for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
       local session = lifecycle.get_session(tp)
       local panel = lifecycle.get_explorer(tp)
-      if session and session.mode == "history" and panel then
+      if session and session.panel and session.panel.name == "history" and panel then
         tabpage = tp
         history = panel
         return history.current_selection
@@ -519,7 +522,6 @@ describe("Layout toggle", function()
 
     vim.api.nvim_buf_set_lines(session.original_bufnr, 0, -1, false, { "line 1", "left again", "line 3" })
     view.update(tabpage, {
-      mode = "standalone",
       original = path.make_ref(left, nil),
       modified = path.make_ref(right, nil),
     }, false)

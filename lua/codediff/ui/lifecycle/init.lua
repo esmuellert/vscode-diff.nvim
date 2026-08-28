@@ -30,7 +30,9 @@ M.setup = cleanup.setup
 
 -- Delegate all accessors (getters)
 M.get_session = accessors.get_session
-M.get_mode = accessors.get_mode
+M.get_panel = accessors.get_panel
+M.get_panel_name = accessors.get_panel_name
+M.event_mode = accessors.event_mode
 M.get_layout = accessors.get_layout
 M.get_git_context = accessors.get_git_context
 M.get_buffers = accessors.get_buffers

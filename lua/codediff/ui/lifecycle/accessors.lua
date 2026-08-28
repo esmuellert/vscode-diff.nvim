@@ -29,11 +29,26 @@ function M.get_session(tabpage)
   return active_diffs[tabpage]
 end
 
---- Get mode
-function M.get_mode(tabpage)
+--- Get the session's side panel descriptor, or nil for a bare diff
+function M.get_panel(tabpage)
   local active_diffs = get_active_diffs()
   local sess = active_diffs[tabpage]
-  return sess and sess.mode or nil
+  return sess and sess.panel or nil
+end
+
+--- Name of the session's side panel, or nil for a bare diff
+function M.get_panel_name(tabpage)
+  local panel = M.get_panel(tabpage)
+  return panel and panel.name or nil
+end
+
+--- Legacy "mode" string for the public CodeDiffOpen/CodeDiffClose payload.
+--- Documented in the README, so it keeps the pre-panel vocabulary even though
+--- nothing inside the plugin reads it any more.
+--- @param panel table|nil
+--- @return "explorer"|"history"|"standalone"
+function M.event_mode(panel)
+  return panel and panel.name or "standalone"
 end
 
 --- Get current session layout

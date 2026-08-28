@@ -186,7 +186,7 @@ local function run_audit()
     reset_config(opts)
     local L = temp_file("_x.txt", { "alpha1", "alpha2", "alpha3", "alpha4", "alpha5", "u1", "u2", "u3", "b1", "b2", "b3", "b4", "b5" })
     local R = temp_file("_y.txt", { "u1", "u2", "u3", "b1", "b2", "b3", "b4", "b5", "alpha1", "alpha2", "alpha3", "alpha4", "alpha5" })
-    view.create({ mode = "standalone", original = path.make_ref(L, nil), modified = path.make_ref(R, nil) })
+    view.create({ original = path.make_ref(L, nil), modified = path.make_ref(R, nil) })
     local tp = vim.api.nvim_get_current_tabpage()
     wait_diff(tp)
     check_shape(shape, tp)
@@ -239,7 +239,7 @@ local function run_audit()
     vim.wait(15000, function()
       for _, t in ipairs(vim.api.nvim_list_tabpages()) do
         local s = lifecycle.get_session(t)
-        if s and s.mode == "history" and s.explorer and s.explorer.bufnr then
+        if s and s.panel and s.panel.name == "history" and s.explorer and s.explorer.bufnr then
           tp = t
           return true
         end
@@ -268,7 +268,6 @@ local function run_audit()
     local ready = false
     view.create(
       {
-        mode = "standalone",
         git_root = repo.dir,
         original = path.make_ref("c.txt", repo.dir),
         modified = path.make_ref("c.txt", repo.dir),

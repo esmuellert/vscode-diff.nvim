@@ -68,7 +68,6 @@ local function scenario_standalone(layout)
   local right = temp_file("_golden_right.txt", MODIFIED_LINES)
 
   view.create({
-    mode = "standalone",
     git_root = nil,
     original = path.make_ref(left, nil),
     modified = path.make_ref(right, nil),
@@ -140,7 +139,6 @@ local function scenario_conflict()
 
   local ready = false
   view.create({
-    mode = "standalone",
     git_root = repo.dir,
     original = path.make_ref("conf.txt", repo.dir),
     modified = path.make_ref("conf.txt", repo.dir),
@@ -176,7 +174,6 @@ local function scenario_compact()
   local right = temp_file("_golden_compact_right.txt", MODIFIED_LINES)
 
   view.create({
-    mode = "standalone",
     git_root = nil,
     original = path.make_ref(left, nil),
     modified = path.make_ref(right, nil),

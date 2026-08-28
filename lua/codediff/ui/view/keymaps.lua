@@ -39,7 +39,7 @@ function M.setup_all_keymaps(tabpage, original_bufnr, modified_bufnr, is_explore
 
   -- Check mode context
   local session = lifecycle.get_session(tabpage)
-  local is_history_mode = session and session.mode == "history"
+  local is_history_mode = session and session.panel ~= nil and session.panel.name == "history"
   local is_inline = session and session.layout == "inline"
   -- Merge/conflict view: the result pane exists and do/dp are replaced by the
   -- conflict mappings (see codediff.ui.conflict.keymaps).

@@ -46,11 +46,13 @@ function M.create(session_config, filetype, on_ready)
 
   local tabpage = vim.api.nvim_get_current_tabpage()
 
-  -- For explorer mode with empty paths OR dir mode (git_root == nil with explorer_data),
+  -- For explorer mode with empty paths OR dir mode (git_root == nil with panel data),
   -- or history mode, create empty panes and skip buffer setup
-  local is_explorer_placeholder = session_config.mode == "explorer" and (path.is_empty(session_config.original) or (not session_config.git_root and session_config.explorer_data))
+  local is_explorer_placeholder = session_config.panel
+    and session_config.panel.name == "explorer"
+    and (path.is_empty(session_config.original) or (not session_config.git_root and session_config.panel.data))
 
-  local is_history_placeholder = session_config.mode == "history" and session_config.history_data
+  local is_history_placeholder = session_config.panel and session_config.panel.name == "history" and session_config.panel.data
 
   local original_win, modified_win, original_info, modified_info, initial_buf
 
@@ -150,7 +152,7 @@ function M.create(session_config, filetype, on_ready)
     -- Create minimal lifecycle session for explorer/history (update will populate it)
     lifecycle.create_session(
       tabpage,
-      session_config.mode,
+      session_config.panel,
       session_config.git_root,
       "", -- Empty paths indicate placeholder
       "",
@@ -166,7 +168,7 @@ function M.create(session_config, filetype, on_ready)
         if not ob or not mb then
           return
         end
-        local is_explorer = lifecycle.get_mode(tabpage) == "explorer"
+        local is_explorer = lifecycle.get_panel_name(tabpage) == "explorer"
         setup_all_keymaps(tabpage, ob, mb, is_explorer)
       end,
       session_config.exit_on_close
@@ -228,7 +230,7 @@ function M.create(session_config, filetype, on_ready)
               -- Create lifecycle session for conflict mode
               lifecycle.create_session(
                 tabpage,
-                session_config.mode,
+                session_config.panel,
                 session_config.git_root,
                 session_config.original,
                 session_config.modified,
@@ -285,7 +287,7 @@ function M.create(session_config, filetype, on_ready)
           -- Create complete lifecycle session (one step!)
           lifecycle.create_session(
             tabpage,
-            session_config.mode,
+            session_config.panel,
             session_config.git_root,
             session_config.original,
             session_config.modified,
@@ -301,7 +303,7 @@ function M.create(session_config, filetype, on_ready)
               if not ob or not mb then
                 return
               end
-              local is_explorer = lifecycle.get_mode(tabpage) == "explorer"
+              local is_explorer = lifecycle.get_panel_name(tabpage) == "explorer"
               setup_all_keymaps(tabpage, ob, mb, is_explorer)
             end,
             session_config.exit_on_close
@@ -386,7 +388,7 @@ function M.create(session_config, filetype, on_ready)
     modeline = false,
     data = {
       tabpage = tabpage,
-      mode = session_config.mode,
+      mode = lifecycle.event_mode(session_config.panel),
     },
   })
 
@@ -523,7 +525,7 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
             lifecycle.update_revisions(tabpage, session_config.original_revision, session_config.modified_revision)
             lifecycle.update_diff_result(tabpage, conflict_diffs.base_to_modified_diff)
             lifecycle.update_changedtick(tabpage, vim.api.nvim_buf_get_changedtick(original_info.bufnr), vim.api.nvim_buf_get_changedtick(modified_info.bufnr))
-            local is_explorer_mode = session.mode == "explorer"
+            local is_explorer_mode = session.panel and session.panel.name == "explorer"
             local success = setup_conflict_result_window(tabpage, session_config, original_win, modified_win, base_lines, conflict_diffs, true)
             if success then
               setup_all_keymaps(tabpage, original_info.bufnr, modified_info.bufnr, is_explorer_mode)
@@ -556,7 +558,7 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
         lifecycle.update_changedtick(tabpage, vim.api.nvim_buf_get_changedtick(original_info.bufnr), vim.api.nvim_buf_get_changedtick(modified_info.bufnr))
         setup_auto_refresh(original_info.bufnr, modified_info.bufnr, original_is_virtual, modified_is_virtual)
 
-        local is_explorer_mode = session.mode == "explorer"
+        local is_explorer_mode = session.panel and session.panel.name == "explorer"
         setup_all_keymaps(tabpage, original_info.bufnr, modified_info.bufnr, is_explorer_mode)
 
         -- Restore focus to the window that was active before update
@@ -822,7 +824,7 @@ local function show_single_file(tabpage, opts)
     end
 
     local view_keymaps = require("codediff.ui.view.keymaps")
-    view_keymaps.setup_all_keymaps(tabpage, orig_bufnr, mod_bufnr, session.mode == "explorer")
+    view_keymaps.setup_all_keymaps(tabpage, orig_bufnr, mod_bufnr, session.panel ~= nil and session.panel.name == "explorer")
   end
 
   layout.arrange(tabpage)

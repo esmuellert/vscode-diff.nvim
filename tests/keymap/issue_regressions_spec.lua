@@ -67,7 +67,7 @@ local function open_standalone(premap)
   if premap then
     premap(rb)
   end
-  view.create({ mode = "standalone", original = path.make_ref(L, nil), modified = path.make_ref(R, nil) })
+  view.create({ original = path.make_ref(L, nil), modified = path.make_ref(R, nil) })
   local tp = vim.api.nvim_get_current_tabpage()
   wait_diff(tp)
   return tp, rb, function()
@@ -218,7 +218,6 @@ do
   vim.keymap.set("n", "do", "<Cmd>echo 1<CR>", { buffer = cb, desc = "USER-DO" })
   local ready = false
   view.create({
-    mode = "standalone",
     git_root = repo.dir,
     original = path.make_ref("c.txt", repo.dir),
     modified = path.make_ref("c.txt", repo.dir),

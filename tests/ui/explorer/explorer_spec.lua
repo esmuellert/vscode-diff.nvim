@@ -481,7 +481,7 @@ describe("Explorer Mode", function()
     local session = lifecycle.get_session(tabpage)
     
     assert.is_not_nil(session, "Should have lifecycle session")
-    assert.equal("explorer", session.mode, "Session mode should be explorer")
+    assert.equal("explorer", session.panel and session.panel.name, "Session panel should be explorer")
     assert.is_not_nil(session.git_root, "Should have git_root")
   end)
 

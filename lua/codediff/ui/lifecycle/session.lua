@@ -15,7 +15,7 @@ local keymap = require("codediff.keymap")
 -- Structure: {
 --   tabpage_id = {
 --     original_bufnr, modified_bufnr, original_win, modified_win,
---     mode = "standalone" | "explorer",
+--     panel = { name = "explorer"|"history", data = table }?, -- nil for a bare diff
 --     git_root = string?,
 --     original = Path,
 --     modified = Path,
@@ -58,7 +58,7 @@ M.compute_virtual_uri = compute_virtual_uri
 
 function M.create_session(
   tabpage,
-  mode,
+  panel,
   git_root,
   original,
   modified,
@@ -79,8 +79,8 @@ function M.create_session(
 
   -- Create complete session in one step
   active_diffs[tabpage] = {
-    -- Mode & Git Context (immutable)
-    mode = mode,
+    -- Panel & Git Context (immutable)
+    panel = panel,
     git_root = git_root,
     original = original,
     modified = modified,

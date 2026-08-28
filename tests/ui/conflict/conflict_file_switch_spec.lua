@@ -19,7 +19,6 @@ describe("conflict mode single-file switching", function()
 
   local function conflict_config()
     return {
-      mode = "standalone",
       git_root = repo.dir,
       original = path.make_ref("conf.txt", repo.dir),
       modified = path.make_ref("conf.txt", repo.dir),

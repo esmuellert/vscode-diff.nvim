@@ -55,7 +55,6 @@ local function open_standalone(original_lines, modified_lines, pre_open)
   end
 
   view.create({
-    mode = "standalone",
     git_root = nil,
     original = path.make_ref(left, nil),
     modified = path.make_ref(right, nil),
@@ -276,7 +275,6 @@ describe("keymap lifecycle", function()
       local right = temp_file("_move_right.txt", { "u1", "u2", "u3", "b1", "b2", "b3", "b4", "b5", "a1", "a2", "a3", "a4", "a5" })
 
       view.create({
-        mode = "standalone",
         git_root = nil,
         original = path.make_ref(left, nil),
         modified = path.make_ref(right, nil),
@@ -336,7 +334,6 @@ describe("keymap lifecycle", function()
 
       local ready = false
       view.create({
-        mode = "standalone",
         git_root = repo.dir,
         original = path.make_ref("conf.txt", repo.dir),
         modified = path.make_ref("conf.txt", repo.dir),

@@ -18,7 +18,6 @@ end
 -- Helper to create diff view using new API
 local function create_test_diff_view(original_lines, modified_lines, left_path, right_path)
   local session_config = {
-    mode = "standalone", -- view.create will create new tab
     git_root = nil,
     original = path.make_ref(left_path, nil),
     modified = path.make_ref(right_path, nil),

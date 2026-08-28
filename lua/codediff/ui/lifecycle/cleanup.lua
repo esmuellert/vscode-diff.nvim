@@ -31,7 +31,7 @@ local function cleanup_diff(tabpage)
     modeline = false,
     data = {
       tabpage = tabpage,
-      mode = diff.mode,
+      mode = accessors.event_mode(diff.panel),
     },
   })
 

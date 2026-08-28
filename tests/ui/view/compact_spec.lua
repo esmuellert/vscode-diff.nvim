@@ -29,7 +29,6 @@ local function create_session(original, modified)
 
   local ready = false
   view.create({
-    mode = "standalone",
     git_root = nil,
     original = path.make_ref(left, nil),
     modified = path.make_ref(right, nil),

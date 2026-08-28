@@ -239,7 +239,6 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
         end
         ---@type SessionConfig
         local session_config = {
-          mode = "explorer",
           git_root = nil,
           original = original,
           modified = modified,
@@ -414,7 +413,6 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
         end
         ---@type SessionConfig
         local session_config = {
-          mode = "explorer",
           git_root = git_root,
           original = path.make_ref(old_path or file_path, git_root),
           modified = path.make_ref(file_path, git_root),
@@ -448,7 +446,6 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
           end
           ---@type SessionConfig
           local session_config = {
-            mode = "explorer",
             git_root = git_root,
             original = path.make_ref(old_path or file_path, git_root),
             modified = path.make_ref(abs_path, git_root),
@@ -483,7 +480,6 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
 
           ---@type SessionConfig
           local session_config = {
-            mode = "explorer",
             git_root = git_root,
             original = path.make_ref(file_path, git_root),
             modified = path.make_ref(file_path, git_root),
@@ -504,7 +500,6 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
           end
           ---@type SessionConfig
           local session_config = {
-            mode = "explorer",
             git_root = git_root,
             original = path.make_ref(old_path or file_path, git_root), -- Use old_path if rename
             modified = path.make_ref(file_path, git_root), -- New path after rename
@@ -538,7 +533,6 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
           end
           ---@type SessionConfig
           local session_config = {
-            mode = "explorer",
             git_root = git_root,
             original = path.make_ref(file_path, git_root),
             modified = path.make_ref(abs_path, git_root),

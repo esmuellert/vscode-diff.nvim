@@ -106,7 +106,6 @@ describe("Explorer Buffer Management", function()
 
     -- Create diff view for unstaged changes (index vs working)
     local config_changes = {
-      mode = "standalone",
       git_root = repo.dir,
       original = path.make_ref('test.txt', repo.dir),
       modified = path.make_ref(repo.path('test.txt'), repo.dir),
@@ -135,7 +134,6 @@ describe("Explorer Buffer Management", function()
 
     -- Switch to staged view (HEAD vs index)
     local config_staged = {
-      mode = "standalone",
       git_root = repo.dir,
       original = path.make_ref('test.txt', repo.dir),
       modified = path.make_ref('test.txt', repo.dir),

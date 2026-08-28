@@ -117,7 +117,6 @@ local function open_standalone(opts)
   local right = temp_file("_help_right.txt", { "a", "X", "c" })
 
   view.create({
-    mode = "standalone",
     git_root = nil,
     original = path.make_ref(left, nil),
     modified = path.make_ref(right, nil),
@@ -180,7 +179,7 @@ local function open_history()
   assert.is_true(vim.wait(15000, function()
     for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
       local session = lifecycle.get_session(tp)
-      if session and session.mode == "history" and session.explorer and session.explorer.bufnr then
+      if session and session.panel and session.panel.name == "history" and session.explorer and session.explorer.bufnr then
         tabpage = tp
         return true
       end
@@ -211,7 +210,6 @@ local function open_conflict()
 
   local ready = false
   view.create({
-    mode = "standalone",
     git_root = repo.dir,
     original = path.make_ref("conf.txt", repo.dir),
     modified = path.make_ref("conf.txt", repo.dir),
