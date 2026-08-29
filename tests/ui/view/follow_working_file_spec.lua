@@ -1,18 +1,17 @@
--- Auto-sync on file switch.
+-- Following the working window's file.
 --
--- When one side of a diff is a git revision and the other is the working file,
--- editing a different file in the working window re-targets the whole diff at
--- that file. Wired up by lifecycle.setup_auto_sync_on_file_switch, which
--- installs a BufWinEnter listener on the working window.
+-- With one side of a diff pinned to a git revision and the other showing the
+-- working file, opening a different file in the working window re-targets the
+-- whole diff at it. Implemented by ui/follow_working_file.lua, which installs a
+-- BufWinEnter listener on that window.
 --
--- Characterization tests: they lock in the behaviour as it is today so the
--- listener can be moved out of lifecycle/accessors.lua safely. The feature had
--- previously broken silently when a session field was renamed, with nothing to
--- catch it.
+-- The feature had broken silently before — a session field was renamed and
+-- defeated the listener's change guard, with nothing to catch it — so these
+-- pin down the behaviour rather than the implementation.
 
 local helpers = require("tests.helpers")
 
-describe("auto-sync on file switch", function()
+describe("following the working file", function()
   local repo
 
   before_each(function()
@@ -34,9 +33,10 @@ describe("auto-sync on file switch", function()
   end)
 
   --- Open `:CodeDiff file HEAD` on `rel` and return its tabpage.
-  local function open_file_diff(rel)
+  --- `layout_flag` picks the layout, e.g. "--inline".
+  local function open_file_diff(rel, layout_flag)
     vim.cmd("edit " .. repo.path(rel))
-    vim.cmd("CodeDiff file HEAD")
+    vim.cmd("CodeDiff file HEAD" .. (layout_flag and (" " .. layout_flag) or ""))
     local ok = vim.wait(10000, function()
       local s = require("codediff.ui.lifecycle").get_session(vim.api.nvim_get_current_tabpage())
       return s ~= nil and s.stored_diff_result ~= nil and s.modified_win ~= nil
@@ -116,5 +116,27 @@ describe("auto-sync on file switch", function()
     vim.wait(800)
 
     assert.equals(before, modified_path(tabpage), "editing outside the working window must not re-target")
+  end)
+
+  it("follows the working file in the inline layout too", function()
+    -- The listener used to be installed only by the side-by-side path, so the
+    -- same `:CodeDiff file <rev>` session silently stopped following once it
+    -- was opened (or toggled) inline.
+    local tabpage = open_file_diff("alpha.txt", "--inline")
+    local lifecycle = require("codediff.ui.lifecycle")
+    local sess = lifecycle.get_session(tabpage)
+
+    assert.equals("inline", sess.layout, "expected an inline session")
+    helpers.assert_contains(modified_path(tabpage), "alpha.txt", "should start on alpha.txt")
+
+    vim.api.nvim_set_current_win(sess.modified_win)
+    vim.cmd("edit " .. repo.path("beta.txt"))
+
+    local switched = vim.wait(10000, function()
+      local p = modified_path(tabpage)
+      return p ~= nil and p:find("beta.txt", 1, true) ~= nil
+    end, 50)
+
+    assert.is_true(switched, "inline diff should re-target to beta.txt, got: " .. tostring(modified_path(tabpage)))
   end)
 end)

@@ -275,6 +275,11 @@ function M.create(session_config, filetype, on_ready)
 
       setup_keymaps(tabpage, original_info.bufnr, modified_info.bufnr)
 
+      -- Keep the diff pointed at the working window's file if it changes.
+      -- Same as the side-by-side path: the behaviour belongs to the session
+      -- shape, not to a layout.
+      require("codediff.ui.follow_working_file").enable(tabpage, original_is_virtual, modified_is_virtual)
+
       if on_ready then
         on_ready()
       end

@@ -1,33 +1,37 @@
--- Re-target a diff when the working window switches files.
+-- Keep a diff pointed at whatever file the working window holds.
 --
 -- Sibling to auto_refresh, which watches buffer *content*. This watches the
--- working window's *file*: when one side of the diff is a git revision and the
--- other is the working file, opening a different file in that window rebuilds
--- the diff around the new file instead of leaving a stale pair on screen.
+-- working window's *file*: with one side pinned to a git revision and the other
+-- showing the working file, opening a different file in that window rebuilds
+-- the diff around it, rather than leaving a stale pair on screen.
+--
+-- Applies to a session with no side panel (`panel == nil`) where exactly one
+-- side is a git revision. Explorer and history drive their own file switching
+-- through view.update, and a diff of two real files has nothing to follow.
 --
 -- Registered per tabpage; the augroup is torn down in lifecycle/cleanup.
 local M = {}
 
--- Lazy require to avoid a cycle: session -> accessors -> ... -> auto_sync
+-- Lazy require to avoid a cycle: session -> accessors -> ... -> this module
 local function get_active_diffs()
   return require("codediff.ui.lifecycle.session").get_active_diffs()
 end
 
---- Setup auto-sync on file switch: automatically update diff when user edits a different file in working buffer
---- Only activates when one side is virtual (git revision) and other is working file
---- @param tabpage number Tabpage ID
---- @param original_is_virtual boolean Whether original side is virtual (git revision)
---- @param modified_is_virtual boolean Whether modified side is virtual
-function M.setup(tabpage, original_is_virtual, modified_is_virtual)
-  -- Only setup if one side is virtual (commit) and other is working file
+--- Watch the working window and re-target the diff when its file changes.
+--- No-op unless exactly one side is a git revision.
+--- @param tabpage number
+--- @param original_is_virtual boolean Original side is a git revision
+--- @param modified_is_virtual boolean Modified side is a git revision
+function M.enable(tabpage, original_is_virtual, modified_is_virtual)
+  -- Nothing to follow when both sides are revisions, or both are real files.
   if original_is_virtual == modified_is_virtual then
-    return -- Both virtual or both real - no sync needed
+    return
   end
 
   local active_diffs = get_active_diffs()
   local sess = active_diffs[tabpage]
   if not sess then
-    vim.notify("[codediff] No session found for auto-sync setup", vim.log.levels.ERROR)
+    vim.notify("[codediff] No session found for working-file follow", vim.log.levels.ERROR)
     return
   end
 
@@ -36,7 +40,7 @@ function M.setup(tabpage, original_is_virtual, modified_is_virtual)
   local working_side = original_is_virtual and "modified" or "original"
 
   if not working_win or not vim.api.nvim_win_is_valid(working_win) then
-    vim.notify("[codediff] Working window not found for auto-sync", vim.log.levels.WARN)
+    vim.notify("[codediff] Working window not found for working-file follow", vim.log.levels.WARN)
     return
   end
 
