@@ -160,7 +160,8 @@ function M.create(session_config, filetype, on_ready)
           setup_keymaps(tabpage, orig_scratch, mb)
         end
       end,
-      session_config.exit_on_close
+      session_config.exit_on_close,
+      session_config.conflict
     )
 
     mark_inline(tabpage)
@@ -263,7 +264,8 @@ function M.create(session_config, filetype, on_ready)
             setup_keymaps(tabpage, original_info.bufnr, mb)
           end
         end,
-        session_config.exit_on_close
+        session_config.exit_on_close,
+        session_config.conflict
       )
 
       mark_inline(tabpage)
@@ -368,6 +370,10 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
 
   session.single_side = nil
   lifecycle.update_diff_result(tabpage, nil)
+
+  -- Retargeting can move a session between a conflicted file and an ordinary
+  -- one, so the merge flag follows the incoming config.
+  lifecycle.update_merge(tabpage, session_config.conflict)
 
   local original_is_virtual = is_virtual_revision(session_config.original_revision)
   local modified_is_virtual = is_virtual_revision(session_config.modified_revision)

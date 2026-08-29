@@ -171,7 +171,8 @@ function M.create(session_config, filetype, on_ready)
         local is_explorer = lifecycle.get_panel_name(tabpage) == "explorer"
         setup_all_keymaps(tabpage, ob, mb, is_explorer)
       end,
-      session_config.exit_on_close
+      session_config.exit_on_close,
+      session_config.conflict
     )
   else
     -- Normal mode: Full rendering
@@ -250,7 +251,8 @@ function M.create(session_config, filetype, on_ready)
                   local conflict = require("codediff.ui.conflict")
                   conflict.setup_keymaps(tabpage)
                 end,
-                session_config.exit_on_close
+                session_config.exit_on_close,
+                session_config.conflict
               )
 
               -- Setup result window and keymaps
@@ -306,7 +308,8 @@ function M.create(session_config, filetype, on_ready)
               local is_explorer = lifecycle.get_panel_name(tabpage) == "explorer"
               setup_all_keymaps(tabpage, ob, mb, is_explorer)
             end,
-            session_config.exit_on_close
+            session_config.exit_on_close,
+            session_config.conflict
           )
           -- Enable auto-refresh for real file buffers only
           setup_auto_refresh(original_info.bufnr, modified_info.bufnr, original_is_virtual, modified_is_virtual)
@@ -440,6 +443,10 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
 
   -- Clear stored_diff_result to signal that an update is in progress
   lifecycle.update_diff_result(tabpage, nil)
+
+  -- Retargeting can move a session between a conflicted file and an ordinary
+  -- one, so the merge flag follows the incoming config.
+  lifecycle.update_merge(tabpage, session_config.conflict)
 
   -- Handle result window when switching between conflict and non-conflict modes
   local old_result_bufnr, old_result_win = lifecycle.get_result(tabpage)

@@ -396,6 +396,22 @@ function M.set_panel_view(tabpage, view)
   return true
 end
 
+--- Set whether this session is a 3-way merge view.
+--- Fixed for a given file, but view.update can retarget a session between a
+--- conflicted file and an ordinary one, so it has to follow.
+--- @param tabpage number
+--- @param merge boolean|nil
+--- @return boolean success
+function M.update_merge(tabpage, merge)
+  local active_diffs = get_active_diffs()
+  local sess = active_diffs[tabpage]
+  if not sess then
+    return false
+  end
+  sess.merge = merge or nil
+  return true
+end
+
 --- Set result buffer and window (for conflict mode)
 function M.set_result(tabpage, result_bufnr, result_win)
   local active_diffs = get_active_diffs()

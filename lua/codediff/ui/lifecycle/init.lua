@@ -53,6 +53,7 @@ M.get_unsaved_conflict_files = accessors.get_unsaved_conflict_files
 -- Delegate all accessors (setters)
 M.update_suspended = accessors.update_suspended
 M.update_layout = accessors.update_layout
+M.update_merge = accessors.update_merge
 M.update_diff_result = accessors.update_diff_result
 M.update_changedtick = accessors.update_changedtick
 M.update_mtime = accessors.update_mtime

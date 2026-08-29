@@ -89,11 +89,7 @@ describe("merge view keymap ownership", function()
 
     local session = open_merge_view()
 
-    assert.equals(
-      "USER MAPPING [global]",
-      effective(session.original_bufnr, "do"),
-      "merge view must hand `do` back to the user's mapping"
-    )
+    assert.equals("USER MAPPING [global]", effective(session.original_bufnr, "do"), "merge view must hand `do` back to the user's mapping")
     assert.equals("NONE", effective(session.original_bufnr, "dp"), "merge view must not claim `dp`")
   end)
 
@@ -102,11 +98,7 @@ describe("merge view keymap ownership", function()
 
     -- ]x is the marker for "conflict keymaps are installed"; if this fails the
     -- do/dp assertions above are meaningless (nothing was bound at all).
-    assert.equals(
-      "Next conflict [buf]",
-      effective(session.original_bufnr, "]x"),
-      "conflict navigation must be bound on the diff panes"
-    )
+    assert.equals("Next conflict [buf]", effective(session.original_bufnr, "]x"), "conflict navigation must be bound on the diff panes")
   end)
 
   it("claims do and dp again in an ordinary diff", function()
@@ -133,13 +125,43 @@ describe("merge view keymap ownership", function()
     )
 
     local session = lifecycle.get_session(tabpage)
-    assert.equals(
-      "Get change from other buffer [buf]",
-      effective(session.original_bufnr, "do"),
-      "a plain diff must claim `do`"
-    )
+    assert.equals("Get change from other buffer [buf]", effective(session.original_bufnr, "do"), "a plain diff must claim `do`")
 
     vim.fn.delete(left)
     vim.fn.delete(right)
+  end)
+
+  it("stops treating the session as a merge after switching to a normal file", function()
+    -- view.update can retarget a session from a conflicted file to an ordinary
+    -- one. The merge flag has to follow, or do/dp stay unclaimed forever.
+    repo.write_file("plain.txt", { "p1", "p2" })
+    repo.git("add plain.txt")
+    repo.git("commit -m plain")
+
+    local session = open_merge_view()
+    local tabpage = vim.api.nvim_get_current_tabpage()
+    assert.is_true(session.merge, "merge view should be flagged as a merge")
+
+    -- Retarget the same tab at an ordinary file, the way selecting another
+    -- entry in the explorer does.
+    require("codediff.ui.view").update(tabpage, {
+      git_root = repo.dir,
+      original = path.make_ref("plain.txt", repo.dir),
+      modified = path.make_ref("plain.txt", repo.dir),
+      original_revision = "HEAD",
+    }, false)
+
+    local lifecycle = require("codediff.ui.lifecycle")
+    assert.is_true(
+      vim.wait(10000, function()
+        local s = lifecycle.get_session(tabpage)
+        return s ~= nil and s.stored_diff_result ~= nil
+      end, 50),
+      "retargeted diff never became ready"
+    )
+
+    local after = lifecycle.get_session(tabpage)
+    assert.is_nil(after.merge, "merge flag must clear when leaving the conflicted file")
+    assert.equals("Get change from other buffer [buf]", effective(after.original_bufnr, "do"), "`do` must be claimed again once the session is no longer a merge")
   end)
 end)

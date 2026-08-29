@@ -16,6 +16,7 @@ local keymap = require("codediff.keymap")
 --   tabpage_id = {
 --     original_bufnr, modified_bufnr, original_win, modified_win,
 --     panel = { name = "explorer"|"history", view = table? }?, -- nil for a bare diff
+--     merge = boolean?, -- 3-way merge view; result_bufnr only says if the pane exists
 --     git_root = string?,
 --     original = Path,
 --     modified = Path,
@@ -56,6 +57,12 @@ end
 -- Expose compute_virtual_uri for other modules
 M.compute_virtual_uri = compute_virtual_uri
 
+--- @param merge boolean? True for a 3-way merge view (a result pane exists).
+--- Set once at creation and never changes, so it is the single answer to "is
+--- this a merge view". result_bufnr says only whether the pane is built yet.
+---
+--- NOTE: this signature is up to fifteen positional parameters and should
+--- become a table; that is a separate change.
 function M.create_session(
   tabpage,
   panel,
@@ -70,7 +77,8 @@ function M.create_session(
   modified_win,
   lines_diff,
   reapply_keymaps,
-  exit_on_close
+  exit_on_close,
+  merge
 )
   local state = require("codediff.ui.lifecycle.state")
   -- Save buffer states
@@ -84,6 +92,7 @@ function M.create_session(
     -- panel, which copies forward whatever it still needs (pathspec,
     -- status_result). Keeping it on the session would be a second, stale copy.
     panel = panel and { name = panel.name } or nil,
+    merge = merge or nil,
     git_root = git_root,
     original = original,
     modified = modified,
