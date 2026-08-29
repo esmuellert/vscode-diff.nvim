@@ -1213,6 +1213,7 @@ describe("Layout Manager", function()
       git_root = "/tmp",
       original = "",
       modified = "",
+    }, {
       original_bufnr = orig_buf,
       modified_bufnr = mod_buf,
       original_win = orig_win,

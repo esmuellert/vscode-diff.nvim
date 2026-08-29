@@ -24,12 +24,13 @@ local function create_session(exit_on_close)
   lifecycle.create_session(tabpage, {
     original = "original.txt",
     modified = "modified.txt",
+    exit_on_close = exit_on_close,
+  }, {
     original_bufnr = original_bufnr,
     modified_bufnr = modified_bufnr,
     original_win = windows[1],
     modified_win = windows[2],
     lines_diff = {},
-    exit_on_close = exit_on_close,
   })
   return tabpage
 end

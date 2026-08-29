@@ -213,20 +213,12 @@ local function render_conflict_view(ctx)
         return
       end
 
-      lifecycle.create_session(tabpage, {
-        panel = session_config.panel,
-        merge = session_config.conflict,
-        git_root = session_config.git_root,
-        original = session_config.original,
-        modified = session_config.modified,
-        original_revision = session_config.original_revision,
-        modified_revision = session_config.modified_revision,
+      lifecycle.create_session(tabpage, session_config, {
         original_bufnr = original_info.bufnr,
         modified_bufnr = modified_info.bufnr,
         original_win = original_win,
         modified_win = modified_win,
         lines_diff = conflict_diffs.base_to_modified_diff,
-        exit_on_close = session_config.exit_on_close,
         reapply_keymaps = make_reapply_keymaps(tabpage, { conflict = true }),
       })
 
@@ -266,20 +258,12 @@ local function render_diff_view(ctx)
     return
   end
 
-  lifecycle.create_session(tabpage, {
-    panel = session_config.panel,
-    merge = session_config.conflict,
-    git_root = session_config.git_root,
-    original = session_config.original,
-    modified = session_config.modified,
-    original_revision = session_config.original_revision,
-    modified_revision = session_config.modified_revision,
+  lifecycle.create_session(tabpage, session_config, {
     original_bufnr = original_info.bufnr,
     modified_bufnr = modified_info.bufnr,
     original_win = ctx.original_win,
     modified_win = ctx.modified_win,
     lines_diff = lines_diff,
-    exit_on_close = session_config.exit_on_close,
     reapply_keymaps = make_reapply_keymaps(tabpage),
   })
 
@@ -363,20 +347,12 @@ function M.create(session_config, filetype, on_ready)
 
   if placeholder then
     -- The panel populates this session on first file selection.
-    lifecycle.create_session(tabpage, {
-      panel = session_config.panel,
-      merge = session_config.conflict,
-      git_root = session_config.git_root,
-      original = "", -- Empty paths indicate placeholder
-      modified = "",
-      original_revision = nil,
-      modified_revision = nil,
+    lifecycle.create_session(tabpage, session_config, {
       original_bufnr = original_info.bufnr,
       modified_bufnr = modified_info.bufnr,
       original_win = original_win,
       modified_win = modified_win,
       lines_diff = {}, -- Empty diff result - will be updated on first file selection
-      exit_on_close = session_config.exit_on_close,
       reapply_keymaps = make_reapply_keymaps(tabpage),
     })
   else
