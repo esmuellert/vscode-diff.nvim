@@ -453,6 +453,83 @@ end
 ---@param session_config SessionConfig
 ---@param auto_scroll_to_first_hunk boolean?
 ---@return boolean
+--- Put one side's content into `win` during an update, reusing the buffer when
+--- it is still alive and re-editing when it is not.
+--- Unlike load_side, used on create, this also has to cope with the buffer
+--- having been wiped since the session was built.
+--- @param win number
+--- @param info table From prepare_buffer; info.bufnr is updated in place
+--- @param is_virtual boolean
+local function reload_side(win, info, is_virtual)
+  if not vim.api.nvim_win_is_valid(win) then
+    return
+  end
+
+  local function edit_in_place()
+    vim.api.nvim_set_current_win(win)
+    vim.cmd("edit! " .. vim.fn.fnameescape(info.target))
+    info.bufnr = vim.api.nvim_get_current_buf()
+  end
+
+  if info.needs_edit then
+    if not is_virtual then
+      info.bufnr = open_real_file(win, info.target)
+    elseif info.bufnr and vim.api.nvim_buf_is_valid(info.bufnr) then
+      vim.api.nvim_win_set_buf(win, info.bufnr)
+      virtual_file.refresh_buffer(info.bufnr)
+    else
+      edit_in_place()
+    end
+    return
+  end
+
+  if vim.api.nvim_buf_is_valid(info.bufnr) then
+    if is_virtual then
+      vim.api.nvim_win_set_buf(win, info.bufnr)
+    else
+      show_real_file_buffer(win, info.bufnr)
+    end
+  elseif is_virtual then
+    edit_in_place()
+  else
+    info.bufnr = open_real_file(win, info.target)
+  end
+end
+
+--- Run `render` once every side that needs loading has loaded.
+--- @param tabpage number
+--- @param original_info table
+--- @param modified_info table
+--- @param wait_state table { original: boolean, modified: boolean }
+--- @param render function
+local function render_when_reloaded(tabpage, original_info, modified_info, wait_state, render)
+  if not (wait_state.original or wait_state.modified) then
+    return
+  end
+
+  local group = vim.api.nvim_create_augroup("CodeDiffVirtualFileUpdate_" .. tabpage, { clear = true })
+  vim.api.nvim_create_autocmd("User", {
+    group = group,
+    pattern = "CodeDiffVirtualFileLoaded",
+    callback = function(event)
+      local buf = event.data and event.data.buf
+      if not buf then
+        return
+      end
+      if wait_state.original and buf == original_info.bufnr then
+        wait_state.original = false
+      end
+      if wait_state.modified and buf == modified_info.bufnr then
+        wait_state.modified = false
+      end
+      if not wait_state.original and not wait_state.modified then
+        vim.schedule(render)
+        vim.api.nvim_del_augroup_by_id(group)
+      end
+    end,
+  })
+end
+
 function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
   -- Save current window to restore focus after update
   local saved_current_win = vim.api.nvim_get_current_win()
@@ -618,102 +695,10 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
     end
   end
 
-  -- Set up autocmd to wait for virtual file loads BEFORE triggering any async operations
-  local autocmd_group = nil
-  if wait_state.original or wait_state.modified then
-    autocmd_group = vim.api.nvim_create_augroup("CodeDiffVirtualFileUpdate_" .. tabpage, { clear = true })
-
-    vim.api.nvim_create_autocmd("User", {
-      group = autocmd_group,
-      pattern = "CodeDiffVirtualFileLoaded",
-      callback = function(event)
-        if not event.data or not event.data.buf then
-          return
-        end
-
-        local loaded_buf = event.data.buf
-
-        if wait_state.original and loaded_buf == original_info.bufnr then
-          wait_state.original = false
-        end
-        if wait_state.modified and loaded_buf == modified_info.bufnr then
-          wait_state.modified = false
-        end
-
-        if not wait_state.original and not wait_state.modified then
-          vim.schedule(render_everything)
-          vim.api.nvim_del_augroup_by_id(autocmd_group)
-        end
-      end,
-    })
-  end
-
-  -- Load buffers into windows
-  if vim.api.nvim_win_is_valid(original_win) then
-    if original_info.needs_edit then
-      if original_is_virtual then
-        if original_info.bufnr and vim.api.nvim_buf_is_valid(original_info.bufnr) then
-          vim.api.nvim_win_set_buf(original_win, original_info.bufnr)
-          virtual_file.refresh_buffer(original_info.bufnr)
-        else
-          vim.api.nvim_set_current_win(original_win)
-          vim.cmd("edit! " .. vim.fn.fnameescape(original_info.target))
-          original_info.bufnr = vim.api.nvim_get_current_buf()
-        end
-      else
-        original_info.bufnr = open_real_file(original_win, original_info.target)
-      end
-    else
-      if vim.api.nvim_buf_is_valid(original_info.bufnr) then
-        if original_is_virtual then
-          vim.api.nvim_win_set_buf(original_win, original_info.bufnr)
-        else
-          show_real_file_buffer(original_win, original_info.bufnr)
-        end
-      else
-        if original_is_virtual then
-          vim.api.nvim_set_current_win(original_win)
-          vim.cmd("edit! " .. vim.fn.fnameescape(original_info.target))
-          original_info.bufnr = vim.api.nvim_get_current_buf()
-        else
-          original_info.bufnr = open_real_file(original_win, original_info.target)
-        end
-      end
-    end
-  end
-
-  if vim.api.nvim_win_is_valid(modified_win) then
-    if modified_info.needs_edit then
-      if modified_is_virtual then
-        if modified_info.bufnr and vim.api.nvim_buf_is_valid(modified_info.bufnr) then
-          vim.api.nvim_win_set_buf(modified_win, modified_info.bufnr)
-          virtual_file.refresh_buffer(modified_info.bufnr)
-        else
-          vim.api.nvim_set_current_win(modified_win)
-          vim.cmd("edit! " .. vim.fn.fnameescape(modified_info.target))
-          modified_info.bufnr = vim.api.nvim_get_current_buf()
-        end
-      else
-        modified_info.bufnr = open_real_file(modified_win, modified_info.target)
-      end
-    else
-      if vim.api.nvim_buf_is_valid(modified_info.bufnr) then
-        if modified_is_virtual then
-          vim.api.nvim_win_set_buf(modified_win, modified_info.bufnr)
-        else
-          show_real_file_buffer(modified_win, modified_info.bufnr)
-        end
-      else
-        if modified_is_virtual then
-          vim.api.nvim_set_current_win(modified_win)
-          vim.cmd("edit! " .. vim.fn.fnameescape(modified_info.target))
-          modified_info.bufnr = vim.api.nvim_get_current_buf()
-        else
-          modified_info.bufnr = open_real_file(modified_win, modified_info.target)
-        end
-      end
-    end
-  end
+  -- Wait for virtual content before rendering; real files are ready already.
+  render_when_reloaded(tabpage, original_info, modified_info, wait_state, render_everything)
+  reload_side(original_win, original_info, original_is_virtual)
+  reload_side(modified_win, modified_info, modified_is_virtual)
 
   welcome_window.sync(original_win)
   welcome_window.sync(modified_win)
@@ -730,8 +715,8 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
     pcall(vim.api.nvim_buf_delete, old_modified_buf, { force = true })
   end
 
-  -- If no virtual files need loading, render immediately
-  if not autocmd_group then
+  -- Nothing to wait for: render now. Otherwise render_when_reloaded does it.
+  if not (wait_state.original or wait_state.modified) then
     vim.schedule(render_everything)
   end
 
