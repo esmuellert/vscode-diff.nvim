@@ -111,6 +111,30 @@ end
 ---@param filetype? string
 ---@param on_ready? function
 ---@return table|nil
+--- Replace a scratch buffer's contents, restoring its read-only state.
+--- Returns false when the buffer is gone, which is the caller's cue to stop:
+--- the tab may have closed while the fetch was in flight.
+--- @param bufnr number
+--- @param lines string[]
+--- @return boolean
+local function set_scratch_lines(bufnr, lines)
+  if not vim.api.nvim_buf_is_valid(bufnr) then
+    return false
+  end
+  vim.bo[bufnr].modifiable = true
+  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+  vim.bo[bufnr].modifiable = false
+  return true
+end
+
+--- An empty, unlisted, non-file buffer.
+--- @return number
+local function new_scratch()
+  local bufnr = vim.api.nvim_create_buf(false, true)
+  vim.bo[bufnr].buftype = "nofile"
+  return bufnr
+end
+
 --- Options for the single inline pane. No 'list' here: side-by-side sets it
 --- to keep the two panes visually identical, which does not apply to one pane.
 --- @param win number
@@ -161,16 +185,12 @@ end
 --- @param modified_win number
 --- @return number original_bufnr, number modified_bufnr
 local function open_placeholder_pane(tabpage, modified_win)
-  local mod_scratch = vim.api.nvim_create_buf(false, true)
-  vim.bo[mod_scratch].buftype = "nofile"
+  local mod_scratch = new_scratch()
   pcall(vim.api.nvim_buf_set_name, mod_scratch, "CodeDiff " .. tabpage .. ".inline")
   vim.api.nvim_win_set_buf(modified_win, mod_scratch)
   welcome_window.sync(modified_win)
 
-  local orig_scratch = vim.api.nvim_create_buf(false, true)
-  vim.bo[orig_scratch].buftype = "nofile"
-
-  return orig_scratch, mod_scratch
+  return new_scratch(), mod_scratch
 end
 
 --- Show the modified side in the visible pane.
@@ -201,9 +221,7 @@ end
 --- @param is_virtual boolean
 local function load_hidden_original(info, is_virtual)
   if is_virtual and info.needs_edit then
-    local orig_buf = vim.api.nvim_create_buf(false, true)
-    vim.bo[orig_buf].buftype = "nofile"
-    info.bufnr = orig_buf
+    info.bufnr = new_scratch()
   elseif info.needs_edit then
     local bufnr = vim.fn.bufadd(info.target)
     vim.fn.bufload(bufnr)
@@ -250,12 +268,9 @@ local function render_when_loaded(ctx, render)
   local session_config = ctx.session_config
   git.get_file_content(session_config.original_revision, session_config.git_root, session_config.original.relative, function(err, lines)
     vim.schedule(function()
-      if not vim.api.nvim_buf_is_valid(original_info.bufnr) then
+      if not set_scratch_lines(original_info.bufnr, err and {} or lines) then
         return
       end
-      vim.bo[original_info.bufnr].modifiable = true
-      vim.api.nvim_buf_set_lines(original_info.bufnr, 0, -1, false, err and {} or lines)
-      vim.bo[original_info.bufnr].modifiable = false
 
       if ctx.modified_is_virtual then
         render_after_modified_loads(ctx.tabpage, modified_info.bufnr, render)
@@ -395,6 +410,100 @@ end
 -- Update (for explorer/history file switching)
 -- ============================================================================
 
+--- Fetch a revision from git into a scratch buffer, then signal completion.
+--- Signals nothing if the buffer died while the fetch was in flight.
+--- @param revision string
+--- @param git_root string
+--- @param relative string
+--- @param bufnr number
+--- @param done function
+local function fetch_into_scratch(revision, git_root, relative, bufnr, done)
+  require("codediff.core.git").get_file_content(revision, git_root, relative, function(err, lines)
+    vim.schedule(function()
+      if set_scratch_lines(bufnr, err and {} or lines) then
+        done()
+      end
+    end)
+  end)
+end
+
+--- Put the modified side in the pane.
+--- Unlike create, a virtual revision goes into a scratch buffer rather than a
+--- codediff:// URI, so retargeting never races a pending BufReadCmd.
+--- @param win number
+--- @param session_config SessionConfig
+--- @param is_virtual boolean
+--- @return number bufnr
+local function open_modified_for_update(win, session_config, is_virtual)
+  if is_virtual then
+    local mod_buf = new_scratch()
+    vim.bo[mod_buf].modifiable = true
+    vim.api.nvim_win_set_buf(win, mod_buf)
+    local ft = vim.filetype.match({ filename = session_config.modified.absolute })
+    if ft then
+      vim.bo[mod_buf].filetype = ft
+    end
+    return mod_buf
+  end
+
+  local info = prepare_buffer(false, session_config.git_root, nil, session_config.modified)
+  if info.needs_edit then
+    return open_real_file(win, info.target)
+  end
+  show_real_file_buffer(win, info.bufnr)
+  return info.bufnr
+end
+
+--- Fill the hidden original side. A real file is copied in synchronously; a
+--- revision is fetched and lands through `done`.
+--- @param orig_buf number
+--- @param session_config SessionConfig
+--- @param is_virtual boolean
+--- @param done function Called when an async fetch lands
+local function fill_original_for_update(orig_buf, session_config, is_virtual, done)
+  if is_virtual then
+    -- Retargeting can leave the original path empty (a file added in the
+    -- modified revision), so fall back to the modified side's path.
+    local relative = (session_config.original.relative ~= "" and session_config.original.relative) or session_config.modified.relative
+    fetch_into_scratch(session_config.original_revision, session_config.git_root, relative, orig_buf, done)
+    return
+  end
+
+  local orig_path = (session_config.original.absolute ~= "" and session_config.original.absolute) or session_config.modified.absolute
+  if orig_path and orig_path ~= "" then
+    local real_bufnr = vim.fn.bufadd(orig_path)
+    vim.fn.bufload(real_bufnr)
+    set_scratch_lines(orig_buf, vim.api.nvim_buf_get_lines(real_bufnr, 0, -1, false))
+  end
+end
+
+--- Point the session at the newly computed diff and re-arm everything hanging
+--- off it: refresh, keymaps, layout, and the window the user was in.
+--- @param tabpage number
+--- @param session_config SessionConfig
+--- @param orig_buf number
+--- @param mod_buf number
+--- @param lines_diff table
+--- @param saved_current_win number?
+local function commit_update(tabpage, session_config, orig_buf, mod_buf, lines_diff, saved_current_win)
+  lifecycle.update_buffers(tabpage, orig_buf, mod_buf)
+  lifecycle.update_git_root(tabpage, session_config.git_root)
+  lifecycle.update_revisions(tabpage, session_config.original_revision, session_config.modified_revision)
+  lifecycle.update_diff_result(tabpage, lines_diff)
+  lifecycle.update_changedtick(tabpage, vim.api.nvim_buf_get_changedtick(orig_buf), vim.api.nvim_buf_get_changedtick(mod_buf))
+  lifecycle.update_paths(tabpage, session_config.original, session_config.modified)
+
+  auto_refresh.enable(orig_buf)
+  auto_refresh.enable(mod_buf)
+
+  setup_keymaps(tabpage, orig_buf, mod_buf)
+  layout.arrange(tabpage)
+
+  if saved_current_win and vim.api.nvim_win_is_valid(saved_current_win) then
+    vim.api.nvim_set_current_win(saved_current_win)
+  end
+end
+
 ---@param tabpage number
 ---@param session_config SessionConfig
 ---@param auto_scroll_to_first_hunk boolean?
@@ -425,36 +534,13 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
   local original_is_virtual = is_virtual_revision(session_config.original_revision)
   local modified_is_virtual = is_virtual_revision(session_config.modified_revision)
 
-  -- For inline mode, load ALL virtual buffers via git.get_file_content into scratch
-  -- buffers instead of codediff:// URIs (avoids race conditions and bufhidden=wipe)
-
-  local orig_buf = vim.api.nvim_create_buf(false, true)
-  vim.bo[orig_buf].buftype = "nofile"
-
-  local mod_buf
-  if modified_is_virtual then
-    mod_buf = vim.api.nvim_create_buf(false, true)
-    vim.bo[mod_buf].buftype = "nofile"
-    vim.bo[mod_buf].modifiable = true
-    vim.api.nvim_win_set_buf(modified_win, mod_buf)
-    local ft = vim.filetype.match({ filename = session_config.modified.absolute })
-    if ft then
-      vim.bo[mod_buf].filetype = ft
-    end
-  else
-    local modified_info = prepare_buffer(false, session_config.git_root, nil, session_config.modified)
-    if modified_info.needs_edit then
-      mod_buf = open_real_file(modified_win, modified_info.target)
-    else
-      mod_buf = modified_info.bufnr
-      show_real_file_buffer(modified_win, mod_buf)
-    end
-  end
+  local orig_buf = new_scratch()
+  local mod_buf = open_modified_for_update(modified_win, session_config, modified_is_virtual)
   welcome_window.sync(modified_win)
 
   local should_auto_scroll = auto_scroll_to_first_hunk == true
 
-  local render_everything = function()
+  local render = function()
     if not vim.api.nvim_win_is_valid(modified_win) then
       return
     end
@@ -462,97 +548,46 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
       return
     end
 
-    local original_lines = vim.api.nvim_buf_get_lines(orig_buf, 0, -1, false)
-    local modified_lines = vim.api.nvim_buf_get_lines(mod_buf, 0, -1, false)
-
-    local lines_diff = compute_and_render_inline(mod_buf, orig_buf, original_lines, modified_lines, original_is_virtual, modified_is_virtual, modified_win, should_auto_scroll)
-
+    local lines_diff = compute_and_render_inline(
+      mod_buf,
+      orig_buf,
+      vim.api.nvim_buf_get_lines(orig_buf, 0, -1, false),
+      vim.api.nvim_buf_get_lines(mod_buf, 0, -1, false),
+      original_is_virtual,
+      modified_is_virtual,
+      modified_win,
+      should_auto_scroll
+    )
     if lines_diff then
-      lifecycle.update_buffers(tabpage, orig_buf, mod_buf)
-      lifecycle.update_git_root(tabpage, session_config.git_root)
-      lifecycle.update_revisions(tabpage, session_config.original_revision, session_config.modified_revision)
-      lifecycle.update_diff_result(tabpage, lines_diff)
-      lifecycle.update_changedtick(tabpage, vim.api.nvim_buf_get_changedtick(orig_buf), vim.api.nvim_buf_get_changedtick(mod_buf))
-      lifecycle.update_paths(tabpage, session_config.original, session_config.modified)
-
-      auto_refresh.enable(orig_buf)
-      auto_refresh.enable(mod_buf)
-
-      setup_keymaps(tabpage, orig_buf, mod_buf)
-      layout.arrange(tabpage)
-
-      if saved_current_win and vim.api.nvim_win_is_valid(saved_current_win) then
-        vim.api.nvim_set_current_win(saved_current_win)
-      end
+      commit_update(tabpage, session_config, orig_buf, mod_buf, lines_diff, saved_current_win)
     end
   end
 
-  -- Async loading with pending counter
+  -- Each side reports whether it still owes content; the last one to land
+  -- renders. Both may finish synchronously, hence the trailing check.
+  -- Flags are set before the fetches start, never from their return values,
+  -- so a callback can never be overwritten by a late assignment.
   local pending = { original = original_is_virtual, modified = modified_is_virtual }
-  local git = require("codediff.core.git")
-
   local function check_ready()
     if not pending.original and not pending.modified then
-      render_everything()
+      render()
     end
   end
 
-  if original_is_virtual then
-    git.get_file_content(
-      session_config.original_revision,
-      session_config.git_root,
-      (session_config.original.relative ~= "" and session_config.original.relative) or session_config.modified.relative,
-      function(err, lines)
-        vim.schedule(function()
-          if not vim.api.nvim_buf_is_valid(orig_buf) then
-            return
-          end
-          if err then
-            lines = {}
-          end
-          vim.bo[orig_buf].modifiable = true
-          vim.api.nvim_buf_set_lines(orig_buf, 0, -1, false, lines)
-          vim.bo[orig_buf].modifiable = false
-          pending.original = false
-          check_ready()
-        end)
-      end
-    )
-  else
-    local orig_path = (session_config.original.absolute ~= "" and session_config.original.absolute) or session_config.modified.absolute
-    if orig_path and orig_path ~= "" then
-      local real_bufnr = vim.fn.bufadd(orig_path)
-      vim.fn.bufload(real_bufnr)
-      local lines = vim.api.nvim_buf_get_lines(real_bufnr, 0, -1, false)
-      vim.bo[orig_buf].modifiable = true
-      vim.api.nvim_buf_set_lines(orig_buf, 0, -1, false, lines)
-      vim.bo[orig_buf].modifiable = false
-    end
+  fill_original_for_update(orig_buf, session_config, original_is_virtual, function()
     pending.original = false
-  end
+    check_ready()
+  end)
 
   if modified_is_virtual then
-    git.get_file_content(session_config.modified_revision, session_config.git_root, session_config.modified.relative, function(err, lines)
-      vim.schedule(function()
-        if not vim.api.nvim_buf_is_valid(mod_buf) then
-          return
-        end
-        if err then
-          lines = {}
-        end
-        vim.bo[mod_buf].modifiable = true
-        vim.api.nvim_buf_set_lines(mod_buf, 0, -1, false, lines)
-        vim.bo[mod_buf].modifiable = false
-        pending.modified = false
-        check_ready()
-      end)
+    fetch_into_scratch(session_config.modified_revision, session_config.git_root, session_config.modified.relative, mod_buf, function()
+      pending.modified = false
+      check_ready()
     end)
-  else
-    pending.modified = false
   end
 
   if not pending.original and not pending.modified then
-    vim.schedule(render_everything)
+    vim.schedule(render)
   end
 
   return true
