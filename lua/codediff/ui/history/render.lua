@@ -325,7 +325,6 @@ function M.create(commits, git_root, tabpage, width, opts)
 
       ---@type SessionConfig
       local session_config = {
-        mode = "history",
         git_root = git_root,
         original = path.make_ref(base_revision and file_path or (old_path or file_path), git_root),
         modified = path.make_ref(file_path, git_root),

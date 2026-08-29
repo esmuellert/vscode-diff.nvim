@@ -24,7 +24,6 @@ end
 -- Helper to create diff view (no longer creates session separately - render.create does it)
 local function create_test_diff_view(left_lines, right_lines, left_path, right_path)
   local session_config = {
-    mode = "standalone",  -- view.create will create new tab
     git_root = nil,
     original = path.make_ref(left_path, nil),
     modified = path.make_ref(right_path, nil),

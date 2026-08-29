@@ -58,26 +58,27 @@ end
 
 -- Re-render the current file in the new layout.
 -- For explorer/history: call rerender_current which re-triggers on_file_select.
--- For standalone: rebuild session_config from existing session fields.
+-- For a bare diff (no panel): rebuild session_config from existing session fields.
 local function rerender_current_file(tabpage)
   local session = lifecycle.get_session(tabpage)
   if not session then
     return false
   end
 
-  if session.mode == "explorer" then
-    local explorer = lifecycle.get_explorer(tabpage)
-    return explorer and require("codediff.ui.explorer").rerender_current(explorer) or false
+  local panel = session.panel
+  local panel_name = panel and panel.name
+
+  if panel_name == "explorer" then
+    return panel.view and require("codediff.ui.explorer").rerender_current(panel.view) or false
   end
 
-  if session.mode == "history" then
-    local history = lifecycle.get_explorer(tabpage)
-    return history and require("codediff.ui.history").rerender_current(history) or false
+  if panel_name == "history" then
+    return panel.view and require("codediff.ui.history").rerender_current(panel.view) or false
   end
 
-  -- Standalone mode: rebuild from session fields
+  -- No panel: rebuild from session fields
   local session_config = {
-    mode = session.mode,
+    panel = session.panel,
     git_root = session.git_root,
     original = session.original,
     modified = session.modified,

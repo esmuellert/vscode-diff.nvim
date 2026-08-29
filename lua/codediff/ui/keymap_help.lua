@@ -288,9 +288,9 @@ function M.toggle(tabpage)
   end
 
   local shape = {
-    explorer = session and session.mode == "explorer" or false,
-    history = session and session.mode == "history" or false,
-    conflict = session and session.result_bufnr ~= nil or false,
+    explorer = session and session.panel ~= nil and session.panel.name == "explorer" or false,
+    history = session and session.panel ~= nil and session.panel.name == "history" or false,
+    conflict = session and session.merge == true or false,
   }
 
   local sections = build_sections(keymaps, is_bound, shape)

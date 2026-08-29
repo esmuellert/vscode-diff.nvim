@@ -55,7 +55,6 @@ local function open_standalone(original_lines, modified_lines, pre_open)
   end
 
   view.create({
-    mode = "standalone",
     git_root = nil,
     original = path.make_ref(left, nil),
     modified = path.make_ref(right, nil),
@@ -231,7 +230,7 @@ describe("keymap lifecycle", function()
       assert.is_true(vim.wait(15000, function()
         for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
           local session = lifecycle.get_session(tp)
-          if session and session.explorer and session.explorer.bufnr then
+          if session and (session.panel or {}).view and (session.panel or {}).view.bufnr then
             tabpage = tp
             return true
           end
@@ -239,7 +238,7 @@ describe("keymap lifecycle", function()
         return false
       end, 50), "explorer session should be created")
 
-      local explorer = lifecycle.get_session(tabpage).explorer
+      local explorer = (lifecycle.get_session(tabpage).panel or {}).view
       explorer.on_file_select({ path = "one.txt", group = "unstaged", status = "M", git_root = repo.dir })
       assert.is_true(wait_for_diff(tabpage), "first file diff should be ready")
       local first_buf = lifecycle.get_session(tabpage).modified_bufnr
@@ -276,7 +275,6 @@ describe("keymap lifecycle", function()
       local right = temp_file("_move_right.txt", { "u1", "u2", "u3", "b1", "b2", "b3", "b4", "b5", "a1", "a2", "a3", "a4", "a5" })
 
       view.create({
-        mode = "standalone",
         git_root = nil,
         original = path.make_ref(left, nil),
         modified = path.make_ref(right, nil),
@@ -336,7 +334,6 @@ describe("keymap lifecycle", function()
 
       local ready = false
       view.create({
-        mode = "standalone",
         git_root = repo.dir,
         original = path.make_ref("conf.txt", repo.dir),
         modified = path.make_ref("conf.txt", repo.dir),

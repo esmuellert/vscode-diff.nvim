@@ -106,7 +106,6 @@ describe("Explorer Buffer Management", function()
 
     -- Create diff view for unstaged changes (index vs working)
     local config_changes = {
-      mode = "standalone",
       git_root = repo.dir,
       original = path.make_ref('test.txt', repo.dir),
       modified = path.make_ref(repo.path('test.txt'), repo.dir),
@@ -135,7 +134,6 @@ describe("Explorer Buffer Management", function()
 
     -- Switch to staged view (HEAD vs index)
     local config_staged = {
-      mode = "standalone",
       git_root = repo.dir,
       original = path.make_ref('test.txt', repo.dir),
       modified = path.make_ref('test.txt', repo.dir),
@@ -258,8 +256,8 @@ describe("Explorer review-flow re-selection (issue #347)", function()
     local ready = vim.wait(8000, function()
       for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
         local sess = lifecycle.get_session(tp)
-        if sess and sess.explorer and sess.explorer.current_file_path ~= nil then
-          explorer = sess.explorer
+        if sess and (sess.panel or {}).view and (sess.panel or {}).view.current_file_path ~= nil then
+          explorer = (sess.panel or {}).view
           return true
         end
       end

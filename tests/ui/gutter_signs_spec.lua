@@ -256,20 +256,15 @@ describe("Gutter signs", function()
     local lifecycle = require("codediff.ui.lifecycle")
     local state = require("codediff.ui.lifecycle.state")
     local tabpage = vim.api.nvim_get_current_tabpage()
-    lifecycle.create_session(
-      tabpage,
-      "standalone",
-      nil,
-      path.empty(),
-      path.make_ref("modified.txt", nil),
-      nil,
-      nil,
-      session.original_bufnr,
-      session.modified_bufnr,
-      session.original_win,
-      session.modified_win,
-      { changes = {}, moves = {} }
-    )
+    lifecycle.create_session(tabpage, {
+      original = path.empty(),
+      modified = path.make_ref("modified.txt", nil),
+      original_bufnr = session.original_bufnr,
+      modified_bufnr = session.modified_bufnr,
+      original_win = session.original_win,
+      modified_win = session.modified_win,
+      lines_diff = { changes = {}, moves = {} },
+    })
     local tracked = lifecycle.get_session(tabpage)
     tracked.single_side = "modified"
     gutter_signs.set_whole_file(session.modified_bufnr, "modified")
@@ -286,20 +281,15 @@ describe("Gutter signs", function()
     config.options.diff.gutter_signs = { changed_priority = 100 }
     local lifecycle = require("codediff.ui.lifecycle")
     local tabpage = vim.api.nvim_get_current_tabpage()
-    lifecycle.create_session(
-      tabpage,
-      "standalone",
-      nil,
-      path.make_ref("original.txt", nil),
-      path.make_ref("modified.txt", nil),
-      nil,
-      nil,
-      session.original_bufnr,
-      session.modified_bufnr,
-      session.original_win,
-      session.modified_win,
-      { changes = {}, moves = {} }
-    )
+    lifecycle.create_session(tabpage, {
+      original = path.make_ref("original.txt", nil),
+      modified = path.make_ref("modified.txt", nil),
+      original_bufnr = session.original_bufnr,
+      modified_bufnr = session.modified_bufnr,
+      original_win = session.original_win,
+      modified_win = session.modified_win,
+      lines_diff = { changes = {}, moves = {} },
+    })
 
     gutter_signs.set_changed_ranges(session.original_bufnr, session.modified_bufnr, changed_ranges)
     lifecycle.update_layout(tabpage, "inline")

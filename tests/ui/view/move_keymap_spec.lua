@@ -79,7 +79,6 @@ end
 
 local function standalone_config(left_path, right_path)
   return {
-    mode = "standalone",
     git_root = nil,
     original = path.make_ref(left_path, nil),
     modified = path.make_ref(right_path, nil),
@@ -390,7 +389,6 @@ describe("gm align_move keymap", function()
 
           local view = require("codediff.ui.view")
           view.create({
-            mode = "standalone",
             original = path.make_ref(orig_path, nil),
             modified = path.make_ref(mod_path, nil),
           })

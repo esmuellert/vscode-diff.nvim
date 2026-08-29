@@ -46,11 +46,13 @@ function M.create(session_config, filetype, on_ready)
 
   local tabpage = vim.api.nvim_get_current_tabpage()
 
-  -- For explorer mode with empty paths OR dir mode (git_root == nil with explorer_data),
+  -- For explorer mode with empty paths OR dir mode (git_root == nil with panel data),
   -- or history mode, create empty panes and skip buffer setup
-  local is_explorer_placeholder = session_config.mode == "explorer" and (path.is_empty(session_config.original) or (not session_config.git_root and session_config.explorer_data))
+  local is_explorer_placeholder = session_config.panel
+    and session_config.panel.name == "explorer"
+    and (path.is_empty(session_config.original) or (not session_config.git_root and session_config.panel.data))
 
-  local is_history_placeholder = session_config.mode == "history" and session_config.history_data
+  local is_history_placeholder = session_config.panel and session_config.panel.name == "history" and session_config.panel.data
 
   local original_win, modified_win, original_info, modified_info, initial_buf
 
@@ -148,29 +150,29 @@ function M.create(session_config, filetype, on_ready)
   -- For explorer placeholder, create minimal session without rendering
   if is_explorer_placeholder or is_history_placeholder then
     -- Create minimal lifecycle session for explorer/history (update will populate it)
-    lifecycle.create_session(
-      tabpage,
-      session_config.mode,
-      session_config.git_root,
-      "", -- Empty paths indicate placeholder
-      "",
-      nil,
-      nil,
-      original_info.bufnr,
-      modified_info.bufnr,
-      original_win,
-      modified_win,
-      {}, -- Empty diff result - will be updated on first file selection
-      function()
+    lifecycle.create_session(tabpage, {
+      panel = session_config.panel,
+      merge = session_config.conflict,
+      git_root = session_config.git_root,
+      original = "", -- Empty paths indicate placeholder
+      modified = "",
+      original_revision = nil,
+      modified_revision = nil,
+      original_bufnr = original_info.bufnr,
+      modified_bufnr = modified_info.bufnr,
+      original_win = original_win,
+      modified_win = modified_win,
+      lines_diff = {}, -- Empty diff result - will be updated on first file selection
+      exit_on_close = session_config.exit_on_close,
+      reapply_keymaps = function()
         local ob, mb = lifecycle.get_buffers(tabpage)
         if not ob or not mb then
           return
         end
-        local is_explorer = lifecycle.get_mode(tabpage) == "explorer"
+        local is_explorer = lifecycle.get_panel_name(tabpage) == "explorer"
         setup_all_keymaps(tabpage, ob, mb, is_explorer)
       end,
-      session_config.exit_on_close
-    )
+    })
   else
     -- Normal mode: Full rendering
     local original_is_virtual = is_virtual_revision(session_config.original_revision)
@@ -226,20 +228,21 @@ function M.create(session_config, filetype, on_ready)
 
             if conflict_diffs then
               -- Create lifecycle session for conflict mode
-              lifecycle.create_session(
-                tabpage,
-                session_config.mode,
-                session_config.git_root,
-                session_config.original,
-                session_config.modified,
-                session_config.original_revision,
-                session_config.modified_revision,
-                original_info.bufnr,
-                modified_info.bufnr,
-                original_win,
-                modified_win,
-                conflict_diffs.base_to_modified_diff,
-                function()
+              lifecycle.create_session(tabpage, {
+                panel = session_config.panel,
+                merge = session_config.conflict,
+                git_root = session_config.git_root,
+                original = session_config.original,
+                modified = session_config.modified,
+                original_revision = session_config.original_revision,
+                modified_revision = session_config.modified_revision,
+                original_bufnr = original_info.bufnr,
+                modified_bufnr = modified_info.bufnr,
+                original_win = original_win,
+                modified_win = modified_win,
+                lines_diff = conflict_diffs.base_to_modified_diff,
+                exit_on_close = session_config.exit_on_close,
+                reapply_keymaps = function()
                   local ob, mb = lifecycle.get_buffers(tabpage)
                   if not ob or not mb then
                     return
@@ -248,8 +251,7 @@ function M.create(session_config, filetype, on_ready)
                   local conflict = require("codediff.ui.conflict")
                   conflict.setup_keymaps(tabpage)
                 end,
-                session_config.exit_on_close
-              )
+              })
 
               -- Setup result window and keymaps
               local success = setup_conflict_result_window(tabpage, session_config, original_win, modified_win, base_lines, conflict_diffs, false)
@@ -283,37 +285,37 @@ function M.create(session_config, filetype, on_ready)
 
         if lines_diff then
           -- Create complete lifecycle session (one step!)
-          lifecycle.create_session(
-            tabpage,
-            session_config.mode,
-            session_config.git_root,
-            session_config.original,
-            session_config.modified,
-            session_config.original_revision,
-            session_config.modified_revision,
-            original_info.bufnr,
-            modified_info.bufnr,
-            original_win,
-            modified_win,
-            lines_diff,
-            function()
+          lifecycle.create_session(tabpage, {
+            panel = session_config.panel,
+            merge = session_config.conflict,
+            git_root = session_config.git_root,
+            original = session_config.original,
+            modified = session_config.modified,
+            original_revision = session_config.original_revision,
+            modified_revision = session_config.modified_revision,
+            original_bufnr = original_info.bufnr,
+            modified_bufnr = modified_info.bufnr,
+            original_win = original_win,
+            modified_win = modified_win,
+            lines_diff = lines_diff,
+            exit_on_close = session_config.exit_on_close,
+            reapply_keymaps = function()
               local ob, mb = lifecycle.get_buffers(tabpage)
               if not ob or not mb then
                 return
               end
-              local is_explorer = lifecycle.get_mode(tabpage) == "explorer"
+              local is_explorer = lifecycle.get_panel_name(tabpage) == "explorer"
               setup_all_keymaps(tabpage, ob, mb, is_explorer)
             end,
-            session_config.exit_on_close
-          )
+          })
           -- Enable auto-refresh for real file buffers only
           setup_auto_refresh(original_info.bufnr, modified_info.bufnr, original_is_virtual, modified_is_virtual)
 
           -- Setup all keymaps in one place (centralized)
           setup_all_keymaps(tabpage, original_info.bufnr, modified_info.bufnr, false)
 
-          -- Setup auto-sync on file switch (after session is complete!)
-          lifecycle.setup_auto_sync_on_file_switch(tabpage, original_is_virtual, modified_is_virtual)
+          -- Keep the diff pointed at the working window's file if it changes
+          require("codediff.ui.follow_working_file").enable(tabpage, original_is_virtual, modified_is_virtual)
 
           -- Signal that view is ready
           if on_ready then
@@ -386,7 +388,7 @@ function M.create(session_config, filetype, on_ready)
     modeline = false,
     data = {
       tabpage = tabpage,
-      mode = session_config.mode,
+      mode = lifecycle.event_mode(session_config.panel),
     },
   })
 
@@ -438,6 +440,10 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
 
   -- Clear stored_diff_result to signal that an update is in progress
   lifecycle.update_diff_result(tabpage, nil)
+
+  -- Retargeting can move a session between a conflicted file and an ordinary
+  -- one, so the merge flag follows the incoming config.
+  lifecycle.update_merge(tabpage, session_config.conflict)
 
   -- Handle result window when switching between conflict and non-conflict modes
   local old_result_bufnr, old_result_win = lifecycle.get_result(tabpage)
@@ -523,7 +529,7 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
             lifecycle.update_revisions(tabpage, session_config.original_revision, session_config.modified_revision)
             lifecycle.update_diff_result(tabpage, conflict_diffs.base_to_modified_diff)
             lifecycle.update_changedtick(tabpage, vim.api.nvim_buf_get_changedtick(original_info.bufnr), vim.api.nvim_buf_get_changedtick(modified_info.bufnr))
-            local is_explorer_mode = session.mode == "explorer"
+            local is_explorer_mode = session.panel and session.panel.name == "explorer"
             local success = setup_conflict_result_window(tabpage, session_config, original_win, modified_win, base_lines, conflict_diffs, true)
             if success then
               setup_all_keymaps(tabpage, original_info.bufnr, modified_info.bufnr, is_explorer_mode)
@@ -556,7 +562,7 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
         lifecycle.update_changedtick(tabpage, vim.api.nvim_buf_get_changedtick(original_info.bufnr), vim.api.nvim_buf_get_changedtick(modified_info.bufnr))
         setup_auto_refresh(original_info.bufnr, modified_info.bufnr, original_is_virtual, modified_is_virtual)
 
-        local is_explorer_mode = session.mode == "explorer"
+        local is_explorer_mode = session.panel and session.panel.name == "explorer"
         setup_all_keymaps(tabpage, original_info.bufnr, modified_info.bufnr, is_explorer_mode)
 
         -- Restore focus to the window that was active before update
@@ -822,7 +828,7 @@ local function show_single_file(tabpage, opts)
     end
 
     local view_keymaps = require("codediff.ui.view.keymaps")
-    view_keymaps.setup_all_keymaps(tabpage, orig_bufnr, mod_bufnr, session.mode == "explorer")
+    view_keymaps.setup_all_keymaps(tabpage, orig_bufnr, mod_bufnr, session.panel ~= nil and session.panel.name == "explorer")
   end
 
   layout.arrange(tabpage)

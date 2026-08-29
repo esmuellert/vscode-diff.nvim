@@ -6,7 +6,7 @@ local lifecycle = require("codediff.ui.lifecycle")
 
 function M.toggle_stage(ctx)
   local current_buf = vim.api.nvim_get_current_buf()
-  local explorer = lifecycle.get_explorer(ctx.tabpage)
+  local explorer = lifecycle.get_panel_view(ctx.tabpage)
   local session = lifecycle.get_session(ctx.tabpage)
 
   if not session then
@@ -58,7 +58,7 @@ function M.toggle_stage(ctx)
 end
 
 function M.toggle_staged_view(ctx)
-  local explorer = lifecycle.get_explorer(ctx.tabpage)
+  local explorer = lifecycle.get_panel_view(ctx.tabpage)
   if not ctx.is_explorer_mode or not explorer then
     vim.notify("Toggle staged view only available in explorer mode", vim.log.levels.WARN)
     return

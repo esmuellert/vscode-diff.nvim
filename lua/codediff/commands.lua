@@ -140,7 +140,7 @@ local function handle_git_diff(revision, revision2, global_opts)
               vim.schedule(function()
                 ---@type SessionConfig
                 local session_config = {
-                  mode = "standalone",
+                  panel = nil,
                   git_root = git_root,
                   original = path.make_ref(original_path, git_root),
                   modified = path.make_ref(modified_path, git_root),
@@ -158,7 +158,7 @@ local function handle_git_diff(revision, revision2, global_opts)
           vim.schedule(function()
             ---@type SessionConfig
             local session_config = {
-              mode = "standalone",
+              panel = nil,
               git_root = git_root,
               original = path.make_ref(original_path, git_root),
               modified = path.make_ref(relative_path, git_root),
@@ -187,7 +187,7 @@ local function handle_file_diff(file_a, file_b, global_opts)
   -- Create diff view (no pre-reading needed, :edit will load content)
   ---@type SessionConfig
   local session_config = {
-    mode = "standalone",
+    panel = nil,
     git_root = nil,
     original = path.make_ref(file_a, nil),
     modified = path.make_ref(file_b, nil),
@@ -250,7 +250,7 @@ local function handle_dir_diff(dir1, dir2, global_opts)
 
   ---@type SessionConfig
   local session_config = {
-    mode = "explorer",
+    panel = { name = "explorer", data = { status_result = status_result } },
     git_root = nil, -- nil signals non-git (directory) mode
     original = path.make_ref(diff.root1, nil),
     modified = path.make_ref(diff.root2, nil),
@@ -258,9 +258,6 @@ local function handle_dir_diff(dir1, dir2, global_opts)
     modified_revision = nil,
     layout = global_opts.layout,
     exit_on_close = global_opts.exit_on_close,
-    explorer_data = {
-      status_result = status_result,
-    },
   }
 
   view.create(session_config, "")
@@ -326,7 +323,16 @@ local function handle_history(range, file_path, flags, line_range, global_opts)
       vim.schedule(function()
         ---@type SessionConfig
         local session_config = {
-          mode = "history",
+          panel = {
+            name = "history",
+            data = {
+              commits = commits,
+              range = range,
+              file_path = history_opts.path,
+              base_revision = flags.base,
+              line_range = line_range,
+            },
+          },
           git_root = git_root,
           original = path.empty(),
           modified = path.empty(),
@@ -334,13 +340,6 @@ local function handle_history(range, file_path, flags, line_range, global_opts)
           modified_revision = nil,
           layout = global_opts.layout,
           exit_on_close = global_opts.exit_on_close,
-          history_data = {
-            commits = commits,
-            range = range,
-            file_path = history_opts.path,
-            base_revision = flags.base,
-            line_range = line_range,
-          },
         }
 
         view.create(session_config, "")
@@ -381,7 +380,14 @@ local function handle_explorer(revision, revision2, global_opts, pathspec)
 
         ---@type SessionConfig
         local session_config = {
-          mode = "explorer",
+          panel = {
+            name = "explorer",
+            data = {
+              status_result = status_result,
+              focus_file = focus_file, -- Focus on current file if changed
+              pathspec = pathspec, -- Scope (#74): preserved so refresh re-applies it
+            },
+          },
           git_root = git_root,
           original = path.empty(), -- Empty indicates explorer mode placeholder
           modified = path.empty(),
@@ -389,11 +395,6 @@ local function handle_explorer(revision, revision2, global_opts, pathspec)
           modified_revision = modified_rev,
           layout = global_opts.layout,
           exit_on_close = global_opts.exit_on_close,
-          explorer_data = {
-            status_result = status_result,
-            focus_file = focus_file, -- Focus on current file if changed
-            pathspec = pathspec, -- Scope (#74): preserved so refresh re-applies it
-          },
         }
 
         -- view.create handles everything: tab, windows, explorer, and lifecycle
@@ -493,7 +494,14 @@ local function handle_explorer_staged(revision, global_opts, pathspec)
 
           ---@type SessionConfig
           local session_config = {
-            mode = "explorer",
+            panel = {
+              name = "explorer",
+              data = {
+                status_result = status_result,
+                focus_file = focus_file,
+                pathspec = pathspec,
+              },
+            },
             git_root = git_root,
             original = path.empty(),
             modified = path.empty(),
@@ -501,11 +509,6 @@ local function handle_explorer_staged(revision, global_opts, pathspec)
             modified_revision = ":0", -- Index; tree.lua/refresh.lua key off this to render as staged-only mode
             layout = global_opts.layout,
             exit_on_close = global_opts.exit_on_close,
-            explorer_data = {
-              status_result = status_result,
-              focus_file = focus_file,
-              pathspec = pathspec,
-            },
           }
 
           view.create(session_config, "")
@@ -648,7 +651,7 @@ function M.vscode_merge(opts, global_opts)
 
       ---@type SessionConfig
       local session_config = {
-        mode = "standalone",
+        panel = nil,
         git_root = git_root,
         original = path.make_ref(relative_path, git_root),
         modified = path.make_ref(relative_path, git_root),

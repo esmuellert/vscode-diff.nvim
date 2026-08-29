@@ -206,7 +206,7 @@ describe("Command E2E (real dispatch + render)", function()
     assert.is_not_nil(tab)
     local session = lifecycle.get_session(tab)
     assert.is_not_nil(session)
-    local explorer = session.explorer
+    local explorer = (session.panel or {}).view
     assert.is_not_nil(explorer)
     assert.equals(":0", explorer.target_revision, "explorer.target_revision is the index (:0)")
     assert.is_not_nil(explorer.base_revision, "explorer.base_revision resolves to HEAD~1")
@@ -401,7 +401,7 @@ describe("Command E2E (real dispatch + render)", function()
     -- async refresh actually completed before we assert on scope.
     repo.write_file("modules/store/s2.txt", { "s2" })
     repo.write_file("modules/net/n2.txt", { "n2" })
-    local explorer = lifecycle.get_explorer(find_explorer_tab())
+    local explorer = lifecycle.get_panel_view(find_explorer_tab())
     require("codediff.ui.explorer.refresh").refresh(explorer)
 
     local refreshed = vim.wait(10000, function()

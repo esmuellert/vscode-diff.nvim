@@ -98,7 +98,7 @@ end
 local function setup_keymaps(tabpage, orig_buf, mod_buf)
   local view_keymaps = require("codediff.ui.view.keymaps")
   local session = lifecycle.get_session(tabpage)
-  local is_explorer = session and session.mode == "explorer"
+  local is_explorer = session and session.panel ~= nil and session.panel.name == "explorer"
   view_keymaps.setup_all_keymaps(tabpage, orig_buf, mod_buf, is_explorer)
 end
 
@@ -118,8 +118,10 @@ function M.create(session_config, filetype, on_ready)
   local initial_buf = vim.api.nvim_get_current_buf()
 
   -- Check if this is an explorer/history placeholder
-  local is_explorer_placeholder = session_config.mode == "explorer" and (path.is_empty(session_config.original) or (not session_config.git_root and session_config.explorer_data))
-  local is_history_placeholder = session_config.mode == "history" and session_config.history_data
+  local is_explorer_placeholder = session_config.panel
+    and session_config.panel.name == "explorer"
+    and (path.is_empty(session_config.original) or (not session_config.git_root and session_config.panel.data))
+  local is_history_placeholder = session_config.panel and session_config.panel.name == "history" and session_config.panel.data
 
   if is_explorer_placeholder or is_history_placeholder then
     -- Placeholder: single window with scratch buffer, no diff yet
@@ -139,27 +141,27 @@ function M.create(session_config, filetype, on_ready)
     vim.wo[modified_win].cursorline = true
     vim.wo[modified_win].wrap = false
 
-    lifecycle.create_session(
-      tabpage,
-      session_config.mode,
-      session_config.git_root,
-      "",
-      "",
-      nil,
-      nil,
-      orig_scratch,
-      mod_scratch,
-      modified_win,
-      modified_win, -- both point to the single window
-      {},
-      function()
+    lifecycle.create_session(tabpage, {
+      panel = session_config.panel,
+      merge = session_config.conflict,
+      git_root = session_config.git_root,
+      original = "",
+      modified = "",
+      original_revision = nil,
+      modified_revision = nil,
+      original_bufnr = orig_scratch,
+      modified_bufnr = mod_scratch,
+      original_win = modified_win,
+      modified_win = modified_win, -- both point to the single window
+      lines_diff = {},
+      exit_on_close = session_config.exit_on_close,
+      reapply_keymaps = function()
         local _, mb = lifecycle.get_buffers(tabpage)
         if mb then
           setup_keymaps(tabpage, orig_scratch, mb)
         end
       end,
-      session_config.exit_on_close
-    )
+    })
 
     mark_inline(tabpage)
     -- Setup panels via shared module
@@ -171,7 +173,7 @@ function M.create(session_config, filetype, on_ready)
     vim.api.nvim_exec_autocmds("User", {
       pattern = "CodeDiffOpen",
       modeline = false,
-      data = { tabpage = tabpage, mode = session_config.mode, layout = "inline" },
+      data = { tabpage = tabpage, mode = lifecycle.event_mode(session_config.panel), layout = "inline" },
     })
 
     return { modified_buf = mod_scratch, original_buf = orig_scratch, modified_win = modified_win }
@@ -242,27 +244,27 @@ function M.create(session_config, filetype, on_ready)
     )
 
     if lines_diff then
-      lifecycle.create_session(
-        tabpage,
-        session_config.mode,
-        session_config.git_root,
-        session_config.original,
-        session_config.modified,
-        session_config.original_revision,
-        session_config.modified_revision,
-        original_info.bufnr,
-        modified_info.bufnr,
-        modified_win,
-        modified_win,
-        lines_diff,
-        function()
+      lifecycle.create_session(tabpage, {
+        panel = session_config.panel,
+        merge = session_config.conflict,
+        git_root = session_config.git_root,
+        original = session_config.original,
+        modified = session_config.modified,
+        original_revision = session_config.original_revision,
+        modified_revision = session_config.modified_revision,
+        original_bufnr = original_info.bufnr,
+        modified_bufnr = modified_info.bufnr,
+        original_win = modified_win,
+        modified_win = modified_win,
+        lines_diff = lines_diff,
+        exit_on_close = session_config.exit_on_close,
+        reapply_keymaps = function()
           local _, mb = lifecycle.get_buffers(tabpage)
           if mb then
             setup_keymaps(tabpage, original_info.bufnr, mb)
           end
         end,
-        session_config.exit_on_close
-      )
+      })
 
       mark_inline(tabpage)
 
@@ -270,6 +272,11 @@ function M.create(session_config, filetype, on_ready)
       auto_refresh.enable(modified_info.bufnr)
 
       setup_keymaps(tabpage, original_info.bufnr, modified_info.bufnr)
+
+      -- Keep the diff pointed at the working window's file if it changes.
+      -- Same as the side-by-side path: the behaviour belongs to the session
+      -- shape, not to a layout.
+      require("codediff.ui.follow_working_file").enable(tabpage, original_is_virtual, modified_is_virtual)
 
       if on_ready then
         on_ready()
@@ -334,7 +341,7 @@ function M.create(session_config, filetype, on_ready)
   vim.api.nvim_exec_autocmds("User", {
     pattern = "CodeDiffOpen",
     modeline = false,
-    data = { tabpage = tabpage, mode = session_config.mode, layout = "inline" },
+    data = { tabpage = tabpage, mode = lifecycle.event_mode(session_config.panel), layout = "inline" },
   })
 
   return { modified_buf = modified_info.bufnr, original_buf = original_info.bufnr, modified_win = modified_win }
@@ -366,6 +373,10 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
 
   session.single_side = nil
   lifecycle.update_diff_result(tabpage, nil)
+
+  -- Retargeting can move a session between a conflicted file and an ordinary
+  -- one, so the merge flag follows the incoming config.
+  lifecycle.update_merge(tabpage, session_config.conflict)
 
   local original_is_virtual = is_virtual_revision(session_config.original_revision)
   local modified_is_virtual = is_virtual_revision(session_config.modified_revision)
@@ -604,7 +615,7 @@ function M.show_single_file(tabpage, file_path, opts)
   core.render_whole_file(file_bufnr, side)
 
   local view_keymaps = require("codediff.ui.view.keymaps")
-  view_keymaps.setup_all_keymaps(tabpage, orig_bufnr, mod_bufnr, session.mode == "explorer")
+  view_keymaps.setup_all_keymaps(tabpage, orig_bufnr, mod_bufnr, session.panel ~= nil and session.panel.name == "explorer")
   layout.arrange(tabpage)
   welcome_window.sync_later(mod_win)
 end
@@ -639,7 +650,7 @@ function M.show_welcome(tabpage, load_bufnr)
   lifecycle.update_diff_result(tabpage, { changes = {}, moves = {} })
 
   local view_keymaps = require("codediff.ui.view.keymaps")
-  view_keymaps.setup_all_keymaps(tabpage, empty_buf, load_bufnr, session.mode == "explorer")
+  view_keymaps.setup_all_keymaps(tabpage, empty_buf, load_bufnr, session.panel ~= nil and session.panel.name == "explorer")
   layout.arrange(tabpage)
   welcome_window.sync_later(mod_win)
 end

@@ -24,7 +24,7 @@ local function get_explorer_target_file(explorer, session)
 end
 
 function M.toggle_explorer(ctx)
-  local explorer_obj = lifecycle.get_explorer(ctx.tabpage)
+  local explorer_obj = lifecycle.get_panel_view(ctx.tabpage)
   if not explorer_obj then
     vim.notify("No explorer found for this tab", vim.log.levels.WARN)
     return
@@ -34,7 +34,7 @@ function M.toggle_explorer(ctx)
 end
 
 function M.focus_explorer(ctx)
-  local explorer_obj = lifecycle.get_explorer(ctx.tabpage)
+  local explorer_obj = lifecycle.get_panel_view(ctx.tabpage)
   if not explorer_obj then
     vim.notify("No explorer found for this tab", vim.log.levels.WARN)
     return
@@ -64,7 +64,7 @@ function M.open_in_prev_tab(ctx)
     side = "modified"
   end
 
-  local explorer = lifecycle.get_explorer(ctx.tabpage)
+  local explorer = lifecycle.get_panel_view(ctx.tabpage)
   local is_explorer_buf = explorer and explorer.bufnr and current_buf == explorer.bufnr
 
   -- Only operate on diff and explorer buffers; ignore history/result silently

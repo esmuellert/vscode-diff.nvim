@@ -5,6 +5,7 @@ local M = {}
 local config = require("codediff.config")
 local virtual_file = require("codediff.core.virtual_file")
 local accessors = require("codediff.ui.lifecycle.accessors")
+local keymaps = require("codediff.ui.lifecycle.keymaps")
 local welcome_window = require("codediff.ui.view.welcome_window")
 -- Eagerly loaded: sessions are created from scheduled callbacks that may run
 -- after the CWD changed, and a first-time require would fail there.
@@ -14,7 +15,8 @@ local keymap = require("codediff.keymap")
 -- Structure: {
 --   tabpage_id = {
 --     original_bufnr, modified_bufnr, original_win, modified_win,
---     mode = "standalone" | "explorer",
+--     panel = { name = "explorer"|"history", view = table? }?, -- nil for a bare diff
+--     merge = boolean?, -- 3-way merge view; result_bufnr only says if the pane exists
 --     git_root = string?,
 --     original = Path,
 --     modified = Path,
@@ -55,51 +57,60 @@ end
 -- Expose compute_virtual_uri for other modules
 M.compute_virtual_uri = compute_virtual_uri
 
-function M.create_session(
-  tabpage,
-  mode,
-  git_root,
-  original,
-  modified,
-  original_revision,
-  modified_revision,
-  original_bufnr,
-  modified_bufnr,
-  original_win,
-  modified_win,
-  lines_diff,
-  reapply_keymaps,
-  exit_on_close
-)
+--- @class CreateSessionOpts
+--- @field panel table? Panel descriptor { name, data }; nil for a bare diff
+--- @field merge boolean? 3-way merge view. The single answer to "is this a
+---   merge view"; result_bufnr says only whether the result pane is built yet.
+--- @field git_root string?
+--- @field original Path|string
+--- @field modified Path|string
+--- @field original_revision string?
+--- @field modified_revision string?
+--- @field original_bufnr number
+--- @field modified_bufnr number
+--- @field original_win number
+--- @field modified_win number
+--- @field lines_diff table? Initial diff result
+--- @field reapply_keymaps function? Called when the session's shape changes
+--- @field exit_on_close boolean? Exit Neovim when this session closes
+
+--- @param tabpage number
+--- @param opts CreateSessionOpts
+function M.create_session(tabpage, opts)
   local state = require("codediff.ui.lifecycle.state")
+  local original_bufnr, modified_bufnr = opts.original_bufnr, opts.modified_bufnr
   -- Save buffer states
   local original_state = state.save_buffer_state(original_bufnr)
   local modified_state = state.save_buffer_state(modified_bufnr)
 
   -- Create complete session in one step
   active_diffs[tabpage] = {
-    -- Mode & Git Context (immutable)
-    mode = mode,
-    git_root = git_root,
-    original = original,
-    modified = modified,
-    original_revision = original_revision,
-    modified_revision = modified_revision,
+    -- Panel & Git Context (immutable)
+    -- `panel.data` is construction material: panel.lua consumes it to build the
+    -- panel, which copies forward whatever it still needs (pathspec,
+    -- status_result). Keeping it on the session would be a second, stale copy.
+    panel = opts.panel and { name = opts.panel.name } or nil,
+    merge = opts.merge or nil,
+    git_root = opts.git_root,
+    original = opts.original,
+    modified = opts.modified,
+    original_revision = opts.original_revision,
+    modified_revision = opts.modified_revision,
 
     -- Buffers & Windows
     original_bufnr = original_bufnr,
     modified_bufnr = modified_bufnr,
-    original_win = original_win,
-    modified_win = modified_win,
+    original_win = opts.original_win,
+    modified_win = opts.modified_win,
     original_state = original_state,
     modified_state = modified_state,
 
     -- Lifecycle state
     layout = "side-by-side",
-    exit_on_close = exit_on_close == true,
+    exit_on_close = opts.exit_on_close == true,
     suspended = false,
     single_side = nil,
-    stored_diff_result = lines_diff,
+    stored_diff_result = opts.lines_diff,
     changedtick = {
       original = vim.api.nvim_buf_get_changedtick(original_bufnr),
       modified = vim.api.nvim_buf_get_changedtick(modified_bufnr),
@@ -109,14 +120,11 @@ function M.create_session(
       modified = state.get_file_mtime(modified_bufnr),
     },
 
-    -- Explorer reference (only for explorer mode)
-    explorer = nil,
-
     -- Conflict mode result buffer (3-way merge)
     result_bufnr = nil,
     result_win = nil,
     conflict_files = {}, -- Tracks files opened in conflict mode for unsaved warning
-    reapply_keymaps = reapply_keymaps,
+    reapply_keymaps = opts.reapply_keymaps,
     -- Owns every mapping this session installs, so teardown can hand each key
     -- back to whatever owned it before codediff.
     keymaps = keymap.new("codediff-session:" .. tostring(tabpage)),
@@ -125,8 +133,8 @@ function M.create_session(
   welcome_window.capture_session_profiles(active_diffs[tabpage])
 
   -- Mark windows with restore flag
-  vim.w[original_win].codediff_restore = 1
-  vim.w[modified_win].codediff_restore = 1
+  vim.w[opts.original_win].codediff_restore = 1
+  vim.w[opts.modified_win].codediff_restore = 1
 
   -- Continuously enforce inlay hint settings via LspAttach (handles LazyVim re-enabling)
   if config.options.diff.disable_inlay_hints and vim.lsp.inlay_hint then
@@ -191,7 +199,7 @@ function M.create_session(
     callback = function()
       local current_tab = vim.api.nvim_get_current_tabpage()
       if current_tab == tabpage then
-        accessors.clear_tab_keymaps(tabpage)
+        keymaps.clear_tab_keymaps(tabpage)
         state.suspend_diff(tabpage)
       end
     end,
@@ -212,7 +220,7 @@ function M.create_session(
             state.resume_diff(tabpage)
             return
           end
-          accessors.restore_tab_keymaps(tabpage)
+          keymaps.restore_tab_keymaps(tabpage)
           if sess.reapply_keymaps then
             pcall(sess.reapply_keymaps)
           end

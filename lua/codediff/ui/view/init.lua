@@ -23,7 +23,7 @@ local function get_layout(session_config, tabpage)
 end
 
 ---@class SessionConfig
----@field mode "standalone"|"explorer"|"history"
+---@field panel { name: "explorer"|"history", data: table }? Side panel; nil for a bare diff
 ---@field git_root string?
 ---@field original Path
 ---@field modified Path
@@ -32,8 +32,6 @@ end
 ---@field conflict boolean? For merge conflict mode: render both sides against base
 ---@field layout "side-by-side"|"inline"? Optional per-invocation layout override
 ---@field exit_on_close boolean? Exit Neovim when this session closes
----@field explorer_data table? For explorer mode: { status_result, focus_file, pathspec }
----@field history_data table? For history mode: { commits, range, file_path, line_range }
 ---@field line_range table? For history line-range mode: { start_line, end_line }
 
 ---@param session_config SessionConfig Session configuration

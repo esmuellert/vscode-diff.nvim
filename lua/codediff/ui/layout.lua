@@ -17,20 +17,15 @@ function M.arrange(tabpage)
   local original_win = session.original_win
   local modified_win = session.modified_win
   local result_win = session.result_win
-  local panel = session.explorer -- explorer or history panel object
+  local panel = session.panel and session.panel.view
 
   -- Panel state
   local panel_win = panel and panel.winid
   local panel_visible = panel_win and vim.api.nvim_win_is_valid(panel_win) and not panel.is_hidden
 
-  -- Determine panel config (explorer or history)
-  local mode = session.mode
-  local panel_config
-  if mode == "history" then
-    panel_config = config.options.history or {}
-  else
-    panel_config = config.options.explorer or {}
-  end
+  -- Panel config lives under the panel's own name in the user config
+  local panel_name = session.panel and session.panel.name or "explorer"
+  local panel_config = config.options[panel_name] or {}
   local panel_position = panel_config.position or "left"
 
   -- Step 1: Pin panel size (fixed element)

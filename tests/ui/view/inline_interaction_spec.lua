@@ -33,7 +33,6 @@ local function create_inline_view(original_lines, modified_lines)
   vim.fn.writefile(modified_lines, right_path)
 
   view.create({
-    mode = "standalone",
     git_root = nil,
     original = path.make_ref(left_path, nil),
     modified = path.make_ref(right_path, nil),

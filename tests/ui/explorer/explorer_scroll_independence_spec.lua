@@ -53,7 +53,7 @@ local function open_codediff_and_wait(repo, timeout_ms)
   local ready = vim.wait(timeout_ms, function()
     for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
       local s = lifecycle.get_session(tp)
-      if s and s.explorer and s.modified_win and vim.api.nvim_win_is_valid(s.modified_win) then
+      if s and (s.panel or {}).view and s.modified_win and vim.api.nvim_win_is_valid(s.modified_win) then
         local mbuf = vim.api.nvim_win_get_buf(s.modified_win)
         if vim.api.nvim_buf_is_valid(mbuf) and vim.api.nvim_buf_line_count(mbuf) > 100 and scroll.get(tp) then
           tabpage = tp
@@ -65,7 +65,7 @@ local function open_codediff_and_wait(repo, timeout_ms)
   end, 100)
   assert.is_true(ready, "CodeDiff explorer, loaded diff panes, and scroll-sync group should be ready")
   local session = lifecycle.get_session(tabpage)
-  return tabpage, session, session.explorer
+  return tabpage, session, (session.panel or {}).view
 end
 
 local function topline(win)

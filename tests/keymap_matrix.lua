@@ -15,7 +15,7 @@ local M = {}
 M.MODES = { "n", "x", "o", "v", "i" }
 
 --- Resolve the role -> bufnr map for a session.
---- The explorer and history panels share session.explorer, so both are
+--- The explorer and history panels share (session.panel or {}).view, so both are
 --- reported under the single "panel" role.
 --- @param tabpage number
 --- @return table<string, number> roles
@@ -33,8 +33,8 @@ function M.roles(tabpage)
   if session.modified_bufnr then
     roles.modified = session.modified_bufnr
   end
-  if session.explorer and session.explorer.bufnr then
-    roles.panel = session.explorer.bufnr
+  if (session.panel or {}).view and (session.panel or {}).view.bufnr then
+    roles.panel = (session.panel or {}).view.bufnr
   end
   if session.result_bufnr then
     roles.result = session.result_bufnr
