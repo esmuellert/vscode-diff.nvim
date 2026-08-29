@@ -277,10 +277,8 @@ local function render_diff_view(ctx)
   end
 end
 
---- Run `render` once both panes hold their final content.
---- Virtual buffers load asynchronously via BufReadCmd, so wait for the load
---- event for each virtual side; real files only need the pending :edit to
---- finish.
+--- Run `render` once both panes hold their final content. Virtual buffers
+--- load asynchronously via BufReadCmd; real files only need the pending :edit.
 --- @param tabpage number
 --- @param original_info table
 --- @param modified_info table
@@ -412,9 +410,8 @@ end
 ---@param auto_scroll_to_first_hunk boolean?
 ---@return boolean
 --- Put one side's content into `win` during an update, reusing the buffer when
---- it is still alive and re-editing when it is not.
---- Unlike load_side, used on create, this also has to cope with the buffer
---- having been wiped since the session was built.
+--- it is still alive. Unlike load_side, this has to cope with the buffer having
+--- been wiped since the session was built.
 --- @param win number
 --- @param info table From prepare_buffer; info.bufnr is updated in place
 --- @param is_virtual boolean

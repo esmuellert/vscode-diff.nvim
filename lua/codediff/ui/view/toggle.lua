@@ -36,11 +36,9 @@ local function normalize_inline_layout(tabpage)
   return true
 end
 
---- Reshape a tab so the side-by-side code can work on it: one pane, and a
---- session that says so. side_by_side.update opens the second pane itself when
---- it sees single_pane.
---- Exported because conflict mode needs it too: a conflicted file forces the
---- side-by-side layout, and an inline tab is not in a shape it can use.
+--- Reshape a tab to one pane and a session that says so; side_by_side.update
+--- opens the second pane itself when it sees single_pane.
+--- Exported because conflict mode needs it too.
 --- @param tabpage number
 --- @return boolean
 function M.normalize_side_by_side_layout(tabpage)

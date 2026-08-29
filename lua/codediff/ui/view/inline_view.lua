@@ -215,9 +215,8 @@ local function load_visible_side(win, info, is_virtual)
 end
 
 --- Materialise the original side, which inline never puts in a window.
---- A virtual original cannot use :edit — codediff:// buffers carry
---- bufhidden=wipe, so with no window showing them they are destroyed at once.
---- It gets an empty scratch buffer that the async fetch fills instead.
+--- A codediff:// buffer carries bufhidden=wipe, so with no window showing it
+--- :edit would destroy it at once; it gets a scratch buffer instead.
 --- @param info table From prepare_buffer; info.bufnr is updated in place
 --- @param is_virtual boolean
 local function load_hidden_original(info, is_virtual)

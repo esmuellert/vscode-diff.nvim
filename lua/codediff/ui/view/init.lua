@@ -62,11 +62,9 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
     return require("codediff.ui.view.inline_view").update(tabpage, session_config, auto_scroll_to_first_hunk)
   end
 
-  -- A conflicted file forces side-by-side, but the tab may still be shaped for
-  -- inline: one pane, with both sides pointing at it. Handing that to the
-  -- side-by-side code makes it write both sides into the same window, so the
-  -- second overwrites the first and no result pane is ever opened. Reshape the
-  -- tab first; side_by_side.update opens the missing pane itself.
+  -- An inline tab has one pane with both sides pointing at it; side-by-side
+  -- would write both into that window. Reshape it first -- side_by_side.update
+  -- opens the missing pane itself.
   local session = lifecycle.get_session(tabpage)
   if session_config and session_config.conflict and session and session.layout == "inline" then
     require("codediff.ui.view.toggle").normalize_side_by_side_layout(tabpage)

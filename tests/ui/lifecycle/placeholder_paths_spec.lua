@@ -1,11 +1,7 @@
--- A placeholder session stores the two paths as the empty string, while every
--- other session stores them as Path tables. Everything that reads them reaches
--- for .absolute or .relative, and Lua lets you index a string, so those reads
--- quietly returned nil instead of failing. Nothing checked the nil, so it
--- worked by coincidence rather than by design.
---
--- Both sides are the empty Path now. This pins that: a placeholder session must
--- carry the same shape as any other, so a reader cannot tell them apart.
+-- A placeholder session stored its paths as the empty string while every other
+-- session stored Path tables. Readers reach for .absolute, and Lua lets you
+-- index a string, so those reads answered nil instead of failing. Both are
+-- path.empty() now; this pins that.
 
 local h = dofile("tests/helpers.lua")
 
