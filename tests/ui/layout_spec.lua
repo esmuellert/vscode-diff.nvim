@@ -1208,10 +1208,17 @@ describe("Layout Manager", function()
     local session_mod = require("codediff.ui.lifecycle.session")
     config.options.explorer = config.options.explorer or {}
     config.options.explorer.width = panel_width
-    session_mod.create_session(
-      tabpage, "explorer", "/tmp", "", "", nil, nil,
-      orig_buf, mod_buf, orig_win, mod_win, {}, nil
-    )
+    session_mod.create_session(tabpage, {
+      panel = { name = "explorer" },
+      git_root = "/tmp",
+      original = "",
+      modified = "",
+      original_bufnr = orig_buf,
+      modified_bufnr = mod_buf,
+      original_win = orig_win,
+      modified_win = mod_win,
+      lines_diff = {},
+    })
     local accessors = require("codediff.ui.lifecycle.accessors")
     accessors.set_panel_view(tabpage, panel)
 

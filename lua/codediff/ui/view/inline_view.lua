@@ -141,28 +141,27 @@ function M.create(session_config, filetype, on_ready)
     vim.wo[modified_win].cursorline = true
     vim.wo[modified_win].wrap = false
 
-    lifecycle.create_session(
-      tabpage,
-      session_config.panel,
-      session_config.git_root,
-      "",
-      "",
-      nil,
-      nil,
-      orig_scratch,
-      mod_scratch,
-      modified_win,
-      modified_win, -- both point to the single window
-      {},
-      function()
+    lifecycle.create_session(tabpage, {
+      panel = session_config.panel,
+      merge = session_config.conflict,
+      git_root = session_config.git_root,
+      original = "",
+      modified = "",
+      original_revision = nil,
+      modified_revision = nil,
+      original_bufnr = orig_scratch,
+      modified_bufnr = mod_scratch,
+      original_win = modified_win,
+      modified_win = modified_win, -- both point to the single window
+      lines_diff = {},
+      exit_on_close = session_config.exit_on_close,
+      reapply_keymaps = function()
         local _, mb = lifecycle.get_buffers(tabpage)
         if mb then
           setup_keymaps(tabpage, orig_scratch, mb)
         end
       end,
-      session_config.exit_on_close,
-      session_config.conflict
-    )
+    })
 
     mark_inline(tabpage)
     -- Setup panels via shared module
@@ -245,28 +244,27 @@ function M.create(session_config, filetype, on_ready)
     )
 
     if lines_diff then
-      lifecycle.create_session(
-        tabpage,
-        session_config.panel,
-        session_config.git_root,
-        session_config.original,
-        session_config.modified,
-        session_config.original_revision,
-        session_config.modified_revision,
-        original_info.bufnr,
-        modified_info.bufnr,
-        modified_win,
-        modified_win,
-        lines_diff,
-        function()
+      lifecycle.create_session(tabpage, {
+        panel = session_config.panel,
+        merge = session_config.conflict,
+        git_root = session_config.git_root,
+        original = session_config.original,
+        modified = session_config.modified,
+        original_revision = session_config.original_revision,
+        modified_revision = session_config.modified_revision,
+        original_bufnr = original_info.bufnr,
+        modified_bufnr = modified_info.bufnr,
+        original_win = modified_win,
+        modified_win = modified_win,
+        lines_diff = lines_diff,
+        exit_on_close = session_config.exit_on_close,
+        reapply_keymaps = function()
           local _, mb = lifecycle.get_buffers(tabpage)
           if mb then
             setup_keymaps(tabpage, original_info.bufnr, mb)
           end
         end,
-        session_config.exit_on_close,
-        session_config.conflict
-      )
+      })
 
       mark_inline(tabpage)
 

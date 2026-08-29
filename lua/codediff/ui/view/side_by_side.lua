@@ -150,20 +150,21 @@ function M.create(session_config, filetype, on_ready)
   -- For explorer placeholder, create minimal session without rendering
   if is_explorer_placeholder or is_history_placeholder then
     -- Create minimal lifecycle session for explorer/history (update will populate it)
-    lifecycle.create_session(
-      tabpage,
-      session_config.panel,
-      session_config.git_root,
-      "", -- Empty paths indicate placeholder
-      "",
-      nil,
-      nil,
-      original_info.bufnr,
-      modified_info.bufnr,
-      original_win,
-      modified_win,
-      {}, -- Empty diff result - will be updated on first file selection
-      function()
+    lifecycle.create_session(tabpage, {
+      panel = session_config.panel,
+      merge = session_config.conflict,
+      git_root = session_config.git_root,
+      original = "", -- Empty paths indicate placeholder
+      modified = "",
+      original_revision = nil,
+      modified_revision = nil,
+      original_bufnr = original_info.bufnr,
+      modified_bufnr = modified_info.bufnr,
+      original_win = original_win,
+      modified_win = modified_win,
+      lines_diff = {}, -- Empty diff result - will be updated on first file selection
+      exit_on_close = session_config.exit_on_close,
+      reapply_keymaps = function()
         local ob, mb = lifecycle.get_buffers(tabpage)
         if not ob or not mb then
           return
@@ -171,9 +172,7 @@ function M.create(session_config, filetype, on_ready)
         local is_explorer = lifecycle.get_panel_name(tabpage) == "explorer"
         setup_all_keymaps(tabpage, ob, mb, is_explorer)
       end,
-      session_config.exit_on_close,
-      session_config.conflict
-    )
+    })
   else
     -- Normal mode: Full rendering
     local original_is_virtual = is_virtual_revision(session_config.original_revision)
@@ -229,20 +228,21 @@ function M.create(session_config, filetype, on_ready)
 
             if conflict_diffs then
               -- Create lifecycle session for conflict mode
-              lifecycle.create_session(
-                tabpage,
-                session_config.panel,
-                session_config.git_root,
-                session_config.original,
-                session_config.modified,
-                session_config.original_revision,
-                session_config.modified_revision,
-                original_info.bufnr,
-                modified_info.bufnr,
-                original_win,
-                modified_win,
-                conflict_diffs.base_to_modified_diff,
-                function()
+              lifecycle.create_session(tabpage, {
+                panel = session_config.panel,
+                merge = session_config.conflict,
+                git_root = session_config.git_root,
+                original = session_config.original,
+                modified = session_config.modified,
+                original_revision = session_config.original_revision,
+                modified_revision = session_config.modified_revision,
+                original_bufnr = original_info.bufnr,
+                modified_bufnr = modified_info.bufnr,
+                original_win = original_win,
+                modified_win = modified_win,
+                lines_diff = conflict_diffs.base_to_modified_diff,
+                exit_on_close = session_config.exit_on_close,
+                reapply_keymaps = function()
                   local ob, mb = lifecycle.get_buffers(tabpage)
                   if not ob or not mb then
                     return
@@ -251,9 +251,7 @@ function M.create(session_config, filetype, on_ready)
                   local conflict = require("codediff.ui.conflict")
                   conflict.setup_keymaps(tabpage)
                 end,
-                session_config.exit_on_close,
-                session_config.conflict
-              )
+              })
 
               -- Setup result window and keymaps
               local success = setup_conflict_result_window(tabpage, session_config, original_win, modified_win, base_lines, conflict_diffs, false)
@@ -287,20 +285,21 @@ function M.create(session_config, filetype, on_ready)
 
         if lines_diff then
           -- Create complete lifecycle session (one step!)
-          lifecycle.create_session(
-            tabpage,
-            session_config.panel,
-            session_config.git_root,
-            session_config.original,
-            session_config.modified,
-            session_config.original_revision,
-            session_config.modified_revision,
-            original_info.bufnr,
-            modified_info.bufnr,
-            original_win,
-            modified_win,
-            lines_diff,
-            function()
+          lifecycle.create_session(tabpage, {
+            panel = session_config.panel,
+            merge = session_config.conflict,
+            git_root = session_config.git_root,
+            original = session_config.original,
+            modified = session_config.modified,
+            original_revision = session_config.original_revision,
+            modified_revision = session_config.modified_revision,
+            original_bufnr = original_info.bufnr,
+            modified_bufnr = modified_info.bufnr,
+            original_win = original_win,
+            modified_win = modified_win,
+            lines_diff = lines_diff,
+            exit_on_close = session_config.exit_on_close,
+            reapply_keymaps = function()
               local ob, mb = lifecycle.get_buffers(tabpage)
               if not ob or not mb then
                 return
@@ -308,9 +307,7 @@ function M.create(session_config, filetype, on_ready)
               local is_explorer = lifecycle.get_panel_name(tabpage) == "explorer"
               setup_all_keymaps(tabpage, ob, mb, is_explorer)
             end,
-            session_config.exit_on_close,
-            session_config.conflict
-          )
+          })
           -- Enable auto-refresh for real file buffers only
           setup_auto_refresh(original_info.bufnr, modified_info.bufnr, original_is_virtual, modified_is_virtual)
 

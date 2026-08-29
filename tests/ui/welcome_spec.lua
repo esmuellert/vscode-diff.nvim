@@ -122,7 +122,15 @@ describe("Welcome Page", function()
       vim.wo[other_win].signcolumn = "yes"
       vim.wo[other_win].statuscolumn = "%=%l"
 
-      lifecycle.create_session(tabpage, "standalone", nil, "", "", nil, nil, regular_buf, other_buf, main_win, other_win, {}, nil)
+      lifecycle.create_session(tabpage, {
+        original = "",
+        modified = "",
+        original_bufnr = regular_buf,
+        modified_bufnr = other_buf,
+        original_win = main_win,
+        modified_win = other_win,
+        lines_diff = {},
+      })
       vim.api.nvim_set_current_win(main_win)
 
       vim.api.nvim_win_set_buf(main_win, welcome_buf)

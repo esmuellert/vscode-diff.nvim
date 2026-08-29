@@ -57,30 +57,28 @@ end
 -- Expose compute_virtual_uri for other modules
 M.compute_virtual_uri = compute_virtual_uri
 
---- @param merge boolean? True for a 3-way merge view (a result pane exists).
---- Set once at creation and never changes, so it is the single answer to "is
---- this a merge view". result_bufnr says only whether the pane is built yet.
----
---- NOTE: this signature is up to fifteen positional parameters and should
---- become a table; that is a separate change.
-function M.create_session(
-  tabpage,
-  panel,
-  git_root,
-  original,
-  modified,
-  original_revision,
-  modified_revision,
-  original_bufnr,
-  modified_bufnr,
-  original_win,
-  modified_win,
-  lines_diff,
-  reapply_keymaps,
-  exit_on_close,
-  merge
-)
+--- @class CreateSessionOpts
+--- @field panel table? Panel descriptor { name, data }; nil for a bare diff
+--- @field merge boolean? 3-way merge view. The single answer to "is this a
+---   merge view"; result_bufnr says only whether the result pane is built yet.
+--- @field git_root string?
+--- @field original Path|string
+--- @field modified Path|string
+--- @field original_revision string?
+--- @field modified_revision string?
+--- @field original_bufnr number
+--- @field modified_bufnr number
+--- @field original_win number
+--- @field modified_win number
+--- @field lines_diff table? Initial diff result
+--- @field reapply_keymaps function? Called when the session's shape changes
+--- @field exit_on_close boolean? Exit Neovim when this session closes
+
+--- @param tabpage number
+--- @param opts CreateSessionOpts
+function M.create_session(tabpage, opts)
   local state = require("codediff.ui.lifecycle.state")
+  local original_bufnr, modified_bufnr = opts.original_bufnr, opts.modified_bufnr
   -- Save buffer states
   local original_state = state.save_buffer_state(original_bufnr)
   local modified_state = state.save_buffer_state(modified_bufnr)
@@ -91,28 +89,28 @@ function M.create_session(
     -- `panel.data` is construction material: panel.lua consumes it to build the
     -- panel, which copies forward whatever it still needs (pathspec,
     -- status_result). Keeping it on the session would be a second, stale copy.
-    panel = panel and { name = panel.name } or nil,
-    merge = merge or nil,
-    git_root = git_root,
-    original = original,
-    modified = modified,
-    original_revision = original_revision,
-    modified_revision = modified_revision,
+    panel = opts.panel and { name = opts.panel.name } or nil,
+    merge = opts.merge or nil,
+    git_root = opts.git_root,
+    original = opts.original,
+    modified = opts.modified,
+    original_revision = opts.original_revision,
+    modified_revision = opts.modified_revision,
 
     -- Buffers & Windows
     original_bufnr = original_bufnr,
     modified_bufnr = modified_bufnr,
-    original_win = original_win,
-    modified_win = modified_win,
+    original_win = opts.original_win,
+    modified_win = opts.modified_win,
     original_state = original_state,
     modified_state = modified_state,
 
     -- Lifecycle state
     layout = "side-by-side",
-    exit_on_close = exit_on_close == true,
+    exit_on_close = opts.exit_on_close == true,
     suspended = false,
     single_side = nil,
-    stored_diff_result = lines_diff,
+    stored_diff_result = opts.lines_diff,
     changedtick = {
       original = vim.api.nvim_buf_get_changedtick(original_bufnr),
       modified = vim.api.nvim_buf_get_changedtick(modified_bufnr),
@@ -122,14 +120,11 @@ function M.create_session(
       modified = state.get_file_mtime(modified_bufnr),
     },
 
-    -- Explorer reference (only for explorer mode)
-    explorer = nil,
-
     -- Conflict mode result buffer (3-way merge)
     result_bufnr = nil,
     result_win = nil,
     conflict_files = {}, -- Tracks files opened in conflict mode for unsaved warning
-    reapply_keymaps = reapply_keymaps,
+    reapply_keymaps = opts.reapply_keymaps,
     -- Owns every mapping this session installs, so teardown can hand each key
     -- back to whatever owned it before codediff.
     keymaps = keymap.new("codediff-session:" .. tostring(tabpage)),
@@ -138,8 +133,8 @@ function M.create_session(
   welcome_window.capture_session_profiles(active_diffs[tabpage])
 
   -- Mark windows with restore flag
-  vim.w[original_win].codediff_restore = 1
-  vim.w[modified_win].codediff_restore = 1
+  vim.w[opts.original_win].codediff_restore = 1
+  vim.w[opts.modified_win].codediff_restore = 1
 
   -- Continuously enforce inlay hint settings via LspAttach (handles LazyVim re-enabling)
   if config.options.diff.disable_inlay_hints and vim.lsp.inlay_hint then
