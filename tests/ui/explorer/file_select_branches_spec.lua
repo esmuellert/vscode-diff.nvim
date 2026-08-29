@@ -1,9 +1,6 @@
 -- Two branches of the explorer's file-select handler had no coverage: a file
 -- added in the revision being viewed, and directory comparison mode. Stubbing
 -- either left all 90 specs green.
---
--- Both are about to be lifted out of a 350-line closure, so they are pinned
--- first.
 
 local h = dofile("tests/helpers.lua")
 

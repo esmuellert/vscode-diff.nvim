@@ -1,15 +1,9 @@
--- Opening the explorer against a revision -- `:CodeDiff HEAD~1` -- takes its
--- own branch of the file-select handler. That branch had no coverage.
---
--- What distinguishes it from the fallback is renames: it reads the left side
--- from the file's *old* path, because that is what the file was called at that
--- revision. The fallback uses the current name, which does not exist there, so
--- the left side comes back empty.
---
--- An unrenamed file cannot tell the two apart -- both resolve the same commit
--- -- so the rename is the test. It has to be a rename git will actually
--- report as one: `-M` needs the two versions to still look alike, so the file
--- is long enough that changing one line leaves it recognisable.
+-- `:CodeDiff HEAD~1` takes its own branch of the file-select handler, which
+-- had no coverage. What separates it from the fallback is renames: it reads
+-- the left side from the file's old name, which is what it was called at that
+-- revision. An unrenamed file cannot tell the two apart, so the rename is the
+-- test -- and it has to be one `-M` will report, hence a file long enough to
+-- stay recognisable after an edit.
 
 local h = dofile("tests/helpers.lua")
 
@@ -48,9 +42,8 @@ describe("explorer opened against a revision", function()
     local lifecycle = require("codediff.ui.lifecycle")
     lifecycle.cleanup_all()
 
-    -- Assert on the explorer's own first selection: :CodeDiff HEAD~1 opens and
-    -- selects a file by itself, and a hand-made select afterwards would only
-    -- repeat work already done.
+    -- Assert on the explorer's own first selection: a hand-made select
+    -- afterwards would only repeat work already done.
     vim.cmd("CodeDiff HEAD~1")
 
     local tabpage
@@ -83,9 +76,8 @@ describe("explorer opened against a revision", function()
 
     h.assert_contains(right, "WORKING", "right side should be the working tree")
 
-    -- The left side is read from before.txt, the name the file had at HEAD~1.
-    -- Reading after.txt there finds nothing, and an empty left side is exactly
-    -- what that looks like.
+    -- before.txt is the name the file had at HEAD~1; reading after.txt there
+    -- finds nothing, which is what an empty left side looks like.
     h.assert_contains(left, "OLD", "left side must hold the file's content at HEAD~1")
     assert.equals("before.txt", session.original.relative, "left side must be read from the old name")
   end)
