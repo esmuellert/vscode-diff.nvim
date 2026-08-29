@@ -17,6 +17,7 @@ local helpers = require("codediff.ui.view.helpers")
 local panel = require("codediff.ui.view.panel")
 local is_virtual_revision = helpers.is_virtual_revision
 local prepare_buffer = helpers.prepare_buffer
+local is_panel_placeholder = helpers.is_panel_placeholder
 local show_real_file_buffer = helpers.show_real_file_buffer
 local open_real_file = helpers.open_real_file
 
@@ -110,37 +111,185 @@ end
 ---@param filetype? string
 ---@param on_ready? function
 ---@return table|nil
+--- Options for the single inline pane. No 'list' here: side-by-side sets it
+--- to keep the two panes visually identical, which does not apply to one pane.
+--- @param win number
+local function apply_pane_options(win)
+  vim.wo[win].cursorline = true
+  vim.wo[win].wrap = false
+end
+
+--- Reapply-keymaps callback stored on the session.
+--- @param tabpage number
+--- @param original_bufnr number
+--- @return function
+local function make_reapply_keymaps(tabpage, original_bufnr)
+  return function()
+    local _, mb = lifecycle.get_buffers(tabpage)
+    if mb then
+      setup_keymaps(tabpage, original_bufnr, mb)
+    end
+  end
+end
+
+--- Attach the panels, lay the tab out, announce the view, and describe it.
+--- @param tabpage number
+--- @param session_config SessionConfig
+--- @param modified_win number
+--- @param original_bufnr number
+--- @param modified_bufnr number
+--- @return table
+local function finish_create(tabpage, session_config, modified_win, original_bufnr, modified_bufnr)
+  panel.setup_explorer(tabpage, session_config, modified_win, modified_win)
+  panel.setup_history(tabpage, session_config, modified_win, modified_win)
+
+  layout.arrange(tabpage)
+
+  vim.api.nvim_exec_autocmds("User", {
+    pattern = "CodeDiffOpen",
+    modeline = false,
+    data = { tabpage = tabpage, mode = lifecycle.event_mode(session_config.panel), layout = "inline" },
+  })
+
+  return { modified_buf = modified_bufnr, original_buf = original_bufnr, modified_win = modified_win }
+end
+
+--- Open the single pane with a scratch buffer, for a session whose content
+--- arrives later via the panel. The hidden original side gets a scratch buffer
+--- too, so the session always has two buffers to talk about.
+--- @param tabpage number
+--- @param modified_win number
+--- @return number original_bufnr, number modified_bufnr
+local function open_placeholder_pane(tabpage, modified_win)
+  local mod_scratch = vim.api.nvim_create_buf(false, true)
+  vim.bo[mod_scratch].buftype = "nofile"
+  pcall(vim.api.nvim_buf_set_name, mod_scratch, "CodeDiff " .. tabpage .. ".inline")
+  vim.api.nvim_win_set_buf(modified_win, mod_scratch)
+  welcome_window.sync(modified_win)
+
+  local orig_scratch = vim.api.nvim_create_buf(false, true)
+  vim.bo[orig_scratch].buftype = "nofile"
+
+  return orig_scratch, mod_scratch
+end
+
+--- Show the modified side in the visible pane.
+--- @param win number
+--- @param info table From prepare_buffer; info.bufnr is updated in place
+--- @param is_virtual boolean
+local function load_visible_side(win, info, is_virtual)
+  if is_virtual then
+    if info.needs_edit then
+      vim.cmd("edit! " .. vim.fn.fnameescape(info.target))
+      info.bufnr = vim.api.nvim_get_current_buf()
+    else
+      vim.api.nvim_win_set_buf(win, info.bufnr)
+    end
+  elseif info.needs_edit then
+    info.bufnr = open_real_file(win, info.target)
+  else
+    show_real_file_buffer(win, info.bufnr)
+  end
+  welcome_window.sync(win)
+end
+
+--- Materialise the original side, which inline never puts in a window.
+--- A virtual original cannot use :edit — codediff:// buffers carry
+--- bufhidden=wipe, so with no window showing them they are destroyed at once.
+--- It gets an empty scratch buffer that the async fetch fills instead.
+--- @param info table From prepare_buffer; info.bufnr is updated in place
+--- @param is_virtual boolean
+local function load_hidden_original(info, is_virtual)
+  if is_virtual and info.needs_edit then
+    local orig_buf = vim.api.nvim_create_buf(false, true)
+    vim.bo[orig_buf].buftype = "nofile"
+    info.bufnr = orig_buf
+  elseif info.needs_edit then
+    local bufnr = vim.fn.bufadd(info.target)
+    vim.fn.bufload(bufnr)
+    info.bufnr = bufnr
+  end
+end
+
+--- Call `render` once the modified buffer's virtual content has loaded.
+--- @param tabpage number
+--- @param modified_bufnr number
+--- @param render function
+local function render_after_modified_loads(tabpage, modified_bufnr, render)
+  local group = vim.api.nvim_create_augroup("CodeDiffInlineVirtualLoad_" .. tabpage, { clear = true })
+  vim.api.nvim_create_autocmd("User", {
+    group = group,
+    pattern = "CodeDiffVirtualFileLoaded",
+    callback = function(event)
+      if event.data and event.data.buf == modified_bufnr then
+        vim.schedule(render)
+        vim.api.nvim_del_augroup_by_id(group)
+      end
+    end,
+  })
+end
+
+--- Run `render` once both sides hold their content.
+--- The original side, when virtual, is fetched here rather than through
+--- BufReadCmd, because it has no window to trigger one.
+--- @param ctx table { tabpage, session_config, original_info, modified_info, virtual flags }
+--- @param render function
+local function render_when_loaded(ctx, render)
+  local original_info, modified_info = ctx.original_info, ctx.modified_info
+
+  if not ctx.original_is_virtual then
+    if ctx.modified_is_virtual then
+      render_after_modified_loads(ctx.tabpage, modified_info.bufnr, render)
+    else
+      vim.schedule(render)
+    end
+    return
+  end
+
+  local git = require("codediff.core.git")
+  local session_config = ctx.session_config
+  git.get_file_content(session_config.original_revision, session_config.git_root, session_config.original.relative, function(err, lines)
+    vim.schedule(function()
+      if not vim.api.nvim_buf_is_valid(original_info.bufnr) then
+        return
+      end
+      vim.bo[original_info.bufnr].modifiable = true
+      vim.api.nvim_buf_set_lines(original_info.bufnr, 0, -1, false, err and {} or lines)
+      vim.bo[original_info.bufnr].modifiable = false
+
+      if ctx.modified_is_virtual then
+        render_after_modified_loads(ctx.tabpage, modified_info.bufnr, render)
+      else
+        render()
+      end
+    end)
+  end)
+end
+
 function M.create(session_config, filetype, on_ready)
-  -- Create new tab
   vim.cmd("tabnew")
   local tabpage = vim.api.nvim_get_current_tabpage()
   local modified_win = vim.api.nvim_get_current_win()
   local initial_buf = vim.api.nvim_get_current_buf()
 
-  -- Check if this is an explorer/history placeholder
-  local is_explorer_placeholder = session_config.panel
-    and session_config.panel.name == "explorer"
-    and (path.is_empty(session_config.original) or (not session_config.git_root and session_config.panel.data))
-  local is_history_placeholder = session_config.panel and session_config.panel.name == "history" and session_config.panel.data
-
-  if is_explorer_placeholder or is_history_placeholder then
-    -- Placeholder: single window with scratch buffer, no diff yet
-    local mod_scratch = vim.api.nvim_create_buf(false, true)
-    vim.bo[mod_scratch].buftype = "nofile"
-    pcall(vim.api.nvim_buf_set_name, mod_scratch, "CodeDiff " .. tabpage .. ".inline")
-    vim.api.nvim_win_set_buf(modified_win, mod_scratch)
-    welcome_window.sync(modified_win)
-
-    local orig_scratch = vim.api.nvim_create_buf(false, true)
-    vim.bo[orig_scratch].buftype = "nofile"
-
-    if vim.api.nvim_buf_is_valid(initial_buf) and initial_buf ~= mod_scratch then
+  --- Drop the tab's starting buffer once the real ones are in place.
+  local function drop_initial_buf(...)
+    for _, keep in ipairs({ ... }) do
+      if initial_buf == keep then
+        return
+      end
+    end
+    if vim.api.nvim_buf_is_valid(initial_buf) then
       pcall(vim.api.nvim_buf_delete, initial_buf, { force = true })
     end
+  end
 
-    vim.wo[modified_win].cursorline = true
-    vim.wo[modified_win].wrap = false
+  if is_panel_placeholder(session_config) then
+    local orig_scratch, mod_scratch = open_placeholder_pane(tabpage, modified_win)
+    drop_initial_buf(mod_scratch)
+    apply_pane_options(modified_win)
 
+    -- The panel populates this session on first file selection.
     lifecycle.create_session(tabpage, {
       panel = session_config.panel,
       merge = session_config.conflict,
@@ -155,73 +304,26 @@ function M.create(session_config, filetype, on_ready)
       modified_win = modified_win, -- both point to the single window
       lines_diff = {},
       exit_on_close = session_config.exit_on_close,
-      reapply_keymaps = function()
-        local _, mb = lifecycle.get_buffers(tabpage)
-        if mb then
-          setup_keymaps(tabpage, orig_scratch, mb)
-        end
-      end,
+      reapply_keymaps = make_reapply_keymaps(tabpage, orig_scratch),
     })
 
     mark_inline(tabpage)
-    -- Setup panels via shared module
-    panel.setup_explorer(tabpage, session_config, modified_win, modified_win)
-    panel.setup_history(tabpage, session_config, modified_win, modified_win)
-
-    layout.arrange(tabpage)
-
-    vim.api.nvim_exec_autocmds("User", {
-      pattern = "CodeDiffOpen",
-      modeline = false,
-      data = { tabpage = tabpage, mode = lifecycle.event_mode(session_config.panel), layout = "inline" },
-    })
-
-    return { modified_buf = mod_scratch, original_buf = orig_scratch, modified_win = modified_win }
+    return finish_create(tabpage, session_config, modified_win, orig_scratch, mod_scratch)
   end
 
-  -- Normal (non-placeholder) inline view creation
   local original_is_virtual = is_virtual_revision(session_config.original_revision)
   local modified_is_virtual = is_virtual_revision(session_config.modified_revision)
 
   local original_info = prepare_buffer(original_is_virtual, session_config.git_root, session_config.original_revision, session_config.original)
   local modified_info = prepare_buffer(modified_is_virtual, session_config.git_root, session_config.modified_revision, session_config.modified)
 
-  -- Load modified buffer into the visible window
-  if modified_is_virtual then
-    if modified_info.needs_edit then
-      vim.cmd("edit! " .. vim.fn.fnameescape(modified_info.target))
-      modified_info.bufnr = vim.api.nvim_get_current_buf()
-    else
-      vim.api.nvim_win_set_buf(modified_win, modified_info.bufnr)
-    end
-  elseif modified_info.needs_edit then
-    modified_info.bufnr = open_real_file(modified_win, modified_info.target)
-  else
-    show_real_file_buffer(modified_win, modified_info.bufnr)
-  end
-  welcome_window.sync(modified_win)
+  load_visible_side(modified_win, modified_info, modified_is_virtual)
+  load_hidden_original(original_info, original_is_virtual)
 
-  -- Load original buffer (hidden — never displayed in a window)
-  if original_is_virtual and original_info.needs_edit then
-    -- Can't use :edit with codediff:// URIs because bufhidden=wipe destroys
-    -- the buffer when no window displays it. Use scratch buffer instead.
-    local orig_buf = vim.api.nvim_create_buf(false, true)
-    vim.bo[orig_buf].buftype = "nofile"
-    original_info.bufnr = orig_buf
-  elseif original_info.needs_edit then
-    local bufnr = vim.fn.bufadd(original_info.target)
-    vim.fn.bufload(bufnr)
-    original_info.bufnr = bufnr
-  end
+  drop_initial_buf(modified_info.bufnr, original_info.bufnr)
+  apply_pane_options(modified_win)
 
-  if vim.api.nvim_buf_is_valid(initial_buf) and initial_buf ~= modified_info.bufnr and initial_buf ~= original_info.bufnr then
-    pcall(vim.api.nvim_buf_delete, initial_buf, { force = true })
-  end
-
-  vim.wo[modified_win].cursorline = true
-  vim.wo[modified_win].wrap = false
-
-  local render_everything = function()
+  local render = function()
     if not vim.api.nvim_win_is_valid(modified_win) then
       return
     end
@@ -229,122 +331,64 @@ function M.create(session_config, filetype, on_ready)
       return
     end
 
-    local original_lines = vim.api.nvim_buf_get_lines(original_info.bufnr, 0, -1, false)
-    local modified_lines = vim.api.nvim_buf_get_lines(modified_info.bufnr, 0, -1, false)
-
     local lines_diff = compute_and_render_inline(
       modified_info.bufnr,
       original_info.bufnr,
-      original_lines,
-      modified_lines,
+      vim.api.nvim_buf_get_lines(original_info.bufnr, 0, -1, false),
+      vim.api.nvim_buf_get_lines(modified_info.bufnr, 0, -1, false),
       original_is_virtual,
       modified_is_virtual,
       modified_win,
       config.options.diff.jump_to_first_change
     )
+    if not lines_diff then
+      return
+    end
 
-    if lines_diff then
-      lifecycle.create_session(tabpage, {
-        panel = session_config.panel,
-        merge = session_config.conflict,
-        git_root = session_config.git_root,
-        original = session_config.original,
-        modified = session_config.modified,
-        original_revision = session_config.original_revision,
-        modified_revision = session_config.modified_revision,
-        original_bufnr = original_info.bufnr,
-        modified_bufnr = modified_info.bufnr,
-        original_win = modified_win,
-        modified_win = modified_win,
-        lines_diff = lines_diff,
-        exit_on_close = session_config.exit_on_close,
-        reapply_keymaps = function()
-          local _, mb = lifecycle.get_buffers(tabpage)
-          if mb then
-            setup_keymaps(tabpage, original_info.bufnr, mb)
-          end
-        end,
-      })
+    lifecycle.create_session(tabpage, {
+      panel = session_config.panel,
+      merge = session_config.conflict,
+      git_root = session_config.git_root,
+      original = session_config.original,
+      modified = session_config.modified,
+      original_revision = session_config.original_revision,
+      modified_revision = session_config.modified_revision,
+      original_bufnr = original_info.bufnr,
+      modified_bufnr = modified_info.bufnr,
+      original_win = modified_win,
+      modified_win = modified_win,
+      lines_diff = lines_diff,
+      exit_on_close = session_config.exit_on_close,
+      reapply_keymaps = make_reapply_keymaps(tabpage, original_info.bufnr),
+    })
 
-      mark_inline(tabpage)
+    mark_inline(tabpage)
 
-      auto_refresh.enable(original_info.bufnr)
-      auto_refresh.enable(modified_info.bufnr)
+    auto_refresh.enable(original_info.bufnr)
+    auto_refresh.enable(modified_info.bufnr)
 
-      setup_keymaps(tabpage, original_info.bufnr, modified_info.bufnr)
+    setup_keymaps(tabpage, original_info.bufnr, modified_info.bufnr)
 
-      -- Keep the diff pointed at the working window's file if it changes.
-      -- Same as the side-by-side path: the behaviour belongs to the session
-      -- shape, not to a layout.
-      require("codediff.ui.follow_working_file").enable(tabpage, original_is_virtual, modified_is_virtual)
+    -- Keep the diff pointed at the working window's file if it changes. Same
+    -- as the side-by-side path: the behaviour belongs to the session shape,
+    -- not to a layout.
+    require("codediff.ui.follow_working_file").enable(tabpage, original_is_virtual, modified_is_virtual)
 
-      if on_ready then
-        on_ready()
-      end
+    if on_ready then
+      on_ready()
     end
   end
 
-  -- Async buffer loading
-  if original_is_virtual then
-    local git = require("codediff.core.git")
-    git.get_file_content(session_config.original_revision, session_config.git_root, session_config.original.relative, function(err, lines)
-      vim.schedule(function()
-        if not vim.api.nvim_buf_is_valid(original_info.bufnr) then
-          return
-        end
-        if err then
-          lines = {}
-        end
-        vim.bo[original_info.bufnr].modifiable = true
-        vim.api.nvim_buf_set_lines(original_info.bufnr, 0, -1, false, lines)
-        vim.bo[original_info.bufnr].modifiable = false
+  render_when_loaded({
+    tabpage = tabpage,
+    session_config = session_config,
+    original_info = original_info,
+    modified_info = modified_info,
+    original_is_virtual = original_is_virtual,
+    modified_is_virtual = modified_is_virtual,
+  }, render)
 
-        if modified_is_virtual then
-          local group = vim.api.nvim_create_augroup("CodeDiffInlineVirtualLoad_" .. tabpage, { clear = true })
-          vim.api.nvim_create_autocmd("User", {
-            group = group,
-            pattern = "CodeDiffVirtualFileLoaded",
-            callback = function(event)
-              if event.data and event.data.buf == modified_info.bufnr then
-                vim.schedule(render_everything)
-                vim.api.nvim_del_augroup_by_id(group)
-              end
-            end,
-          })
-        else
-          render_everything()
-        end
-      end)
-    end)
-  elseif modified_is_virtual then
-    local group = vim.api.nvim_create_augroup("CodeDiffInlineVirtualLoad_" .. tabpage, { clear = true })
-    vim.api.nvim_create_autocmd("User", {
-      group = group,
-      pattern = "CodeDiffVirtualFileLoaded",
-      callback = function(event)
-        if event.data and event.data.buf == modified_info.bufnr then
-          vim.schedule(render_everything)
-          vim.api.nvim_del_augroup_by_id(group)
-        end
-      end,
-    })
-  else
-    vim.schedule(render_everything)
-  end
-
-  -- Setup panels for non-placeholder explorer/history mode
-  panel.setup_explorer(tabpage, session_config, modified_win, modified_win)
-  panel.setup_history(tabpage, session_config, modified_win, modified_win)
-
-  layout.arrange(tabpage)
-
-  vim.api.nvim_exec_autocmds("User", {
-    pattern = "CodeDiffOpen",
-    modeline = false,
-    data = { tabpage = tabpage, mode = lifecycle.event_mode(session_config.panel), layout = "inline" },
-  })
-
-  return { modified_buf = modified_info.bufnr, original_buf = original_info.bufnr, modified_win = modified_win }
+  return finish_create(tabpage, session_config, modified_win, original_info.bufnr, modified_info.bufnr)
 end
 
 -- ============================================================================

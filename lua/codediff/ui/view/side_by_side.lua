@@ -24,6 +24,7 @@ local welcome_window = require("codediff.ui.view.welcome_window")
 
 local is_virtual_revision = helpers.is_virtual_revision
 local prepare_buffer = helpers.prepare_buffer
+local is_panel_placeholder = helpers.is_panel_placeholder
 local show_real_file_buffer = helpers.show_real_file_buffer
 local open_real_file = helpers.open_real_file
 local compute_and_render = render.compute_and_render
@@ -40,25 +41,6 @@ local setup_all_keymaps = view_keymaps.setup_all_keymaps
 ---@param filetype? string
 ---@param on_ready? function
 ---@return table|nil
---- True when the panel opens before any file is chosen, so the panes start
---- empty and the panel fills them on first selection.
---- @param session_config SessionConfig
---- @return boolean
-local function is_panel_placeholder(session_config)
-  local panel_cfg = session_config.panel
-  if not panel_cfg then
-    return false
-  end
-  if panel_cfg.name == "history" then
-    return panel_cfg.data ~= nil
-  end
-  if panel_cfg.name == "explorer" then
-    -- Empty paths, or dir mode, which has no git_root but does have panel data.
-    return path.is_empty(session_config.original) or (not session_config.git_root and panel_cfg.data ~= nil)
-  end
-  return false
-end
-
 --- Split direction that lands the modified pane on the side the user asked for.
 --- Explicit rather than relying on 'splitright'.
 --- @return string
