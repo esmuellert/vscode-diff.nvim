@@ -15,7 +15,7 @@ local keymap = require("codediff.keymap")
 -- Structure: {
 --   tabpage_id = {
 --     original_bufnr, modified_bufnr, original_win, modified_win,
---     panel = { name = "explorer"|"history", data = table }?, -- nil for a bare diff
+--     panel = { name = "explorer"|"history", view = table? }?, -- nil for a bare diff
 --     git_root = string?,
 --     original = Path,
 --     modified = Path,
@@ -80,7 +80,10 @@ function M.create_session(
   -- Create complete session in one step
   active_diffs[tabpage] = {
     -- Panel & Git Context (immutable)
-    panel = panel,
+    -- `panel.data` is construction material: panel.lua consumes it to build the
+    -- panel, which copies forward whatever it still needs (pathspec,
+    -- status_result). Keeping it on the session would be a second, stale copy.
+    panel = panel and { name = panel.name } or nil,
     git_root = git_root,
     original = original,
     modified = modified,
