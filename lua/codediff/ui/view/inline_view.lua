@@ -14,6 +14,7 @@ local layout = require("codediff.ui.layout")
 local welcome_window = require("codediff.ui.view.welcome_window")
 
 local helpers = require("codediff.ui.view.helpers")
+local readiness = require("codediff.ui.view.readiness")
 local panel = require("codediff.ui.view.panel")
 local is_virtual_revision = helpers.is_virtual_revision
 local prepare_buffer = helpers.prepare_buffer
@@ -563,31 +564,28 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
     end
   end
 
-  -- Each side reports whether it still owes content; the last one to land
-  -- renders. Both may finish synchronously, hence the trailing check.
-  -- Flags are set before the fetches start, never from their return values,
-  -- so a callback can never be overwritten by a late assignment.
-  local pending = { original = original_is_virtual, modified = modified_is_virtual }
-  local function check_ready()
-    if not pending.original and not pending.modified then
-      render()
-    end
+  -- Each side reports itself as it lands; the last one triggers the render.
+  -- Sides that are already in hand are simply not awaited.
+  local awaited = {}
+  if original_is_virtual then
+    awaited[#awaited + 1] = "original"
+  end
+  if modified_is_virtual then
+    awaited[#awaited + 1] = "modified"
   end
 
+  local ready = readiness.when_all(awaited, function()
+    vim.schedule(render)
+  end)
+
   fill_original_for_update(orig_buf, session_config, original_is_virtual, function()
-    pending.original = false
-    check_ready()
+    ready.done("original")
   end)
 
   if modified_is_virtual then
     fetch_into_scratch(session_config.modified_revision, session_config.git_root, session_config.modified.relative, mod_buf, function()
-      pending.modified = false
-      check_ready()
+      ready.done("modified")
     end)
-  end
-
-  if not pending.original and not pending.modified then
-    vim.schedule(render)
   end
 
   return true

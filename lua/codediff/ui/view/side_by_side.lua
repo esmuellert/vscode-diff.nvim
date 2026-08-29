@@ -16,6 +16,7 @@ local history_module = require("codediff.ui.history")
 local layout = require("codediff.ui.layout")
 
 local helpers = require("codediff.ui.view.helpers")
+local readiness = require("codediff.ui.view.readiness")
 local render = require("codediff.ui.view.render")
 local view_keymaps = require("codediff.ui.view.keymaps")
 local conflict_window = require("codediff.ui.view.conflict_window")
@@ -303,13 +304,23 @@ end
 --- @param modified_is_virtual boolean
 --- @param render function
 local function render_when_loaded(tabpage, original_info, modified_info, original_is_virtual, modified_is_virtual, render)
-  if not (original_is_virtual or modified_is_virtual) then
+  local awaited = {}
+  if original_is_virtual then
+    awaited[#awaited + 1] = "original"
+  end
+  if modified_is_virtual then
+    awaited[#awaited + 1] = "modified"
+  end
+  if #awaited == 0 then
     vim.schedule(render)
     return
   end
 
   local group = vim.api.nvim_create_augroup("CodeDiffVirtualFileHighlight_" .. tabpage, { clear = true })
-  local loaded = {}
+  local ready = readiness.when_all(awaited, function()
+    vim.schedule(render)
+    vim.api.nvim_del_augroup_by_id(group)
+  end)
 
   vim.api.nvim_create_autocmd("User", {
     group = group,
@@ -319,22 +330,11 @@ local function render_when_loaded(tabpage, original_info, modified_info, origina
       if not buf then
         return
       end
-      local ours = (original_is_virtual and buf == original_info.bufnr) or (modified_is_virtual and buf == modified_info.bufnr)
-      if not ours then
-        return
+      if original_is_virtual and buf == original_info.bufnr then
+        ready.done("original")
       end
-      loaded[buf] = true
-
-      local ready = true
-      if original_is_virtual and not loaded[original_info.bufnr] then
-        ready = false
-      end
-      if modified_is_virtual and not loaded[modified_info.bufnr] then
-        ready = false
-      end
-      if ready then
-        vim.schedule(render)
-        vim.api.nvim_del_augroup_by_id(group)
+      if modified_is_virtual and buf == modified_info.bufnr then
+        ready.done("modified")
       end
     end,
   })
@@ -485,11 +485,23 @@ end
 --- @param wait_state table { original: boolean, modified: boolean }
 --- @param render function
 local function render_when_reloaded(tabpage, original_info, modified_info, wait_state, render)
-  if not (wait_state.original or wait_state.modified) then
+  local awaited = {}
+  if wait_state.original then
+    awaited[#awaited + 1] = "original"
+  end
+  if wait_state.modified then
+    awaited[#awaited + 1] = "modified"
+  end
+  if #awaited == 0 then
     return
   end
 
   local group = vim.api.nvim_create_augroup("CodeDiffVirtualFileUpdate_" .. tabpage, { clear = true })
+  local ready = readiness.when_all(awaited, function()
+    vim.schedule(render)
+    vim.api.nvim_del_augroup_by_id(group)
+  end)
+
   vim.api.nvim_create_autocmd("User", {
     group = group,
     pattern = "CodeDiffVirtualFileLoaded",
@@ -498,15 +510,11 @@ local function render_when_reloaded(tabpage, original_info, modified_info, wait_
       if not buf then
         return
       end
-      if wait_state.original and buf == original_info.bufnr then
-        wait_state.original = false
+      if buf == original_info.bufnr then
+        ready.done("original")
       end
-      if wait_state.modified and buf == modified_info.bufnr then
-        wait_state.modified = false
-      end
-      if not wait_state.original and not wait_state.modified then
-        vim.schedule(render)
-        vim.api.nvim_del_augroup_by_id(group)
+      if buf == modified_info.bufnr then
+        ready.done("modified")
       end
     end,
   })
