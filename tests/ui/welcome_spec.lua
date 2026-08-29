@@ -125,6 +125,7 @@ describe("Welcome Page", function()
       lifecycle.create_session(tabpage, {
         original = "",
         modified = "",
+      }, {
         original_bufnr = regular_buf,
         modified_bufnr = other_buf,
         original_win = main_win,

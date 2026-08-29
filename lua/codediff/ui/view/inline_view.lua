@@ -306,20 +306,12 @@ function M.create(session_config, filetype, on_ready)
     apply_pane_options(modified_win)
 
     -- The panel populates this session on first file selection.
-    lifecycle.create_session(tabpage, {
-      panel = session_config.panel,
-      merge = session_config.conflict,
-      git_root = session_config.git_root,
-      original = "",
-      modified = "",
-      original_revision = nil,
-      modified_revision = nil,
+    lifecycle.create_session(tabpage, session_config, {
       original_bufnr = orig_scratch,
       modified_bufnr = mod_scratch,
       original_win = modified_win,
       modified_win = modified_win, -- both point to the single window
       lines_diff = {},
-      exit_on_close = session_config.exit_on_close,
       reapply_keymaps = make_reapply_keymaps(tabpage, orig_scratch),
     })
 
@@ -361,20 +353,12 @@ function M.create(session_config, filetype, on_ready)
       return
     end
 
-    lifecycle.create_session(tabpage, {
-      panel = session_config.panel,
-      merge = session_config.conflict,
-      git_root = session_config.git_root,
-      original = session_config.original,
-      modified = session_config.modified,
-      original_revision = session_config.original_revision,
-      modified_revision = session_config.modified_revision,
+    lifecycle.create_session(tabpage, session_config, {
       original_bufnr = original_info.bufnr,
       modified_bufnr = modified_info.bufnr,
       original_win = modified_win,
       modified_win = modified_win,
       lines_diff = lines_diff,
-      exit_on_close = session_config.exit_on_close,
       reapply_keymaps = make_reapply_keymaps(tabpage, original_info.bufnr),
     })
 

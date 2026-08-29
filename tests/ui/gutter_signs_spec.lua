@@ -259,6 +259,7 @@ describe("Gutter signs", function()
     lifecycle.create_session(tabpage, {
       original = path.empty(),
       modified = path.make_ref("modified.txt", nil),
+    }, {
       original_bufnr = session.original_bufnr,
       modified_bufnr = session.modified_bufnr,
       original_win = session.original_win,
@@ -284,6 +285,7 @@ describe("Gutter signs", function()
     lifecycle.create_session(tabpage, {
       original = path.make_ref("original.txt", nil),
       modified = path.make_ref("modified.txt", nil),
+    }, {
       original_bufnr = session.original_bufnr,
       modified_bufnr = session.modified_bufnr,
       original_win = session.original_win,
