@@ -36,7 +36,14 @@ local function normalize_inline_layout(tabpage)
   return true
 end
 
-local function normalize_side_by_side_layout(tabpage)
+--- Reshape a tab so the side-by-side code can work on it: one pane, and a
+--- session that says so. side_by_side.update opens the second pane itself when
+--- it sees single_pane.
+--- Exported because conflict mode needs it too: a conflicted file forces the
+--- side-by-side layout, and an inline tab is not in a shape it can use.
+--- @param tabpage number
+--- @return boolean
+function M.normalize_side_by_side_layout(tabpage)
   local session = lifecycle.get_session(tabpage)
   if not session then
     return false
@@ -101,7 +108,7 @@ function M.toggle(tabpage)
   end
 
   local target_layout = session.layout == "inline" and "side-by-side" or "inline"
-  local normalize = target_layout == "inline" and normalize_inline_layout or normalize_side_by_side_layout
+  local normalize = target_layout == "inline" and normalize_inline_layout or M.normalize_side_by_side_layout
   local previous_layout = session.layout
 
   -- Disable compact mode before changing layout (window IDs will change)
