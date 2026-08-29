@@ -6,8 +6,6 @@ local path = require("codediff.core.path")
 
 --- True when the panel opens before any file is chosen, so the panes start
 --- empty and the panel fills them on first selection.
---- Shared by both layouts: they disagree about how many panes to open, not
---- about when there is nothing to show yet.
 --- @param session_config SessionConfig
 --- @return boolean
 function M.is_panel_placeholder(session_config)

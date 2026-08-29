@@ -58,9 +58,7 @@ end
 M.compute_virtual_uri = compute_virtual_uri
 
 --- What a layout produces once it has opened its panes and computed a diff.
---- Everything else a session needs is copied from the SessionConfig it was
---- asked to open, so a change to that shape lands in one place rather than at
---- every call site.
+--- Everything else is copied from the SessionConfig it was asked to open.
 --- @class SessionPanes
 --- @field original_bufnr number
 --- @field modified_bufnr number

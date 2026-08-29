@@ -5,6 +5,7 @@ local Tree = require("codediff.ui.lib.tree")
 local Split = require("codediff.ui.lib.split")
 local config = require("codediff.config")
 local path = require("codediff.core.path")
+local lifecycle = require("codediff.ui.lifecycle")
 local nodes_module = require("codediff.ui.explorer.nodes")
 local tree_module = require("codediff.ui.explorer.tree")
 local keymaps_module = require("codediff.ui.explorer.keymaps")
@@ -50,6 +51,51 @@ local function show_welcome_page(explorer)
   local welcome_buf = welcome.create_buffer(width, height)
   require("codediff.ui.view.side_by_side").show_welcome(explorer.tabpage, welcome_buf)
   return true
+end
+
+--- Open a two-sided diff on the next tick, unless the user has moved on.
+--- view.update on a stale target swaps buffers under the newer one, destroys
+--- codediff:// buffers mid-load (bufhidden=wipe), and resets single_pane.
+local function open_diff_when_still_selected(ctx, sides)
+  vim.schedule(function()
+    if ctx.explorer.current_file_path ~= ctx.file_path then
+      return
+    end
+    ---@type SessionConfig
+    local session_config = {
+      git_root = ctx.git_root,
+      original = sides.original,
+      modified = sides.modified,
+      original_revision = sides.original_revision,
+      modified_revision = sides.modified_revision,
+      conflict = sides.conflict,
+    }
+    require("codediff.ui.view").update(ctx.tabpage, session_config, ctx.jump)
+  end)
+end
+
+--- conflict_ours_position names where OURS sits on screen; original_win is on
+--- the left after conflict_window.lua's win_splitmove(rightbelow=false).
+--- @return string original_rev, string modified_rev
+local function conflict_revisions()
+  if (config.options.diff.conflict_ours_position or "right") == "right" then
+    return ":3", ":2" -- THEIRS left, OURS right
+  end
+  return ":2", ":3" -- OURS left, THEIRS right
+end
+
+--- Run `show` on the next tick, unless the user has moved on. The explorer
+--- fires a selection per cursor movement, so a slow open must not paint over
+--- a newer one.
+--- @param show fun(is_inline: boolean)
+local function show_when_still_selected(explorer, file_path, show)
+  vim.schedule(function()
+    if explorer.current_file_path ~= file_path then
+      return
+    end
+    local session = lifecycle.get_session(explorer.tabpage)
+    show(session ~= nil and session.layout == "inline")
+  end)
 end
 
 function M.create(status_result, git_root, tabpage, width, base_revision, target_revision, opts)
@@ -254,15 +300,9 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
 
     -- Handle untracked files: show file without diff
     if file_data.status == "??" then
-      vim.schedule(function()
-        if explorer.current_file_path ~= file_data.path then
-          return
-        end
-        local sess = lifecycle.get_session(tabpage)
-        if sess and sess.layout == "inline" then
-          require("codediff.ui.view.inline_view").show_single_file(tabpage, abs_path, {
-            side = "modified",
-          })
+      show_when_still_selected(explorer, file_data.path, function(is_inline)
+        if is_inline then
+          require("codediff.ui.view.inline_view").show_single_file(tabpage, abs_path, { side = "modified" })
         else
           require("codediff.ui.view.side_by_side").show_untracked_file(tabpage, abs_path)
         end
@@ -272,43 +312,33 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
 
     -- Handle added files: only one side has the file
     if file_data.status == "A" then
-      vim.schedule(function()
-        if explorer.current_file_path ~= file_data.path then
-          return
-        end
-        local sess = lifecycle.get_session(tabpage)
-        local is_inline = sess and sess.layout == "inline"
+      -- Which revision holds an added file depends on where it was added.
+      local revision
+      if base_revision and target_revision and target_revision ~= "WORKING" then
+        revision = target_revision
+      elseif group == "staged" then
+        revision = ":0"
+      end
 
-        if base_revision and target_revision and target_revision ~= "WORKING" then
+      show_when_still_selected(explorer, file_data.path, function(is_inline)
+        if not revision then
+          -- Added in the working tree: read it off disk.
           if is_inline then
-            require("codediff.ui.view.inline_view").show_single_file(tabpage, file_path, {
-              revision = target_revision,
-              git_root = git_root,
-              rel_path = file_path,
-              side = "modified",
-            })
-          else
-            require("codediff.ui.view.side_by_side").show_added_virtual_file(tabpage, git_root, file_path, target_revision)
-          end
-        elseif group == "staged" then
-          if is_inline then
-            require("codediff.ui.view.inline_view").show_single_file(tabpage, file_path, {
-              revision = ":0",
-              git_root = git_root,
-              rel_path = file_path,
-              side = "modified",
-            })
-          else
-            require("codediff.ui.view.side_by_side").show_added_virtual_file(tabpage, git_root, file_path, ":0")
-          end
-        else
-          if is_inline then
-            require("codediff.ui.view.inline_view").show_single_file(tabpage, abs_path, {
-              side = "modified",
-            })
+            require("codediff.ui.view.inline_view").show_single_file(tabpage, abs_path, { side = "modified" })
           else
             require("codediff.ui.view.side_by_side").show_untracked_file(tabpage, abs_path)
           end
+          return
+        end
+        if is_inline then
+          require("codediff.ui.view.inline_view").show_single_file(tabpage, file_path, {
+            revision = revision,
+            git_root = git_root,
+            rel_path = file_path,
+            side = "modified",
+          })
+        else
+          require("codediff.ui.view.side_by_side").show_added_virtual_file(tabpage, git_root, file_path, revision)
         end
       end)
       return
@@ -316,42 +346,23 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
 
     -- Handle deleted files: show old content without diff
     if file_data.status == "D" then
-      vim.schedule(function()
-        if explorer.current_file_path ~= file_data.path then
-          return
-        end
-        local sess = lifecycle.get_session(tabpage)
-        local is_inline = sess and sess.layout == "inline"
+      -- With a base_revision (`:CodeDiff HEAD~5` or `:CodeDiff A B`) the
+      -- content lives there; HEAD and :0 yield nothing, the file is already
+      -- gone. HEAD/:0 is only right for a plain explorer. Fixes #390.
+      local revision = base_revision or ((group == "staged") and "HEAD" or ":0")
 
-        -- Whenever the explorer is anchored to a base_revision (single-rev
-        -- like `:CodeDiff HEAD~5` OR revision-revision like `:CodeDiff A B`),
-        -- the deleted file's content lives at base_revision; reading from
-        -- HEAD/:0 yields nothing because the file is already gone there.
-        -- The HEAD/:0 branch is only correct for plain explorer mode
-        -- (no base_revision). Fixes #390.
-        if base_revision then
-          if is_inline then
-            require("codediff.ui.view.inline_view").show_single_file(tabpage, file_path, {
-              revision = base_revision,
-              git_root = git_root,
-              rel_path = file_path,
-              side = "original",
-            })
-          else
-            require("codediff.ui.view.side_by_side").show_deleted_virtual_file(tabpage, git_root, file_path, base_revision)
-          end
+      show_when_still_selected(explorer, file_data.path, function(is_inline)
+        if is_inline then
+          require("codediff.ui.view.inline_view").show_single_file(tabpage, file_path, {
+            revision = revision,
+            git_root = git_root,
+            rel_path = file_path,
+            side = "original",
+          })
+        elseif base_revision then
+          require("codediff.ui.view.side_by_side").show_deleted_virtual_file(tabpage, git_root, file_path, base_revision)
         else
-          if is_inline then
-            local revision = (group == "staged") and "HEAD" or ":0"
-            require("codediff.ui.view.inline_view").show_single_file(tabpage, file_path, {
-              revision = revision,
-              git_root = git_root,
-              rel_path = file_path,
-              side = "original",
-            })
-          else
-            require("codediff.ui.view.side_by_side").show_deleted_file(tabpage, git_root, file_path, abs_path, group)
-          end
+          require("codediff.ui.view.side_by_side").show_deleted_file(tabpage, git_root, file_path, abs_path, group)
         end
       end)
       return
@@ -425,6 +436,14 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
     end
 
     -- Use base_revision if provided, otherwise default to HEAD
+    local ctx = {
+      explorer = explorer,
+      tabpage = tabpage,
+      git_root = git_root,
+      file_path = file_path,
+      jump = jump,
+    }
+
     local target_revision_single = base_revision or "HEAD"
     git.resolve_revision(target_revision_single, git_root, function(err_resolve, commit_hash)
       if err_resolve then
@@ -435,112 +454,46 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
       end
 
       if base_revision then
-        -- Revision mode: Simple comparison of working tree vs base_revision
-        vim.schedule(function()
-          -- Ignore stale async: if a newer selection superseded us before this
-          -- scheduled callback ran, `view.update` on the old target would
-          -- clobber the newer selection (buffers get swapped, virtual buffers
-          -- with `bufhidden=wipe` get destroyed mid-load, single_pane resets).
-          if explorer.current_file_path ~= file_path then
-            return
-          end
-          ---@type SessionConfig
-          local session_config = {
-            git_root = git_root,
-            original = path.make_ref(old_path or file_path, git_root),
-            modified = path.make_ref(abs_path, git_root),
-            original_revision = commit_hash,
-            modified_revision = nil,
-          }
-          view.update(tabpage, session_config, jump)
-        end)
+        -- A renamed file is read from its old name, which is what it was
+        -- called at that revision.
+        open_diff_when_still_selected(ctx, {
+          original = path.make_ref(old_path or file_path, git_root),
+          modified = path.make_ref(abs_path, git_root),
+          original_revision = commit_hash,
+        })
       elseif group == "conflicts" then
-        -- Merge conflict: Show incoming (:3) vs current (:2), both diffed against base (:1)
-        -- Position controlled by config.diff.conflict_ours_position (absolute screen position)
-        vim.schedule(function()
-          -- Ignore stale async: see comment on the base_revision branch above.
-          if explorer.current_file_path ~= file_path then
-            return
-          end
-          -- Determine conflict buffer positions based on config
-          -- conflict_ours_position controls where :2 (OURS) appears on screen
-          local ours_position = config.options.diff.conflict_ours_position or "right"
-
-          -- After conflict_window.lua's win_splitmove(rightbelow=false):
-          -- - original_win is on LEFT
-          -- - modified_win is on RIGHT
-          local original_rev, modified_rev
-          if ours_position == "right" then
-            original_rev = ":3" -- THEIRS in original_win (LEFT)
-            modified_rev = ":2" -- OURS in modified_win (RIGHT)
-          else
-            original_rev = ":2" -- OURS in original_win (LEFT)
-            modified_rev = ":3" -- THEIRS in modified_win (RIGHT)
-          end
-
-          ---@type SessionConfig
-          local session_config = {
-            git_root = git_root,
-            original = path.make_ref(file_path, git_root),
-            modified = path.make_ref(file_path, git_root),
-            original_revision = original_rev,
-            modified_revision = modified_rev,
-            conflict = true,
-          }
-          view.update(tabpage, session_config, jump)
-        end)
+        local original_rev, modified_rev = conflict_revisions()
+        open_diff_when_still_selected(ctx, {
+          original = path.make_ref(file_path, git_root),
+          modified = path.make_ref(file_path, git_root),
+          original_revision = original_rev,
+          modified_revision = modified_rev,
+          conflict = true,
+        })
       elseif group == "staged" then
-        -- Staged changes: Compare staged (:0) vs HEAD (both virtual)
-        -- For renames: old_path in HEAD, new path in staging
-        -- No pre-fetching needed, virtual files will load via BufReadCmd
-        vim.schedule(function()
-          -- Ignore stale async: see comment on the base_revision branch above.
-          if explorer.current_file_path ~= file_path then
-            return
-          end
-          ---@type SessionConfig
-          local session_config = {
-            git_root = git_root,
-            original = path.make_ref(old_path or file_path, git_root), -- Use old_path if rename
-            modified = path.make_ref(file_path, git_root), -- New path after rename
-            original_revision = commit_hash,
-            modified_revision = ":0",
-          }
-          view.update(tabpage, session_config, jump)
-        end)
+        -- Index against HEAD. On a rename the two sides have different names.
+        open_diff_when_still_selected(ctx, {
+          original = path.make_ref(old_path or file_path, git_root),
+          modified = path.make_ref(file_path, git_root),
+          original_revision = commit_hash,
+          modified_revision = ":0",
+        })
       else
-        -- Unstaged changes: Compare working tree vs staged (if exists) or HEAD
-        -- Check if file is in staged list
+        -- Working tree against the index when the file has staged content,
+        -- against HEAD when it does not.
         local is_staged = false
-        -- Use current status_result from explorer object
-        local current_status = explorer.status_result or status_result
-        for _, staged_file in ipairs(current_status.staged) do
+        for _, staged_file in ipairs((explorer.status_result or status_result).staged) do
           if staged_file.path == file_path then
             is_staged = true
             break
           end
         end
 
-        local original_revision = is_staged and ":0" or commit_hash
-
-        -- No pre-fetching needed, buffers will load content
-        vim.schedule(function()
-          -- Ignore stale async: if a newer selection superseded us before this
-          -- scheduled callback ran, `view.update` on the old target would
-          -- clobber the newer one (resetting single_pane, layout.arrange).
-          if explorer.current_file_path ~= file_path then
-            return
-          end
-          ---@type SessionConfig
-          local session_config = {
-            git_root = git_root,
-            original = path.make_ref(file_path, git_root),
-            modified = path.make_ref(abs_path, git_root),
-            original_revision = original_revision,
-            modified_revision = nil,
-          }
-          view.update(tabpage, session_config, jump)
-        end)
+        open_diff_when_still_selected(ctx, {
+          original = path.make_ref(file_path, git_root),
+          modified = path.make_ref(abs_path, git_root),
+          original_revision = is_staged and ":0" or commit_hash,
+        })
       end
     end)
   end

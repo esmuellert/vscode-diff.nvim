@@ -1,14 +1,7 @@
--- A conflicted file forces the side-by-side layout, but the tab it lands in
--- may be shaped for inline: one pane, with both sides pointing at it.
---
--- Selecting a conflicted file from the explorer goes through view.update, and
--- the side-by-side code assumed it had two panes to write into. It wrote both
--- sides into the same window -- THEIRS overwrote OURS -- and never opened the
--- result pane. The user saw one window of THEIRS, no conflict markers, and no
--- keymaps to resolve anything.
---
--- Opening the same file with :CodeDiff was fine, because that path goes
--- through create, which builds the tab from scratch.
+-- A conflicted file forces the side-by-side layout, but the tab may still be
+-- shaped for inline: one pane, both sides pointing at it. side_by_side.update
+-- then wrote both into that window, THEIRS overwriting OURS, and never opened
+-- the result pane. :CodeDiff was fine; it goes through create.
 
 local h = dofile("tests/helpers.lua")
 

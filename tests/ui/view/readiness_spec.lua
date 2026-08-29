@@ -1,9 +1,6 @@
--- Waiting for both sides of a diff to arrive.
---
--- This bookkeeping used to be written out at three call sites, twice under the
--- name `pending` and once as a table keyed by buffer number. Each copy could
--- drift, and one of them did: keying by buffer number meant that when both
--- sides shared a buffer, one arrival was counted as two.
+-- Waiting for both sides of a diff to arrive. This bookkeeping used to be
+-- written out at three call sites, one of which keyed by buffer number and so
+-- counted a single arrival twice when both sides shared a buffer.
 
 local readiness = require("codediff.ui.view.readiness")
 

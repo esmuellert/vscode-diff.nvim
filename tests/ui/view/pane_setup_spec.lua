@@ -1,9 +1,6 @@
 -- Window setup done by side_by_side.create: which pane lands on which side,
--- and the window options both panes get.
---
--- Both were uncovered — stubbing the split-direction choice and dropping the
--- window-option loop each left the whole suite green — and both are about to
--- move during the create() decomposition.
+-- and the window options both panes get. Both were uncovered -- stubbing
+-- either left the whole suite green.
 
 local h = dofile("tests/helpers.lua")
 local path = require("codediff.core.path")
