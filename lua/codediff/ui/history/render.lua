@@ -95,6 +95,19 @@ end
 -- tabpage: tabpage handle
 -- width: optional width override
 -- opts: { range, path, ... } original options
+--- Expand every directory node under `node_ids`, recursively.
+--- @param tree table
+--- @param node_ids table
+local function expand_directories(tree, node_ids)
+  for _, node_id in ipairs(node_ids) do
+    local node = tree:get_node(node_id)
+    if node and node.data and node.data.type == "directory" then
+      node:expand()
+      expand_directories(tree, node:get_child_ids() or {})
+    end
+  end
+end
+
 --- First file node under `node_ids`, expanding directories on the way down.
 --- @param tree table
 --- @param node_ids table
@@ -268,16 +281,7 @@ function M.create(commits, git_root, tabpage, width, opts)
 
         -- Auto-expand all directory nodes in tree mode
         if view_mode == "tree" then
-          local function expand_directories(node_ids)
-            for _, node_id in ipairs(node_ids) do
-              local node = tree:get_node(node_id)
-              if node and node.data and node.data.type == "directory" then
-                node:expand()
-                expand_directories(node:get_child_ids() or {})
-              end
-            end
-          end
-          expand_directories(commit_node:get_child_ids() or {})
+          expand_directories(tree, commit_node:get_child_ids() or {})
         end
 
         commit_node:expand()
