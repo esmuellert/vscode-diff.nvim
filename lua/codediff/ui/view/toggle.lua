@@ -65,16 +65,15 @@ local function rerender_current_file(tabpage)
     return false
   end
 
-  local panel_name = session.panel and session.panel.name
+  local panel = session.panel
+  local panel_name = panel and panel.name
 
   if panel_name == "explorer" then
-    local explorer = lifecycle.get_explorer(tabpage)
-    return explorer and require("codediff.ui.explorer").rerender_current(explorer) or false
+    return panel.view and require("codediff.ui.explorer").rerender_current(panel.view) or false
   end
 
   if panel_name == "history" then
-    local history = lifecycle.get_explorer(tabpage)
-    return history and require("codediff.ui.history").rerender_current(history) or false
+    return panel.view and require("codediff.ui.history").rerender_current(panel.view) or false
   end
 
   -- No panel: rebuild from session fields

@@ -39,9 +39,9 @@ local function session_buffers(sess)
   if sess.modified_bufnr and vim.api.nvim_buf_is_valid(sess.modified_bufnr) then
     buffers.modified = sess.modified_bufnr
   end
-  local explorer = sess.explorer
-  if explorer and explorer.bufnr and vim.api.nvim_buf_is_valid(explorer.bufnr) then
-    buffers.panel = explorer.bufnr
+  local panel_view = sess.panel and sess.panel.view
+  if panel_view and panel_view.bufnr and vim.api.nvim_buf_is_valid(panel_view.bufnr) then
+    buffers.panel = panel_view.bufnr
   end
   if sess.result_bufnr and vim.api.nvim_buf_is_valid(sess.result_bufnr) then
     buffers.result = sess.result_bufnr

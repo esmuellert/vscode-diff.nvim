@@ -40,7 +40,7 @@ local function reachable(tp, key, modes)
   -- Build without holes: a nil mid-table would make ipairs stop early and
   -- silently skip later roles (this bit me once already).
   local bufs = {}
-  for _, b in pairs({ s.original_bufnr, s.modified_bufnr, s.explorer and s.explorer.bufnr or nil, s.result_bufnr }) do
+  for _, b in pairs({ s.original_bufnr, s.modified_bufnr, (s.panel or {}).view and (s.panel or {}).view.bufnr or nil, s.result_bufnr }) do
     table.insert(bufs, b)
   end
   for _, buf in ipairs(bufs) do
@@ -210,14 +210,14 @@ local function run_audit()
     vim.wait(15000, function()
       for _, t in ipairs(vim.api.nvim_list_tabpages()) do
         local s = lifecycle.get_session(t)
-        if s and s.explorer and s.explorer.bufnr then
+        if s and (s.panel or {}).view and (s.panel or {}).view.bufnr then
           tp = t
           return true
         end
       end
       return false
     end, 50)
-    local ex = lifecycle.get_session(tp).explorer
+    local ex = (lifecycle.get_session(tp).panel or {}).view
     ex.on_file_select({ path = "t.txt", group = "unstaged", status = "M", git_root = repo.dir })
     wait_diff(tp)
     check_shape("explorer", tp)
@@ -239,7 +239,7 @@ local function run_audit()
     vim.wait(15000, function()
       for _, t in ipairs(vim.api.nvim_list_tabpages()) do
         local s = lifecycle.get_session(t)
-        if s and s.panel and s.panel.name == "history" and s.explorer and s.explorer.bufnr then
+        if s and s.panel and s.panel.name == "history" and (s.panel or {}).view and (s.panel or {}).view.bufnr then
           tp = t
           return true
         end

@@ -93,7 +93,7 @@ local function bound_keys(tabpage)
   local buffers = {
     session.original_bufnr,
     session.modified_bufnr,
-    session.explorer and session.explorer.bufnr,
+    (session.panel or {}).view and (session.panel or {}).view.bufnr,
     session.result_bufnr,
   }
 
@@ -146,7 +146,7 @@ local function open_explorer(opts)
   assert.is_true(vim.wait(15000, function()
     for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
       local session = lifecycle.get_session(tp)
-      if session and session.explorer and session.explorer.bufnr then
+      if session and (session.panel or {}).view and (session.panel or {}).view.bufnr then
         tabpage = tp
         return true
       end
@@ -154,7 +154,7 @@ local function open_explorer(opts)
     return false
   end, 50), "explorer session should be created")
 
-  local explorer = lifecycle.get_session(tabpage).explorer
+  local explorer = (lifecycle.get_session(tabpage).panel or {}).view
   explorer.on_file_select({ path = "t.txt", group = "unstaged", status = "M", git_root = repo.dir })
   assert.is_true(wait_for_diff(tabpage), "explorer diff should be ready")
 
@@ -179,7 +179,7 @@ local function open_history()
   assert.is_true(vim.wait(15000, function()
     for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
       local session = lifecycle.get_session(tp)
-      if session and session.panel and session.panel.name == "history" and session.explorer and session.explorer.bufnr then
+      if session and session.panel and session.panel.name == "history" and (session.panel or {}).view and (session.panel or {}).view.bufnr then
         tabpage = tp
         return true
       end

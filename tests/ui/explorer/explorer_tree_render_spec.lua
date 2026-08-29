@@ -36,7 +36,7 @@ describe("Explorer tree render", function()
     local tabpage = vim.api.nvim_get_current_tabpage()
     local session = lifecycle.get_session(tabpage)
     assert.is_not_nil(session, "explorer session should exist")
-    local explorer = session.explorer
+    local explorer = (session.panel or {}).view
     assert.is_not_nil(explorer, "explorer object should be attached to the session")
 
     local _, explorer_buf = h.find_window_by_filetype("codediff-explorer")

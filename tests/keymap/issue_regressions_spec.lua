@@ -93,7 +93,7 @@ local function open_explorer(opts)
   vim.wait(15000, function()
     for _, t in ipairs(vim.api.nvim_list_tabpages()) do
       local s = lifecycle.get_session(t)
-      if s and s.explorer and s.explorer.bufnr then
+      if s and (s.panel or {}).view and (s.panel or {}).view.bufnr then
         tp = t
         return true
       end
@@ -149,7 +149,7 @@ do
   local tp, repo = open_explorer({
     keymaps = { view = { next_hunk = "]h", prev_hunk = "[h", next_file = "J", prev_file = "K" }, explorer = { hover = "gk" } },
   })
-  local ex = lifecycle.get_session(tp).explorer
+  local ex = (lifecycle.get_session(tp).panel or {}).view
 
   ex.on_file_select({ path = "one.txt", group = "unstaged", status = "M", git_root = repo.dir })
   wait_diff(tp)
@@ -272,7 +272,7 @@ end
 do
   -- gf escape: the buffer moves to another tab while the session stays alive.
   local tp, repo = open_explorer({})
-  local ex = lifecycle.get_session(tp).explorer
+  local ex = (lifecycle.get_session(tp).panel or {}).view
   ex.on_file_select({ path = "one.txt", group = "unstaged", status = "M", git_root = repo.dir })
   wait_diff(tp)
   local s = lifecycle.get_session(tp)
@@ -328,7 +328,7 @@ do
   -- #202: hunk navigation must be reachable from the explorer panel
   local tp, repo = open_explorer({})
   local s = lifecycle.get_session(tp)
-  local panel = s.explorer.bufnr
+  local panel = (s.panel or {}).view.bufnr
   record("#202", "hunk navigation reachable from the explorer panel", select(2, effective(panel, "]c")), effective(panel, "]c"))
   -- #322 / #67: gf reachable from the explorer panel
   record("#322", "gf reachable from the explorer panel", select(2, effective(panel, "gf")), effective(panel, "gf"))
@@ -358,7 +358,7 @@ do
     },
   })
   local s = lifecycle.get_session(tp)
-  local panel = s.explorer.bufnr
+  local panel = (s.panel or {}).view.bufnr
   local resolve = require("codediff.keymap.resolve")
   local leader_e = vim.api.nvim_replace_termcodes("<leader>e", true, true, true)
   local leader_b = vim.api.nvim_replace_termcodes("<leader>b", true, true, true)
@@ -386,7 +386,7 @@ do
   -- chosen view key really does collide with an explorer default on the panel.
   local tp, repo = open_explorer({ keymaps = { view = { quit = "R" } } })
   local s = lifecycle.get_session(tp)
-  local panel = s.explorer.bufnr
+  local panel = (s.panel or {}).view.bufnr
   record("#357", "a chosen view key beats an explorer default on the panel", effective(panel, "R") == "Close codediff tab", effective(panel, "R"))
   repo.cleanup()
   lifecycle.cleanup_all()
@@ -415,7 +415,7 @@ do
 
   record("#407", "the first key of a list is bound", effective(first, "q") == "Close codediff tab", effective(first, "q"))
   record("#407", "the second key of a list is bound", effective(first, "<Esc>") == "Close codediff tab", effective(first, "<Esc>"))
-  record("#407", "both keys reach the explorer panel", effective(s.explorer.bufnr, "<Esc>") == "Close codediff tab", effective(s.explorer.bufnr, "<Esc>"))
+  record("#407", "both keys reach the explorer panel", effective((s.panel or {}).view.bufnr, "<Esc>") == "Close codediff tab", effective((s.panel or {}).view.bufnr, "<Esc>"))
 
   -- Switching files rebuilds the diff buffers. Codediff re-applies its own
   -- mappings, which is exactly what a hand-rolled second key cannot do.

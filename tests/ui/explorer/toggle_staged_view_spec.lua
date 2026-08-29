@@ -48,8 +48,8 @@ describe("toggle_staged_view (issue #352)", function()
     local ready = vim.wait(8000, function()
       for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
         local sess = lifecycle.get_session(tp)
-        if sess and sess.explorer and sess.explorer.current_file_path ~= nil then
-          explorer = sess.explorer
+        if sess and (sess.panel or {}).view and (sess.panel or {}).view.current_file_path ~= nil then
+          explorer = (sess.panel or {}).view
           return true
         end
       end
@@ -119,8 +119,8 @@ describe("toggle_staged_view (issue #352)", function()
     assert.is_true(vim.wait(8000, function()
       for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
         local sess = lifecycle.get_session(tp)
-        if sess and sess.explorer then
-          explorer = sess.explorer
+        if sess and (sess.panel or {}).view then
+          explorer = (sess.panel or {}).view
           return true
         end
       end
@@ -149,8 +149,8 @@ describe("toggle_staged_view (issue #352)", function()
     assert.is_true(vim.wait(8000, function()
       for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
         local sess = lifecycle.get_session(tp)
-        if sess and sess.explorer then
-          explorer = sess.explorer
+        if sess and (sess.panel or {}).view then
+          explorer = (sess.panel or {}).view
           return true
         end
       end

@@ -100,7 +100,7 @@ local function scenario_explorer(layout)
   local ready = vim.wait(15000, function()
     for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
       local session = lifecycle.get_session(tp)
-      if session and session.explorer and session.explorer.bufnr then
+      if session and (session.panel or {}).view and (session.panel or {}).view.bufnr then
         tabpage = tp
         return true
       end
@@ -110,7 +110,7 @@ local function scenario_explorer(layout)
   assert.is_true(ready, "explorer session should be created")
 
   -- Select the changed file so the diff panes hold real buffers.
-  local explorer = lifecycle.get_session(tabpage).explorer
+  local explorer = (lifecycle.get_session(tabpage).panel or {}).view
   explorer.on_file_select({ path = "test.txt", group = "unstaged", status = "M", git_root = repo.dir })
   assert.is_true(wait_for_diff(tabpage), "explorer diff should be ready")
 

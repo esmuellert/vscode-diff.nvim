@@ -230,7 +230,7 @@ describe("keymap lifecycle", function()
       assert.is_true(vim.wait(15000, function()
         for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
           local session = lifecycle.get_session(tp)
-          if session and session.explorer and session.explorer.bufnr then
+          if session and (session.panel or {}).view and (session.panel or {}).view.bufnr then
             tabpage = tp
             return true
           end
@@ -238,7 +238,7 @@ describe("keymap lifecycle", function()
         return false
       end, 50), "explorer session should be created")
 
-      local explorer = lifecycle.get_session(tabpage).explorer
+      local explorer = (lifecycle.get_session(tabpage).panel or {}).view
       explorer.on_file_select({ path = "one.txt", group = "unstaged", status = "M", git_root = repo.dir })
       assert.is_true(wait_for_diff(tabpage), "first file diff should be ready")
       local first_buf = lifecycle.get_session(tabpage).modified_bufnr

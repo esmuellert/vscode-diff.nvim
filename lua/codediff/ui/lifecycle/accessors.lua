@@ -143,10 +143,10 @@ function M.is_suspended(tabpage)
 end
 
 --- Get explorer reference (for explorer mode)
-function M.get_explorer(tabpage)
+function M.get_panel_view(tabpage)
   local active_diffs = get_active_diffs()
   local sess = active_diffs[tabpage]
-  return sess and sess.explorer
+  return sess and sess.panel and sess.panel.view
 end
 
 --- Get the merge base (stage :1) content for the conflict file.
@@ -335,8 +335,9 @@ function M.update_buffers(tabpage, original_bufnr, modified_bufnr)
     if modified_bufnr then
       keep[modified_bufnr] = true
     end
-    if sess.explorer and sess.explorer.bufnr then
-      keep[sess.explorer.bufnr] = true
+    local panel_view = sess.panel and sess.panel.view
+    if panel_view and panel_view.bufnr then
+      keep[panel_view.bufnr] = true
     end
     if sess.result_bufnr then
       keep[sess.result_bufnr] = true
@@ -380,14 +381,15 @@ function M.update_revisions(tabpage, original_revision, modified_revision)
 end
 
 --- Set explorer reference (for explorer mode)
-function M.set_explorer(tabpage, explorer)
+function M.set_panel_view(tabpage, view)
   local active_diffs = get_active_diffs()
   local sess = active_diffs[tabpage]
   if not sess then
     return false
   end
 
-  sess.explorer = explorer
+  sess.panel = sess.panel or {}
+  sess.panel.view = view
   if sess.reapply_keymaps then
     sess.reapply_keymaps()
   end

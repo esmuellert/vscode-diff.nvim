@@ -39,7 +39,7 @@ function M.setup_explorer(tabpage, session_config, original_win, modified_win)
   local explorer_obj =
     explorer_module.create(status_result, session_config.git_root, tabpage, nil, session_config.original_revision, session_config.modified_revision, explorer_opts)
 
-  lifecycle.set_explorer(tabpage, explorer_obj)
+  lifecycle.set_panel_view(tabpage, explorer_obj)
 
   local initial_focus = explorer_config.initial_focus or "explorer"
   if initial_focus == "explorer" and explorer_obj and explorer_obj.winid and vim.api.nvim_win_is_valid(explorer_obj.winid) then
@@ -74,7 +74,7 @@ function M.setup_history(tabpage, session_config, original_win, modified_win)
     line_range = panel.data.line_range,
   })
 
-  lifecycle.set_explorer(tabpage, history_obj)
+  lifecycle.set_panel_view(tabpage, history_obj)
 
   local initial_focus = history_config.initial_focus or "history"
   if initial_focus == "history" and history_obj and history_obj.winid and vim.api.nvim_win_is_valid(history_obj.winid) then

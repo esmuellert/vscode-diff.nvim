@@ -17,7 +17,7 @@ function M.arrange(tabpage)
   local original_win = session.original_win
   local modified_win = session.modified_win
   local result_win = session.result_win
-  local panel = session.explorer -- explorer or history panel object
+  local panel = session.panel and session.panel.view
 
   -- Panel state
   local panel_win = panel and panel.winid

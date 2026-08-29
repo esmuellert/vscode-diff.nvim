@@ -51,9 +51,10 @@ local function cleanup_diff(tabpage)
   -- Hand every mapped key back to whatever owned it before codediff
   keymaps.dispose_keymaps(tabpage)
 
-  -- Call explorer's cleanup function to stop file watchers
-  if diff.explorer and diff.explorer._cleanup_auto_refresh then
-    pcall(diff.explorer._cleanup_auto_refresh)
+  -- Call the panel's cleanup function to stop file watchers
+  local panel_view = diff.panel and diff.panel.view
+  if panel_view and panel_view._cleanup_auto_refresh then
+    pcall(panel_view._cleanup_auto_refresh)
   end
 
   -- Send didClose notifications for virtual buffers
@@ -280,8 +281,9 @@ local function cleanup_for_quit(tabpage)
   local bufs_to_delete = {}
   if diff then
     -- Explorer / history panel buffer
-    if diff.explorer and diff.explorer.bufnr then
-      bufs_to_delete[diff.explorer.bufnr] = true
+    local panel_view = diff.panel and diff.panel.view
+    if panel_view and panel_view.bufnr then
+      bufs_to_delete[panel_view.bufnr] = true
     end
     -- Diff pane buffers (virtual AND scratch placeholders)
     if diff.original_bufnr then

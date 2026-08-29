@@ -35,7 +35,7 @@ local function open_explorer(temp_dir, focus_file)
   local tabpage, explorer
   local ready = vim.wait(6000, function()
     for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
-      local e = lifecycle.get_explorer(tp)
+      local e = lifecycle.get_panel_view(tp)
       if e and e.winid and vim.api.nvim_win_is_valid(e.winid)
           and e.bufnr and vim.api.nvim_buf_is_valid(e.bufnr)
           and e.current_file_path ~= nil then
@@ -74,7 +74,7 @@ local function open_initial_explorer(temp_dir, view_mode, ignore_patterns)
 
   local explorer, session
   local ready = vim.wait(6000, function()
-    explorer = lifecycle.get_explorer(vim.api.nvim_get_current_tabpage())
+    explorer = lifecycle.get_panel_view(vim.api.nvim_get_current_tabpage())
     if not explorer or not explorer.current_file_path then
       return false
     end
