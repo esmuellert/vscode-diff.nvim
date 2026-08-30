@@ -4,6 +4,7 @@ local M = {}
 local git = require("codediff.core.git")
 local view = require("codediff.ui.view")
 local path = require("codediff.core.path")
+local parse = require("codediff.commands.parse")
 
 --- Handles diffing the current buffer against a given git revision.
 -- @param revision string: The git revision (e.g., "HEAD", commit hash, branch name) to compare the current file against.
@@ -35,20 +36,14 @@ function M.run(revision, revision2, global_opts)
 
   -- Async chain: get_git_root -> resolve_revision -> get_file_content -> render_diff
   git.get_git_root(current_file, function(err_root, git_root)
-    if err_root then
-      vim.schedule(function()
-        vim.notify(err_root, vim.log.levels.ERROR)
-      end)
+    if parse.failed(err_root) then
       return
     end
 
     local relative_path = git.get_relative_path(current_file, git_root)
 
     git.resolve_revision(revision, git_root, function(err_resolve, commit_hash)
-      if err_resolve then
-        vim.schedule(function()
-          vim.notify(err_resolve, vim.log.levels.ERROR)
-        end)
+      if parse.failed(err_resolve) then
         return
       end
 
@@ -57,10 +52,7 @@ function M.run(revision, revision2, global_opts)
         if revision2 then
           -- Compare two revisions
           git.resolve_revision(revision2, git_root, function(err_resolve2, commit_hash2)
-            if err_resolve2 then
-              vim.schedule(function()
-                vim.notify(err_resolve2, vim.log.levels.ERROR)
-              end)
+            if parse.failed(err_resolve2) then
               return
             end
 
@@ -113,19 +105,13 @@ function M.run_merge_base(base_rev, target_rev, global_opts)
   end
 
   git.get_git_root(current_file, function(err_root, git_root)
-    if err_root then
-      vim.schedule(function()
-        vim.notify(err_root, vim.log.levels.ERROR)
-      end)
+    if parse.failed(err_root) then
       return
     end
 
     local actual_target = target_rev or "HEAD"
     git.get_merge_base(base_rev, actual_target, git_root, function(err_mb, merge_base_hash)
-      if err_mb then
-        vim.schedule(function()
-          vim.notify(err_mb, vim.log.levels.ERROR)
-        end)
+      if parse.failed(err_mb) then
         return
       end
 

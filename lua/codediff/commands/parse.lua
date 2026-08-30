@@ -3,6 +3,30 @@ local M = {}
 
 local git = require("codediff.core.git")
 
+--- Report a git error and answer whether there was one, so a callback can say
+--- `if parse.failed(err) then return end`. Scheduled because git callbacks run
+--- off the main loop, where notify is not safe.
+--- @param err string|nil
+--- @param message (string|fun(err: string): string)? Overrides the error text.
+---   Pass a function when building it would index `err`, which is nil here on
+---   the success path.
+--- @return boolean
+function M.failed(err, message)
+  if not err then
+    return false
+  end
+  local text = err
+  if type(message) == "function" then
+    text = message(err)
+  elseif message then
+    text = message
+  end
+  vim.schedule(function()
+    vim.notify(text, vim.log.levels.ERROR)
+  end)
+  return true
+end
+
 --- Parse triple-dot syntax for merge-base comparisons.
 -- @param arg string: The argument to parse
 -- @return string|nil, string|nil: base_rev, target_rev (nil if not triple-dot syntax)
@@ -30,10 +54,7 @@ function M.resolve_working_root(global_opts, on_ok)
   local override = global_opts and global_opts.repo
   if override then
     git.get_git_root(override, function(err, git_root)
-      if err then
-        vim.schedule(function()
-          vim.notify("Not a git repository: " .. override, vim.log.levels.ERROR)
-        end)
+      if M.failed(err, "Not a git repository: " .. override) then
         return
       end
       on_ok(git_root, true)
@@ -62,10 +83,7 @@ function M.resolve_working_root(global_opts, on_ok)
     end)
   else
     git.get_git_root(cwd, function(err_cwd, git_root)
-      if err_cwd then
-        vim.schedule(function()
-          vim.notify(err_cwd, vim.log.levels.ERROR)
-        end)
+      if M.failed(err_cwd) then
         return
       end
       on_ok(git_root, false)

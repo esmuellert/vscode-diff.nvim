@@ -25,10 +25,7 @@ function M.run(revision, global_opts, pathspec)
     end
 
     git.resolve_revision(rev, git_root, function(err_resolve, commit_hash)
-      if err_resolve then
-        vim.schedule(function()
-          vim.notify(err_resolve, vim.log.levels.ERROR)
-        end)
+      if parse.failed(err_resolve) then
         return
       end
 

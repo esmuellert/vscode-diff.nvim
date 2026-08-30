@@ -61,18 +61,12 @@ function M.run(revision, revision2, global_opts, pathspec)
     if revision and revision2 then
       -- Compare two revisions
       git.resolve_revision(revision, git_root, function(err_resolve, commit_hash)
-        if err_resolve then
-          vim.schedule(function()
-            vim.notify(err_resolve, vim.log.levels.ERROR)
-          end)
+        if parse.failed(err_resolve) then
           return
         end
 
         git.resolve_revision(revision2, git_root, function(err_resolve2, commit_hash2)
-          if err_resolve2 then
-            vim.schedule(function()
-              vim.notify(err_resolve2, vim.log.levels.ERROR)
-            end)
+          if parse.failed(err_resolve2) then
             return
           end
 
@@ -84,10 +78,7 @@ function M.run(revision, revision2, global_opts, pathspec)
     elseif revision then
       -- Resolve revision first, then get diff
       git.resolve_revision(revision, git_root, function(err_resolve, commit_hash)
-        if err_resolve then
-          vim.schedule(function()
-            vim.notify(err_resolve, vim.log.levels.ERROR)
-          end)
+        if parse.failed(err_resolve) then
           return
         end
 
@@ -129,19 +120,13 @@ function M.run_merge_base(base_rev, target_rev, global_opts, pathspec)
   local path_for_root = (global_opts and global_opts.repo) or (buftype == "" and current_file ~= "" and current_file or cwd)
 
   git.get_git_root(path_for_root, function(err_root, git_root)
-    if err_root then
-      vim.schedule(function()
-        vim.notify(err_root, vim.log.levels.ERROR)
-      end)
+    if parse.failed(err_root) then
       return
     end
 
     local actual_target = target_rev or "HEAD"
     git.get_merge_base(base_rev, actual_target, git_root, function(err_mb, merge_base_hash)
-      if err_mb then
-        vim.schedule(function()
-          vim.notify(err_mb, vim.log.levels.ERROR)
-        end)
+      if parse.failed(err_mb) then
         return
       end
 

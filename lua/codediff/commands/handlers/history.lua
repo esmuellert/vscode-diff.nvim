@@ -49,10 +49,9 @@ function M.run(range, file_path, flags, line_range, global_opts)
     end
 
     git.get_commit_list(range or "", git_root, history_opts, function(err, commits)
-      if err then
-        vim.schedule(function()
-          vim.notify("Failed to get commit history: " .. err, vim.log.levels.ERROR)
-        end)
+      if parse.failed(err, function(e)
+        return "Failed to get commit history: " .. e
+      end) then
         return
       end
 
