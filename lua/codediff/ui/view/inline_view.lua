@@ -108,10 +108,6 @@ end
 -- Create
 -- ============================================================================
 
----@param session_config SessionConfig
----@param filetype? string
----@param on_ready? function
----@return table|nil
 --- Replace a scratch buffer's contents, restoring its read-only state.
 --- Returns false when the buffer is gone, which is the caller's cue to stop:
 --- the tab may have closed while the fetch was in flight.
@@ -281,6 +277,10 @@ local function render_when_loaded(ctx, render)
   end)
 end
 
+---@param session_config SessionConfig
+---@param filetype? string
+---@param on_ready? function
+---@return table|nil
 function M.create(session_config, filetype, on_ready)
   vim.cmd("tabnew")
   local tabpage = vim.api.nvim_get_current_tabpage()

@@ -38,10 +38,6 @@ local setup_all_keymaps = view_keymaps.setup_all_keymaps
 -- Create
 -- ============================================================================
 
----@param session_config SessionConfig
----@param filetype? string
----@param on_ready? function
----@return table|nil
 --- Split direction that lands the modified pane on the side the user asked for.
 --- Explicit rather than relying on 'splitright'.
 --- @return string
@@ -322,6 +318,10 @@ local function render_when_loaded(tabpage, original_info, modified_info, origina
   })
 end
 
+---@param session_config SessionConfig
+---@param filetype? string
+---@param on_ready? function
+---@return table|nil
 function M.create(session_config, filetype, on_ready)
   vim.cmd("tabnew")
   local tabpage = vim.api.nvim_get_current_tabpage()
@@ -405,10 +405,6 @@ end
 -- Update
 -- ============================================================================
 
----@param tabpage number
----@param session_config SessionConfig
----@param auto_scroll_to_first_hunk boolean?
----@return boolean
 --- Put one side's content into `win` during an update, reusing the buffer when
 --- it is still alive. Unlike load_side, this has to cope with the buffer having
 --- been wiped since the session was built.
@@ -493,6 +489,10 @@ local function render_when_reloaded(tabpage, original_info, modified_info, wait_
   })
 end
 
+---@param tabpage number
+---@param session_config SessionConfig
+---@param auto_scroll_to_first_hunk boolean?
+---@return boolean
 function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
   -- Save current window to restore focus after update
   local saved_current_win = vim.api.nvim_get_current_win()
