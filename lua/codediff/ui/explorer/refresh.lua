@@ -99,67 +99,56 @@ function M.setup_auto_refresh(explorer, tabpage)
 end
 
 -- Collect collapsed state from tree (groups and directories that user manually collapsed)
-local function collect_collapsed_state(tree)
-  local collapsed = {}
-
-  local function collect_from_node(node)
+--- Walk every group and directory node beneath `root_nodes`, calling `visit`
+--- with the node and the key it is remembered by.
+--- @param visit fun(node: table, key: string)
+local function walk_collapsible(tree, root_nodes, visit)
+  local function walk(node)
     if not node.data then
       return
     end
     local node_type = node.data.type
-    if node_type == "group" or node_type == "directory" then
-      -- Use path for directories, name for groups as unique key
-      local key = node.data.path or node.data.name
-      if key and not node:is_expanded() then
-        collapsed[key] = true
-      end
-      -- Recurse into children
-      if node:has_children() then
-        for _, child_id in ipairs(node:get_child_ids()) do
-          local child = tree:get_node(child_id)
-          if child then
-            collect_from_node(child)
-          end
+    if node_type ~= "group" and node_type ~= "directory" then
+      return
+    end
+    -- Directories are keyed by path, groups by name.
+    local key = node.data.path or node.data.name
+    if key then
+      visit(node, key)
+    end
+    if node:has_children() then
+      for _, child_id in ipairs(node:get_child_ids()) do
+        local child = tree:get_node(child_id)
+        if child then
+          walk(child)
         end
       end
     end
   end
 
-  local root_nodes = tree:get_nodes()
   for _, node in ipairs(root_nodes) do
-    collect_from_node(node)
+    walk(node)
   end
+end
 
+--- Which collapsible nodes are collapsed, keyed for restoring later.
+local function collect_collapsed_state(tree)
+  local collapsed = {}
+  walk_collapsible(tree, tree:get_nodes(), function(node, key)
+    if not node:is_expanded() then
+      collapsed[key] = true
+    end
+  end)
   return collapsed
 end
 
--- Restore collapsed state after tree rebuild
+--- Re-collapse whatever was collapsed before the tree was rebuilt.
 local function restore_collapsed_state(tree, collapsed, root_nodes)
-  local function restore_node(node)
-    if not node.data then
-      return
+  walk_collapsible(tree, root_nodes, function(node, key)
+    if collapsed[key] then
+      node:collapse()
     end
-    local node_type = node.data.type
-    if node_type == "group" or node_type == "directory" then
-      local key = node.data.path or node.data.name
-      if key and collapsed[key] then
-        node:collapse()
-      end
-      -- Recurse into children
-      if node:has_children() then
-        for _, child_id in ipairs(node:get_child_ids()) do
-          local child = tree:get_node(child_id)
-          if child then
-            restore_node(child)
-          end
-        end
-      end
-    end
-  end
-
-  for _, node in ipairs(root_nodes) do
-    restore_node(node)
-  end
+  end)
 end
 
 -- Rebuild the explorer tree from a status_result and re-render, honoring the
