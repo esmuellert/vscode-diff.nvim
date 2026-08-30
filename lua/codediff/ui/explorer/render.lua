@@ -151,6 +151,22 @@ local function already_showing(session, explorer, file_path, abs_path, group)
   return staged == base_is_index
 end
 
+--- Expand every directory node beneath `node`, recursively.
+--- @param tree table
+--- @param node table
+local function expand_directories(tree, node)
+  if not node:has_children() then
+    return
+  end
+  for _, child_id in ipairs(node:get_child_ids()) do
+    local child = tree:get_node(child_id)
+    if child and child.data and child.data.type == "directory" then
+      child:expand()
+      expand_directories(tree, child)
+    end
+  end
+end
+
 local function show_when_still_selected(explorer, file_path, show)
   vim.schedule(function()
     if explorer.current_file_path ~= file_path then
@@ -237,17 +253,6 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
 
   -- Expand all groups by default before first render
   -- In tree mode, also expand all directories
-  local function expand_nodes_recursive(nodes)
-    for _, node in ipairs(nodes) do
-      if node.data and (node.data.type == "group" or node.data.type == "directory") then
-        node:expand()
-        if node:has_children() then
-          expand_nodes_recursive(node:get_child_ids())
-        end
-      end
-    end
-  end
-
   -- get_child_ids returns IDs, need to get actual nodes
   for _, node in ipairs(tree_data) do
     if node.data and node.data.type == "group" then
@@ -256,23 +261,10 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
   end
 
   -- For tree mode, expand directories after initial render when we have node IDs
-  local explorer_config = config.options.explorer or {}
   if explorer_config.view_mode == "tree" then
-    -- We need to expand directory nodes - they're children of group nodes
-    local function expand_all_dirs(parent_node)
-      if not parent_node:has_children() then
-        return
-      end
-      for _, child_id in ipairs(parent_node:get_child_ids()) do
-        local child = tree:get_node(child_id)
-        if child and child.data and child.data.type == "directory" then
-          child:expand()
-          expand_all_dirs(child)
-        end
-      end
-    end
+    -- Directory nodes hang off the group nodes expanded above.
     for _, node in ipairs(tree_data) do
-      expand_all_dirs(node)
+      expand_directories(tree, node)
     end
   end
 
@@ -329,33 +321,23 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
       local original = path.make_ref(file_path, explorer.dir1)
       local modified = path.make_ref(file_path, explorer.dir2)
 
-      -- Check if already displaying same file
       local session = lifecycle.get_session(tabpage)
-      if
-        not opts.force
-        and session
+      local showing_already = session
         and session.original
         and session.modified
         and session.original.absolute == original.absolute
         and session.modified.absolute == modified.absolute
-      then
+      if showing_already and not opts.force then
         return
       end
 
-      vim.schedule(function()
-        if explorer.current_file_path ~= file_path then
-          return
-        end
-        ---@type SessionConfig
-        local session_config = {
-          git_root = nil,
-          original = original,
-          modified = modified,
-          original_revision = nil,
-          modified_revision = nil,
-        }
-        view.update(tabpage, session_config, jump)
-      end)
+      open_diff_when_still_selected({
+        explorer = explorer,
+        tabpage = tabpage,
+        git_root = nil,
+        file_path = file_path,
+        jump = jump,
+      }, { original = original, modified = modified })
       return
     end
 
