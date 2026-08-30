@@ -227,6 +227,24 @@ local function apply_folds(session, tabpage)
   setup_fold_sync(session, tabpage)
 end
 
+--- Temporarily stop evaluating compact folds while a view swaps buffers.
+--- The previous file's visible-line table is keyed by window, so leaving
+--- folds enabled during the swap can render the new file with stale folds
+--- until its diff has been computed. apply_folds() re-enables them once the
+--- new render is ready.
+--- @param tabpage number
+function M.suspend(tabpage)
+  local session = lifecycle.get_session(tabpage)
+  if not session or not session.compact_mode then
+    return
+  end
+  for _, entry in ipairs(pane_entries(session)) do
+    if entry.win and vim.api.nvim_win_is_valid(entry.win) then
+      vim.wo[entry.win].foldenable = false
+    end
+  end
+end
+
 --- Enable compact mode for a tabpage
 --- @param tabpage number
 --- @return boolean success
@@ -320,7 +338,8 @@ end
 ---   * applies the configured "open in compact mode" default once, when the
 ---     first real diff is ready;
 ---   * re-folds the current diff while compact is active;
----   * exits compact if the diff no longer has any changes.
+---   * suspends folds while the current view has no changes, preserving the
+---     user's compact-mode choice for the next file.
 --- gc uses toggle()/enable()/disable() directly.
 --- @param tabpage number
 function M.refresh(tabpage)
@@ -353,7 +372,7 @@ function M.refresh(tabpage)
 
   local changes = session.stored_diff_result and session.stored_diff_result.changes
   if not changes or #changes == 0 then
-    M.disable(tabpage)
+    M.suspend(tabpage)
     return
   end
 
