@@ -27,6 +27,14 @@ describe("Command E2E (real dispatch + render)", function()
     end, { nargs = "*", bang = true, range = true })
   end
 
+  -- config.setup() merges into the *current* options, so it accumulates across
+  -- calls. Reset to defaults first so every scenario starts from a known state.
+  local function reset_config(opts)
+    local config = require("codediff.config")
+    config.options = vim.deepcopy(config.defaults)
+    require("codediff").setup(opts or {})
+  end
+
   local function find_explorer_buf()
     for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
       for _, win in ipairs(vim.api.nvim_tabpage_list_wins(tp)) do
@@ -227,6 +235,137 @@ describe("Command E2E (real dispatch + render)", function()
     vim.notify = orig_notify
     assert.is_not_nil(notified)
     h.assert_contains(notified, "No staged changes")
+  end)
+
+  -- ── Empty working tree (explorer.open_on_empty) ───────────────────────────
+  -- A fresh, fully-committed repo is clean: nothing untracked, unstaged,
+  -- staged, or in conflict. `--repo` pins the target so the current buffer is
+  -- irrelevant.
+
+  it(":CodeDiff on a clean repo: notifies and opens no tab (default)", function()
+    reset_config()
+    local repo2 = h.create_temp_git_repo()
+    repo2.write_file("sit.txt", { "x" })
+    repo2.git("add sit.txt")
+    repo2.git("commit -m clean")
+    local notified
+    local orig_notify = vim.notify
+    vim.notify = function(msg, level)
+      if level == vim.log.levels.INFO then
+        notified = tostring(msg)
+      end
+    end
+    vim.cmd("CodeDiff --repo " .. repo2.dir)
+    vim.wait(2000, function()
+      return notified ~= nil
+    end)
+    vim.notify = orig_notify
+    local tabs = #session_tabs()
+    repo2.cleanup()
+    assert.is_not_nil(notified, "a notification is shown on a clean repo")
+    h.assert_contains(notified, "No changes to show")
+    assert.equals(0, tabs, "no explorer tab opens on a clean repo by default")
+  end)
+
+  it(":CodeDiff on a clean repo: open_on_empty opens an empty explorer", function()
+    reset_config({ explorer = { open_on_empty = true } })
+    local repo2 = h.create_temp_git_repo()
+    repo2.write_file("sit.txt", { "x" })
+    repo2.git("add sit.txt")
+    repo2.git("commit -m clean")
+    local notified
+    local orig_notify = vim.notify
+    vim.notify = function(msg, level)
+      if level == vim.log.levels.INFO then
+        notified = tostring(msg)
+      end
+    end
+    vim.cmd("CodeDiff --repo " .. repo2.dir)
+    local tabs_exist = vim.wait(5000, function()
+      return #session_tabs() > 0
+    end, 50)
+    vim.notify = orig_notify
+    assert.is_true(tabs_exist, "a session tab is opened with open_on_empty")
+    assert.is_nil(notified, "no 'No changes to show' notification with open_on_empty")
+
+    local text = explorer_text()
+    h.assert_contains(text, "Changes (0)", "explorer shows the empty Changes group")
+    h.assert_contains(text, "Staged Changes (0)", "explorer shows the empty Staged Changes group")
+
+    local welcome = require("codediff.ui.welcome")
+    local tab = find_explorer_tab()
+    local session = lifecycle.get_session(tab)
+    assert.is_not_nil(session, "session exists for the empty explorer")
+    local show_welcome = vim.wait(5000, function()
+      return welcome.is_welcome_buffer(session.modified_bufnr)
+    end, 50)
+    assert.is_true(show_welcome, "empty explorer shows the welcome banner in the diff pane")
+    repo2.cleanup()
+  end)
+
+  it(":CodeDiff --staged on a clean repo: open_on_empty opens an empty staged explorer", function()
+    reset_config({ explorer = { open_on_empty = true } })
+    local repo2 = h.create_temp_git_repo()
+    repo2.write_file("sit.txt", { "x" })
+    repo2.git("add sit.txt")
+    repo2.git("commit -m clean")
+    local notified
+    local orig_notify = vim.notify
+    vim.notify = function(msg, level)
+      if level == vim.log.levels.INFO then
+        notified = tostring(msg)
+      end
+    end
+    vim.cmd("CodeDiff --repo " .. repo2.dir .. " --staged")
+    local tabs_exist = vim.wait(5000, function()
+      return #session_tabs() > 0
+    end, 50)
+    vim.notify = orig_notify
+    assert.is_true(tabs_exist, "a session tab is opened with open_on_empty")
+    assert.is_nil(notified, "no 'No staged changes to show' notification with open_on_empty")
+    repo2.cleanup()
+  end)
+
+  it(":CodeDiff on a clean repo: open_on_empty explorer repopulates on refresh", function()
+    reset_config({ explorer = { open_on_empty = true } })
+    local repo2 = h.create_temp_git_repo()
+    repo2.write_file("sit.txt", { "x" })
+    repo2.git("add sit.txt")
+    repo2.git("commit -m clean")
+    vim.cmd("CodeDiff --repo " .. repo2.dir)
+    local tabs_exist = vim.wait(5000, function()
+      return #session_tabs() > 0
+    end, 50)
+    assert.is_true(tabs_exist, "an empty explorer tab is opened")
+
+    -- Externally create a change, then refresh through the real code path.
+    repo2.write_file("sit.txt", { "x changed" })
+    local explorer = lifecycle.get_explorer(find_explorer_tab())
+    assert.is_not_nil(explorer, "explorer object exists")
+    require("codediff.ui.explorer.refresh").refresh(explorer)
+
+    local refreshed = vim.wait(10000, function()
+      local files = require("codediff.ui.explorer.refresh").get_all_files(explorer.tree)
+      return #files > 0
+    end, 50)
+    assert.is_true(refreshed, "refresh populates the explorer with the new change")
+    assert.is_true(vim.api.nvim_tabpage_is_valid(find_explorer_tab()), "the tab stays open after refresh")
+
+    -- Refresh does not auto-select (existing no-auto-select-on-refresh design);
+    -- a manual select replaces the welcome banner with the file diff.
+    local session = lifecycle.get_session(find_explorer_tab())
+    explorer.on_file_select({
+      path = repo2.path("sit.txt"),
+      status = "M",
+      git_root = repo2.dir,
+      group = "unstaged",
+    })
+    local welcome = require("codediff.ui.welcome")
+    local restored = vim.wait(10000, function()
+      return not welcome.is_welcome_buffer(session.modified_bufnr)
+    end, 50)
+    assert.is_true(restored, "selecting the file replaces the welcome banner with the diff")
+    repo2.cleanup()
   end)
 
   -- ── Single-file diff (two real files) ─────────────────────────────────────
