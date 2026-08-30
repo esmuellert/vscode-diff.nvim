@@ -165,6 +165,87 @@ end
 -- Rebuild the explorer tree from a status_result and re-render, honoring the
 -- current group visibility. Runs synchronously (no vim.schedule), so callers in
 -- a normal context — e.g. toggling a group — get an immediately consistent tree.
+--- The reviewed file's slot in its group, read off the status from before the
+--- refresh. file_to_reselect needs it to find whatever takes that slot.
+--- @param explorer table
+--- @return number|nil
+local function reviewed_file_index(explorer)
+  local group = explorer.current_file_group
+  if not group then
+    return nil
+  end
+  for i, f in ipairs((explorer.status_result or {})[group] or {}) do
+    if f.path == explorer.current_file_path then
+      return i
+    end
+  end
+  return nil
+end
+
+--- Forget which file was being reviewed, panel selection included.
+--- @param explorer table
+local function clear_current_file(explorer)
+  explorer.current_file_path = nil
+  explorer.current_file_group = nil
+  explorer.current_selection = nil
+  if explorer.clear_selection then
+    explorer.clear_selection()
+  end
+end
+
+--- Which file the explorer should show after a refresh, and in which group.
+---
+--- Prefer the same group the reviewer was in: hunk staging leaves the file
+--- where it was. When the file left that group entirely -- fully staged or
+--- unstaged -- take whatever now occupies its slot there, so staging walks
+--- down the unstaged list instead of chasing the file into the staged one
+--- (#347). Only if the group has nothing left does the search follow the file.
+---
+--- @param explorer table
+--- @param status_result table
+--- @param prev_index number? The file's slot in its group before the refresh
+--- @return table|nil file, string|nil group
+local function file_to_reselect(explorer, status_result, prev_index)
+  local group_lists = {
+    unstaged = status_result.unstaged,
+    staged = status_result.staged,
+    conflicts = status_result.conflicts,
+  }
+  local current_group = explorer.current_file_group
+
+  local function search(files, group_name)
+    for _, f in ipairs(files or {}) do
+      if f.path == explorer.current_file_path then
+        return f, group_name
+      end
+    end
+    return nil, nil
+  end
+
+  if current_group then
+    local found, group = search(group_lists[current_group], current_group)
+    if found then
+      return found, group
+    end
+  end
+
+  if current_group and prev_index then
+    local same_group = group_lists[current_group]
+    if same_group and #same_group > 0 then
+      return same_group[math.min(prev_index, #same_group)], current_group
+    end
+  end
+
+  for _, group_name in ipairs({ "conflicts", "unstaged", "staged" }) do
+    local found, group = search(status_result[group_name], group_name)
+    if found then
+      return found, group
+    end
+  end
+
+  return nil, nil
+end
+
 local function rebuild_tree(explorer, status_result, collapsed_state)
   local root_nodes = tree_module.create_tree_data(status_result, explorer.git_root, explorer.base_revision, not explorer.git_root, explorer.visible_groups)
 
@@ -240,31 +321,9 @@ function M.refresh(explorer)
       -- Rebuild tree nodes (honors group visibility) and re-render.
       rebuild_tree(explorer, status_result, collapsed_state)
 
-      -- #347: remember the reviewed file's slot in its group (from the previous
-      -- status) so re-selection can advance to whatever replaces it after a
-      -- full stage/unstage, instead of chasing the file into another group.
-      local prev_group = explorer.current_file_group
-      local prev_index = nil
-      if prev_group then
-        for i, f in ipairs((explorer.status_result or {})[prev_group] or {}) do
-          if f.path == explorer.current_file_path then
-            prev_index = i
-            break
-          end
-        end
-      end
-
-      -- Update status result for file selection logic
+      -- Read before status_result is replaced below.
+      local prev_index = reviewed_file_index(explorer)
       explorer.status_result = status_result
-
-      local function clear_current_file()
-        explorer.current_file_path = nil
-        explorer.current_file_group = nil
-        explorer.current_selection = nil
-        if explorer.clear_selection then
-          explorer.clear_selection()
-        end
-      end
 
       local show_welcome_page = require("codediff.ui.explorer.render").show_welcome_page
 
@@ -274,7 +333,7 @@ function M.refresh(explorer)
         local lifecycle = require("codediff.ui.lifecycle")
         local session = lifecycle.get_session(explorer.tabpage)
         local already_welcome = session and welcome.is_welcome_buffer(session.modified_bufnr)
-        clear_current_file()
+        clear_current_file(explorer)
         if not already_welcome then
           show_welcome_page(explorer)
         end
@@ -285,51 +344,10 @@ function M.refresh(explorer)
       -- If found (possibly in a new group), call on_file_select to update diff panes.
       -- If not found (committed/removed), show welcome page.
       if explorer.current_file_path and total_files > 0 then
-        local found_file = nil
-        local found_group = nil
-        local group_lists = {
-          unstaged = status_result.unstaged,
-          staged = status_result.staged,
-          conflicts = status_result.conflicts,
-        }
-        local current_group = explorer.current_file_group
-        -- Search helper: look in a specific status list
-        local function search_group(files, group_name)
-          for _, f in ipairs(files or {}) do
-            if f.path == explorer.current_file_path then
-              return f, group_name
-            end
-          end
-          return nil, nil
-        end
-        -- Search same group first (preferred — e.g. hunk staging keeps file in same group)
-        if current_group then
-          found_file, found_group = search_group(group_lists[current_group], current_group)
-        end
-        -- #347: the reviewed file was fully staged/unstaged and left its group.
-        -- Advance to the file now occupying its slot in the SAME group — stage
-        -- jumps to the next unstaged file, unstage to the next staged file —
-        -- instead of chasing the file into another group.
-        if not found_file and current_group and prev_index then
-          local same_group = group_lists[current_group]
-          if same_group and #same_group > 0 then
-            found_file, found_group = same_group[math.min(prev_index, #same_group)], current_group
-          end
-        end
-        -- Otherwise the file moved to another group (or was resolved): follow it.
-        if not found_file then
-          found_file, found_group = search_group(status_result.conflicts, "conflicts")
-        end
-        if not found_file then
-          found_file, found_group = search_group(status_result.unstaged, "unstaged")
-        end
-        if not found_file then
-          found_file, found_group = search_group(status_result.staged, "staged")
-        end
-
+        local found_file, found_group = file_to_reselect(explorer, status_result, prev_index)
         if found_file then
-          -- Re-select current file — on_file_select guard handles deduplication
-          -- Pass no_jump to preserve cursor position (this is a refresh, not user click)
+          -- on_file_select dedupes; no_jump keeps the cursor where it is,
+          -- since this is a refresh rather than a click.
           explorer.on_file_select({
             path = found_file.path,
             old_path = found_file.old_path,
@@ -338,8 +356,8 @@ function M.refresh(explorer)
             group = found_group,
           }, { no_jump = true })
         else
-          -- File was committed/removed — show welcome
-          clear_current_file()
+          -- Committed or removed.
+          clear_current_file(explorer)
           show_welcome_page(explorer)
         end
       end
