@@ -84,10 +84,6 @@ local function conflict_revisions()
   return ":2", ":3" -- OURS left, THEIRS right
 end
 
---- Run `show` on the next tick, unless the user has moved on. The explorer
---- fires a selection per cursor movement, so a slow open must not paint over
---- a newer one.
---- @param show fun(is_inline: boolean)
 --- Whether `file_path` is staged, per the explorer's last status.
 --- nil when there is no status to consult.
 --- @return boolean|nil
@@ -154,6 +150,10 @@ local function expand_directories(tree, node)
   end
 end
 
+--- Run `show` on the next tick, unless the user has moved on. The explorer
+--- fires a selection per cursor movement, so a slow open must not paint over
+--- a newer one.
+--- @param show fun(is_inline: boolean)
 local function show_when_still_selected(explorer, file_path, show)
   vim.schedule(function()
     if explorer.current_file_path ~= file_path then
