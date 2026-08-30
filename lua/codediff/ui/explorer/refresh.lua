@@ -216,10 +216,6 @@ function M.refresh(explorer)
     return
   end
 
-  -- Get current selection to restore it after refresh
-  local current_node = explorer.tree:get_node()
-  local current_path = current_node and current_node.data and current_node.data.path
-
   -- Collect collapsed state before async operation
   local collapsed_state = collect_collapsed_state(explorer.tree)
 
