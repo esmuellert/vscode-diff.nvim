@@ -511,8 +511,41 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
   if not old_original_buf or not old_modified_buf then
     return false
   end
-  if not original_win and not modified_win then
-    return false
+  local original_win_valid = original_win and vim.api.nvim_win_is_valid(original_win)
+  local modified_win_valid = modified_win and vim.api.nvim_win_is_valid(modified_win)
+
+  -- If the panel is the only remaining window, recreate the first diff pane
+  -- beside/above it. The normal split path below can then recreate the other
+  -- pane while preserving original_position.
+  if not original_win_valid and not modified_win_valid then
+    local panel_state = session.explorer
+    local panel_win = panel_state and panel_state.winid
+    if not panel_win or panel_state.is_hidden or not vim.api.nvim_win_is_valid(panel_win) or vim.api.nvim_win_get_tabpage(panel_win) ~= tabpage then
+      return false
+    end
+
+    vim.api.nvim_set_current_win(panel_win)
+
+    local panel_config = session.mode == "history" and (config.options.history or {}) or (config.options.explorer or {})
+    local panel_position = panel_config.position or (session.mode == "history" and "bottom" or "left")
+    local content_split = panel_position == "bottom" and "above" or "right"
+    local scratch = vim.api.nvim_create_buf(false, true)
+    vim.bo[scratch].buftype = "nofile"
+    vim.bo[scratch].bufhidden = "wipe"
+
+    local ok, recreated_win = pcall(vim.api.nvim_open_win, scratch, true, {
+      split = content_split,
+      win = -1,
+    })
+    if not ok then
+      pcall(vim.api.nvim_buf_delete, scratch, { force = true })
+      return false
+    end
+
+    original_win = recreated_win
+    original_win_valid = true
+    session.original_win = original_win
+    vim.w[original_win].codediff_restore = 1
   end
 
   -- Disable auto-refresh temporarily
@@ -537,19 +570,20 @@ function M.update(tabpage, session_config, auto_scroll_to_first_hunk)
     lifecycle.set_result(tabpage, nil, nil)
   end
 
-  -- Restore second window if returning from single-pane mode
-  if session.single_pane then
+  -- Restore the second window when returning from single-pane mode or when
+  -- either side was manually closed.
+  if session.single_pane or not original_win_valid or not modified_win_valid then
     local split_cmd = config.options.diff.original_position == "right" and "leftabove vsplit" or "rightbelow vsplit"
 
-    if not original_win or not vim.api.nvim_win_is_valid(original_win) then
-      -- Original was closed (untracked file) — recreate it to the left of modified
+    if not original_win_valid then
+      -- Recreate original on the configured side of modified
       vim.api.nvim_set_current_win(modified_win)
       vim.cmd(config.options.diff.original_position == "right" and "rightbelow vsplit" or "leftabove vsplit")
       original_win = vim.api.nvim_get_current_win()
       vim.w[original_win].codediff_restore = 1
       session.original_win = original_win
-    elseif not modified_win or not vim.api.nvim_win_is_valid(modified_win) then
-      -- Modified was closed (deleted file) — recreate it to the right of original
+    elseif not modified_win_valid then
+      -- Recreate modified on the configured side of original
       vim.api.nvim_set_current_win(original_win)
       vim.cmd(split_cmd)
       modified_win = vim.api.nvim_get_current_win()
