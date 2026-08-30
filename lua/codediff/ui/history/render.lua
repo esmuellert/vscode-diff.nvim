@@ -89,12 +89,6 @@ function M.build_tree_nodes(commits, git_root, opts)
   return tree_nodes
 end
 
--- Create file history panel
--- commits: array of commit objects from git.get_commit_list
--- git_root: absolute path to git repository root
--- tabpage: tabpage handle
--- width: optional width override
--- opts: { range, path, ... } original options
 --- Expand every directory node under `node_ids`, recursively.
 --- @param tree table
 --- @param node_ids table
@@ -130,6 +124,12 @@ local function find_first_file(tree, node_ids)
   return nil
 end
 
+-- Create file history panel
+-- commits: array of commit objects from git.get_commit_list
+-- git_root: absolute path to git repository root
+-- tabpage: tabpage handle
+-- width: optional width override
+-- opts: { range, path, ... } original options
 function M.create(commits, git_root, tabpage, width, opts)
   opts = opts or {}
   local base_revision = opts.base_revision
