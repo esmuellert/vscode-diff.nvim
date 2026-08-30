@@ -98,7 +98,6 @@ function M.setup_auto_refresh(explorer, tabpage)
   return cleanup
 end
 
--- Collect collapsed state from tree (groups and directories that user manually collapsed)
 --- Walk every group and directory node beneath `root_nodes`, calling `visit`
 --- with the node and the key it is remembered by.
 --- @param visit fun(node: table, key: string)
@@ -151,9 +150,6 @@ local function restore_collapsed_state(tree, collapsed, root_nodes)
   end)
 end
 
--- Rebuild the explorer tree from a status_result and re-render, honoring the
--- current group visibility. Runs synchronously (no vim.schedule), so callers in
--- a normal context — e.g. toggling a group — get an immediately consistent tree.
 --- The reviewed file's slot in its group, read off the status from before the
 --- refresh. file_to_reselect needs it to find whatever takes that slot.
 --- @param explorer table
@@ -235,6 +231,9 @@ local function file_to_reselect(explorer, status_result, prev_index)
   return nil, nil
 end
 
+-- Rebuild the explorer tree from a status_result and re-render, honoring the
+-- current group visibility. Runs synchronously (no vim.schedule), so callers in
+-- a normal context — e.g. toggling a group — get an immediately consistent tree.
 local function rebuild_tree(explorer, status_result, collapsed_state)
   local root_nodes = tree_module.create_tree_data(status_result, explorer.git_root, explorer.base_revision, not explorer.git_root, explorer.visible_groups)
 
