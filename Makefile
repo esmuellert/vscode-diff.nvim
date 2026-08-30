@@ -45,3 +45,4 @@ bump-prerelease:
 help:
 	@echo "Targets: build, test, test-c, test-lua, lint, clean, help"
 	@echo "Version: bump-patch, bump-minor, bump-major, bump-prerelease"
+	@echo "Checks:  scripts/find_orphan_comments.py --rev main..HEAD"
