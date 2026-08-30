@@ -160,118 +160,98 @@ end
 -- Step 3: Filler Line Calculation
 -- ============================================================================
 
-local function calculate_fillers(mapping, original_lines, _modified_lines, last_orig_line, last_mod_line)
+local function append_filler_counts(fillers, original_count, modified_count, original_after_line, modified_after_line)
+  if original_count > modified_count then
+    fillers[#fillers + 1] = {
+      buffer = "modified",
+      after_line = modified_after_line,
+      count = original_count - modified_count,
+    }
+  elseif modified_count > original_count then
+    fillers[#fillers + 1] = {
+      buffer = "original",
+      after_line = original_after_line,
+      count = modified_count - original_count,
+    }
+  end
+end
+
+local function append_filler(fillers, original_start, original_end, modified_start, modified_end)
+  append_filler_counts(fillers, original_end - original_start, modified_end - modified_start, original_end - 1, modified_end - 1)
+end
+
+local function mappings_cover_change(mapping)
+  local original_line = mapping.original.start_line
+  local modified_line = mapping.modified.start_line
+  for _, line_mapping in ipairs(mapping.line_mappings or {}) do
+    if line_mapping.original.start_line ~= original_line or line_mapping.modified.start_line ~= modified_line then
+      return false
+    end
+    original_line = line_mapping.original.end_line
+    modified_line = line_mapping.modified.end_line
+  end
+  return original_line == mapping.original.end_line and modified_line == mapping.modified.end_line
+end
+
+local function append_inner_alignment(fillers, state, original_end, modified_end)
+  if original_end < state.original_line or modified_end < state.modified_line then
+    return
+  end
+  if not state.first and (original_end == state.original_line or modified_end == state.modified_line) then
+    return
+  end
+
+  state.first = false
+  append_filler(fillers, state.original_line, original_end, state.modified_line, modified_end)
+  state.original_line = original_end
+  state.modified_line = modified_end
+end
+
+local function calculate_inner_change_fillers(mapping, original_lines)
+  local original_count = mapping.original.end_line - mapping.original.start_line
+  local modified_count = mapping.modified.end_line - mapping.modified.start_line
+  if #mapping.inner_changes == 0 then
+    local fillers = {}
+    append_filler_counts(fillers, original_count, modified_count, mapping.original.start_line - 1, mapping.modified.start_line - 1)
+    return fillers
+  end
+
   local fillers = {}
-
-  last_orig_line = last_orig_line or mapping.original.start_line
-  last_mod_line = last_mod_line or mapping.modified.start_line
-
-  if not mapping.inner_changes or #mapping.inner_changes == 0 then
-    local mapping_orig_lines = mapping.original.end_line - mapping.original.start_line
-    local mapping_mod_lines = mapping.modified.end_line - mapping.modified.start_line
-
-    if mapping_orig_lines > mapping_mod_lines then
-      local diff = mapping_orig_lines - mapping_mod_lines
-      table.insert(fillers, {
-        buffer = "modified",
-        after_line = mapping.modified.start_line - 1,
-        count = diff,
-      })
-    elseif mapping_mod_lines > mapping_orig_lines then
-      local diff = mapping_mod_lines - mapping_orig_lines
-      table.insert(fillers, {
-        buffer = "original",
-        after_line = mapping.original.start_line - 1,
-        count = diff,
-      })
-    end
-    return fillers, mapping.original.end_line, mapping.modified.end_line
-  end
-
-  local alignments = {}
-  local first = true
-
-  local function handle_gap_alignment(orig_line_exclusive, mod_line_exclusive)
-    local orig_gap = orig_line_exclusive - last_orig_line
-    local mod_gap = mod_line_exclusive - last_mod_line
-
-    if orig_gap > 0 or mod_gap > 0 then
-      table.insert(alignments, {
-        orig_start = last_orig_line,
-        orig_end = orig_line_exclusive,
-        mod_start = last_mod_line,
-        mod_end = mod_line_exclusive,
-        orig_len = orig_gap,
-        mod_len = mod_gap,
-      })
-      last_orig_line = orig_line_exclusive
-      last_mod_line = mod_line_exclusive
-    end
-  end
-
-  handle_gap_alignment(mapping.original.start_line, mapping.modified.start_line)
-
-  local function emit_alignment(orig_line_exclusive, mod_line_exclusive)
-    if orig_line_exclusive < last_orig_line or mod_line_exclusive < last_mod_line then
-      return
-    end
-
-    if first then
-      first = false
-    elseif orig_line_exclusive == last_orig_line or mod_line_exclusive == last_mod_line then
-      return
-    end
-
-    local orig_range_len = orig_line_exclusive - last_orig_line
-    local mod_range_len = mod_line_exclusive - last_mod_line
-
-    if orig_range_len > 0 or mod_range_len > 0 then
-      table.insert(alignments, {
-        orig_start = last_orig_line,
-        orig_end = orig_line_exclusive,
-        mod_start = last_mod_line,
-        mod_end = mod_line_exclusive,
-        orig_len = orig_range_len,
-        mod_len = mod_range_len,
-      })
-    end
-
-    last_orig_line = orig_line_exclusive
-    last_mod_line = mod_line_exclusive
-  end
-
+  local state = {
+    original_line = mapping.original.start_line,
+    modified_line = mapping.modified.start_line,
+    first = true,
+  }
   for _, inner in ipairs(mapping.inner_changes) do
     if inner.original.start_col > 1 and inner.modified.start_col > 1 then
-      emit_alignment(inner.original.start_line, inner.modified.start_line)
+      append_inner_alignment(fillers, state, inner.original.start_line, inner.modified.start_line)
     end
 
-    local orig_line_len = original_lines[inner.original.end_line] and #original_lines[inner.original.end_line] or 0
-    if inner.original.end_col <= orig_line_len then
-      emit_alignment(inner.original.end_line, inner.modified.end_line)
-    end
-  end
-
-  emit_alignment(mapping.original.end_line, mapping.modified.end_line)
-
-  for _, align in ipairs(alignments) do
-    local line_diff = align.mod_len - align.orig_len
-
-    if line_diff > 0 then
-      table.insert(fillers, {
-        buffer = "original",
-        after_line = align.orig_end - 1,
-        count = line_diff,
-      })
-    elseif line_diff < 0 then
-      table.insert(fillers, {
-        buffer = "modified",
-        after_line = align.mod_end - 1,
-        count = -line_diff,
-      })
+    local original_line_length = original_lines[inner.original.end_line] and #original_lines[inner.original.end_line] or 0
+    if inner.original.end_col <= original_line_length then
+      append_inner_alignment(fillers, state, inner.original.end_line, inner.modified.end_line)
     end
   end
+  append_inner_alignment(fillers, state, mapping.original.end_line, mapping.modified.end_line)
+  return fillers
+end
 
-  return fillers, last_orig_line, last_mod_line
+local function calculate_fillers(mapping, original_lines)
+  if mappings_cover_change(mapping) then
+    return calculate_inner_change_fillers(mapping, original_lines)
+  end
+
+  local fillers = {}
+  local original_line = mapping.original.start_line
+  local modified_line = mapping.modified.start_line
+  for _, line_mapping in ipairs(mapping.line_mappings or {}) do
+    append_filler(fillers, original_line, line_mapping.original.start_line, modified_line, line_mapping.modified.start_line)
+    append_filler(fillers, line_mapping.original.start_line, line_mapping.original.end_line, line_mapping.modified.start_line, line_mapping.modified.end_line)
+    original_line = line_mapping.original.end_line
+    modified_line = line_mapping.modified.end_line
+  end
+  append_filler(fillers, original_line, mapping.original.end_line, modified_line, mapping.modified.end_line)
+  return fillers
 end
 
 -- ============================================================================
@@ -290,9 +270,6 @@ function M.render_diff(left_bufnr, right_bufnr, original_lines, modified_lines, 
 
   local total_left_fillers = 0
   local total_right_fillers = 0
-
-  local last_orig_line = 1
-  local last_mod_line = 1
 
   for _, mapping in ipairs(lines_diff.changes) do
     local orig_is_empty = (mapping.original.end_line <= mapping.original.start_line)
@@ -318,10 +295,7 @@ function M.render_diff(left_bufnr, right_bufnr, original_lines, modified_lines, 
       end
     end
 
-    local fillers, new_last_orig, new_last_mod = calculate_fillers(mapping, original_lines, modified_lines, last_orig_line, last_mod_line)
-
-    last_orig_line = new_last_orig
-    last_mod_line = new_last_mod
+    local fillers = calculate_fillers(mapping, original_lines)
 
     for _, filler in ipairs(fillers) do
       if filler.buffer == "original" then

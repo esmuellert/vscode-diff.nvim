@@ -70,6 +70,11 @@ typedef struct {
   int capacity;
 } RangeMappingArray;
 
+typedef struct {
+  LineRange original;
+  LineRange modified;
+} LineMapping;
+
 /**
  * DetailedLineRangeMapping - Final algorithm output
  * Maps to VSCode's DetailedLineRangeMapping.
@@ -80,6 +85,9 @@ typedef struct {
   LineRange modified;          // Which lines in modified
   RangeMapping *inner_changes; // Character-level changes (NULL if no inner changes)
   int inner_change_count;      // Number of inner changes
+  LineMapping *line_mappings;
+  int line_mapping_count;
+  int line_mapping_capacity;
 } DetailedLineRangeMapping;
 
 typedef struct {
@@ -103,6 +111,12 @@ typedef struct {
   int capacity;
 } MovedTextArray;
 
+typedef enum {
+  LINE_MATCHER_SIMILARITY = 0,
+  LINE_MATCHER_VSCODE = 1,
+  LINE_MATCHER_EQUAL_LINE_COUNT = 2,
+} LineMatcherStrategy;
+
 /**
  * DiffOptions - Configuration for diff computation
  * Maps to VSCode's ILinesDiffComputerOptions.
@@ -112,6 +126,8 @@ typedef struct {
   int max_computation_time_ms; // 0 = infinite timeout
   bool compute_moves;          // If true, compute moved blocks (not implemented yet)
   bool extend_to_subwords;     // If true, extend diffs to subword boundaries
+  LineMatcherStrategy line_matcher_strategy;
+  double line_matcher_threshold;
 } DiffOptions;
 
 /**

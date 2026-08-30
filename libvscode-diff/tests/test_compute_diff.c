@@ -154,6 +154,57 @@ bool test_whitespace_changes() {
   return true;
 }
 
+bool test_trim_whitespace_refinement() {
+  printf("Running test_trim_whitespace_refinement...\n");
+
+  struct {
+    const char *original;
+    const char *modified;
+  } cases[] = {
+      {"    ", ""},
+      {"  x", "x"},
+      {"x", "  x"},
+      {"x  ", "x"},
+      {"x", "x  "},
+      {"  value  ", "value"},
+  };
+  LineMatcherStrategy strategies[] = {
+      LINE_MATCHER_SIMILARITY,
+      LINE_MATCHER_VSCODE,
+      LINE_MATCHER_EQUAL_LINE_COUNT,
+  };
+
+  int case_count = (int)(sizeof(cases) / sizeof(cases[0]));
+  int strategy_count = (int)(sizeof(strategies) / sizeof(strategies[0]));
+  for (int case_index = 0; case_index < case_count; case_index++) {
+    for (int strategy_index = 0; strategy_index < strategy_count;
+         strategy_index++) {
+      const char *original[] = {"before", cases[case_index].original, "after"};
+      const char *modified[] = {"before", cases[case_index].modified, "after"};
+      DiffOptions options = {
+          .ignore_trim_whitespace = false,
+          .max_computation_time_ms = 0,
+          .compute_moves = false,
+          .extend_to_subwords = false,
+          .line_matcher_strategy = strategies[strategy_index],
+          .line_matcher_threshold = 0.75,
+      };
+      LinesDiff *result = compute_diff(original, 3, modified, 3, &options);
+
+      ASSERT(result != NULL, "Result should not be NULL");
+      ASSERT_EQ(result->changes.count, 1, "Should have 1 whitespace change");
+      ASSERT_EQ(result->changes.mappings[0].line_mapping_count, 1,
+                "Should map trim-equivalent lines");
+      ASSERT(result->changes.mappings[0].inner_change_count > 0,
+             "Should refine trim whitespace characters");
+      free_lines_diff(result);
+    }
+  }
+
+  printf("  ✓ PASSED\n");
+  return true;
+}
+
 bool test_ignore_whitespace() {
   printf("Running test_ignore_whitespace...\n");
 
@@ -205,6 +256,7 @@ int main(void) {
   RUN_TEST(test_simple_change);
   RUN_TEST(test_multiline_diff);
   RUN_TEST(test_whitespace_changes);
+  RUN_TEST(test_trim_whitespace_refinement);
   RUN_TEST(test_ignore_whitespace);
 
   printf("═══════════════════════════════════════════════════════════\n");

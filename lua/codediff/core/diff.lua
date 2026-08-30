@@ -86,8 +86,16 @@ ffi.cdef([[
   typedef struct {
     LineRange original;
     LineRange modified;
+  } LineMapping;
+
+  typedef struct {
+    LineRange original;
+    LineRange modified;
     RangeMapping* inner_changes;
     int inner_change_count;
+    LineMapping* line_mappings;
+    int line_mapping_count;
+    int line_mapping_capacity;
   } DetailedLineRangeMapping;
 
   typedef struct {
@@ -115,11 +123,15 @@ ffi.cdef([[
   } LinesDiff;
 
   // Options
+  typedef int LineMatcherStrategy;
+
   typedef struct {
     bool ignore_trim_whitespace;
     int max_computation_time_ms;
     bool compute_moves;
     bool extend_to_subwords;
+    LineMatcherStrategy line_matcher_strategy;
+    double line_matcher_threshold;
   } DiffOptions;
 
   // API functions
@@ -140,6 +152,10 @@ ffi.cdef([[
 ---@field max_computation_time_ms integer
 ---@field compute_moves boolean
 ---@field extend_to_subwords boolean
+---@field line_matcher_strategy integer
+---@field line_matcher_threshold number
+
+local line_matcher_strategies = { similarity = 0, vscode = 1, equal_line_count = 2 }
 
 -- Convert Lua string array to C string array
 local function lua_to_c_strings(lines)
@@ -180,19 +196,27 @@ local function range_mapping_to_lua(c_mapping)
 end
 
 -- Convert C DetailedLineRangeMapping to Lua table
+local function line_mapping_to_lua(c_mapping)
+  return {
+    original = line_range_to_lua(c_mapping.original),
+    modified = line_range_to_lua(c_mapping.modified),
+  }
+end
+
 local function detailed_mapping_to_lua(c_mapping)
   local inner_changes = {}
-
-  if c_mapping.inner_changes ~= nil then
-    for i = 0, c_mapping.inner_change_count - 1 do
-      table.insert(inner_changes, range_mapping_to_lua(c_mapping.inner_changes[i]))
-    end
+  for i = 0, c_mapping.inner_change_count - 1 do
+    inner_changes[#inner_changes + 1] = range_mapping_to_lua(c_mapping.inner_changes[i])
   end
-
+  local line_mappings = {}
+  for i = 0, c_mapping.line_mapping_count - 1 do
+    line_mappings[#line_mappings + 1] = line_mapping_to_lua(c_mapping.line_mappings[i])
+  end
   return {
     original = line_range_to_lua(c_mapping.original),
     modified = line_range_to_lua(c_mapping.modified),
     inner_changes = inner_changes,
+    line_mappings = line_mappings,
   }
 end
 
@@ -244,6 +268,10 @@ function M.compute_diff(original_lines, modified_lines, options)
   c_options.max_computation_time_ms = options.max_computation_time_ms or 5000
   c_options.compute_moves = options.compute_moves or false
   c_options.extend_to_subwords = options.extend_to_subwords or false
+  local config = require("codediff.config")
+  local matcher = config.resolve_line_matcher(options.line_matcher or config.options.diff.line_matcher)
+  c_options.line_matcher_strategy = line_matcher_strategies[matcher.strategy]
+  c_options.line_matcher_threshold = matcher.threshold or 0.75
 
   -- Call C function
   local c_diff = lib.compute_diff(c_orig, orig_count, c_mod, mod_count, c_options)

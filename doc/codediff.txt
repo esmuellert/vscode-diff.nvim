@@ -220,6 +220,65 @@ The toggle keymap can be customized:
   })
 <
 
+LINE MATCHING                              *codediff-line-matcher*
+
+CodeDiff provides several line-matching strategies implemented in the native
+diff engine.
+
+Line matching determines which changed lines in the old and new versions
+correspond to each other. Paired lines receive character-level highlighting,
+while unmatched lines remain line-level changes.
+
+Three strategies are available:
+
+1. `similarity` (default)
+
+Pairs similar lines while leaving unrelated lines as line-level changes.
+
+The score is `2 * LCS(left, right) / (#left + #right)`. For example,
+`local old_name = 1` and `local new_name = 1` score approximately 0.83.
+With the default threshold of 0.75, these lines are paired. Increasing the
+threshold requires a closer match; decreasing it allows less similar lines
+to be paired.
+
+>lua
+  diff = {
+    line_matcher = {
+      strategy = "similarity",
+      threshold = 0.75,
+    },
+  }
+<
+
+2. `vscode`
+
+Refines each complete changed block. Use this to preserve CodeDiff's
+previous behavior, including split and merged lines.
+
+>lua
+  diff = {
+    line_matcher = {
+      strategy = "vscode",
+    },
+  }
+<
+
+3. `equal_line_count`
+
+Uses GitHub-style line matching: lines are paired by position only when
+both sides of a changed block contain the same number of lines. Blocks
+with unequal counts remain line-level changes.
+
+>lua
+  diff = {
+    line_matcher = {
+      strategy = "equal_line_count",
+    },
+  }
+<
+
+Custom Lua matcher callbacks are not supported.
+
 Setup entry point:
 >lua
   require("codediff").setup({
@@ -239,6 +298,10 @@ Setup entry point:
       filler_text = "╱",
       disable_inlay_hints = true,
       max_computation_time_ms = 5000,
+      line_matcher = {
+        strategy = "similarity",
+        threshold = 0.75,
+      },
       hide_merge_artifacts = false,
       conflict_result_position = "bottom",
       conflict_result_height = 30,

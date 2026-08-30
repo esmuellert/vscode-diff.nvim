@@ -23,6 +23,7 @@ set SOURCES=^
 default_lines_diff_computer.c ^
 src\char_level.c ^
 src\line_level.c ^
+src\line_matcher.c ^
 src\myers.c ^
 src\optimize.c ^
 src\sequence.c ^

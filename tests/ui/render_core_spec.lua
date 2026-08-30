@@ -131,6 +131,29 @@ describe("Render Core", function()
     vim.api.nvim_buf_delete(right_buf, {force = true})
   end)
 
+  it("Aligns multiple VS Code-style line merges independently", function()
+    local left_buf = vim.api.nvim_create_buf(false, true)
+    local right_buf = vim.api.nvim_create_buf(false, true)
+    local original = { "one", "two", "three", "four" }
+    local modified = { "onetwo", "threefour" }
+
+    vim.api.nvim_buf_set_lines(left_buf, 0, -1, false, original)
+    vim.api.nvim_buf_set_lines(right_buf, 0, -1, false, modified)
+
+    local lines_diff = diff.compute_diff(original, modified, { line_matcher = { strategy = "vscode" } })
+    local rendered = core.render_diff(left_buf, right_buf, original, modified, lines_diff)
+    local fillers = vim.api.nvim_buf_get_extmarks(right_buf, highlights.ns_filler, 0, -1, { details = true })
+
+    assert.equal(2, rendered.right_fillers)
+    assert.equal(2, #fillers)
+    assert.same({ 0, 1 }, { fillers[1][2], fillers[2][2] })
+    assert.equal(1, #fillers[1][4].virt_lines)
+    assert.equal(1, #fillers[2][4].virt_lines)
+
+    vim.api.nvim_buf_delete(left_buf, { force = true })
+    vim.api.nvim_buf_delete(right_buf, { force = true })
+  end)
+
   -- Test 5: Character-level diff highlights
   it("Renders character-level differences within modified lines", function()
     local left_buf = vim.api.nvim_create_buf(false, true)

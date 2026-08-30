@@ -34,6 +34,10 @@ M.defaults = {
     disable_inlay_hints = true, -- Disable inlay hints in diff windows for cleaner view
     max_computation_time_ms = 5000, -- Maximum time for diff computation (5 seconds, VSCode default)
     ignore_trim_whitespace = false, -- Ignore leading/trailing whitespace changes (like diffopt+=iwhite)
+    line_matcher = {
+      strategy = "similarity", -- Native line matching: "similarity", "vscode", or "equal_line_count"
+      threshold = 0.75, -- Minimum byte-LCS score for the "similarity" strategy
+    },
     hide_merge_artifacts = false, -- Hide merge tool temp files (*.orig, *.BACKUP.*, *.BASE.*, *.LOCAL.*, *.REMOTE.*)
     original_position = "left", -- Position of original (old) content: "left" or "right"
     conflict_ours_position = "right", -- Position of ours (:2) in conflict view: "left" or "right" (independent of original_position)
@@ -184,8 +188,50 @@ M.defaults = {
 
 M.options = vim.deepcopy(M.defaults)
 
+local line_matcher_keys = {
+  strategy = true,
+  threshold = true,
+}
+
+function M.resolve_line_matcher(value)
+  value = value or M.defaults.diff.line_matcher
+  if type(value) ~= "table" then
+    error("diff.line_matcher must be a table")
+  end
+  for key in pairs(value) do
+    if not line_matcher_keys[key] then
+      error("unknown diff.line_matcher option: " .. tostring(key))
+    end
+  end
+
+  local strategy = value.strategy or "similarity"
+  if strategy ~= "similarity" and strategy ~= "vscode" and strategy ~= "equal_line_count" then
+    error("diff.line_matcher.strategy must be one of: similarity, vscode, equal_line_count")
+  end
+  if strategy ~= "similarity" and value.threshold ~= nil then
+    error("diff.line_matcher.threshold is only valid for the similarity strategy")
+  end
+
+  if strategy ~= "similarity" then
+    return { strategy = strategy }
+  end
+  local threshold = value.threshold or 0.75
+  if type(threshold) ~= "number" or threshold < 0 or threshold > 1 then
+    error("diff.line_matcher.threshold must be a number between 0 and 1")
+  end
+  return { strategy = strategy, threshold = threshold }
+end
+
 function M.setup(opts)
-  M.options = vim.tbl_deep_extend("force", M.options, opts or {})
+  opts = opts or {}
+  local line_matcher = opts.diff and opts.diff.line_matcher
+  if line_matcher ~= nil then
+    line_matcher = M.resolve_line_matcher(line_matcher)
+  end
+  M.options = vim.tbl_deep_extend("force", M.options, opts)
+  if line_matcher ~= nil then
+    M.options.diff.line_matcher = line_matcher
+  end
 end
 
 return M

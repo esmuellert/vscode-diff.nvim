@@ -127,6 +127,7 @@ set(DIFF_CORE_SOURCES
     default_lines_diff_computer.c
     src/char_level.c
     src/line_level.c
+    src/line_matcher.c
     src/myers.c
     src/optimize.c
     src/sequence.c
@@ -256,6 +257,7 @@ set(TEST_COMMON_SOURCES
     src/myers.c
     src/optimize.c
     src/line_level.c
+    src/line_matcher.c
     src/char_level.c
     src/range_mapping.c
     src/utf8_utils.c
@@ -319,6 +321,7 @@ add_diff_test(test_myers)
 add_diff_test(test_sequence)
 add_diff_test(test_line_optimization)
 add_diff_test(test_line_boundary_scoring)
+add_diff_test(test_line_matcher)
 add_diff_test(test_char_level)
 add_diff_test(test_dp_algorithm)
 add_diff_test(test_char_boundary_categories)

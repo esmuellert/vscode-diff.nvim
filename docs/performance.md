@@ -4,14 +4,15 @@ This plugin provides high-quality character-level diff highlighting similar to V
 
 ## How It Works
 
-### Two-Phase Diff Computation
+### Native Diff Computation
 
-The diff algorithm works in two phases:
+The diff algorithm works in three stages:
 
 1. **Line-level diff** - Compares entire lines to find which lines changed
-2. **Character-level refinement** - For each changed line, computes exactly what characters differ
+2. **Line matching** - Determines which changed lines correspond to each other
+3. **Character-level refinement** - Computes exactly what characters differ in matched lines
 
-Each changed region is analyzed **independently**. The timeout applies to each individual Myers algorithm computation.
+All stages share one timeout budget for the complete diff computation. See [Native line matching](../README.md#native-line-matching) for the available matching strategies.
 
 ### Why Timeout Works Well
 
@@ -49,7 +50,7 @@ Even at 100ms, you'll see meaningful character-level highlighting where it matte
 ### Default (Quality Priority)
 
 ```lua
-require("vscode-diff").setup({
+require("codediff").setup({
   diff = {
     max_computation_time_ms = 5000,  -- 5 seconds (VSCode default)
   }
@@ -61,7 +62,7 @@ require("vscode-diff").setup({
 ### Fast Mode (Speed Priority)
 
 ```lua
-require("vscode-diff").setup({
+require("codediff").setup({
   diff = {
     max_computation_time_ms = 1000,  -- 1 second
   }
@@ -75,7 +76,7 @@ require("vscode-diff").setup({
 ### Minimal Timeout Mode
 
 ```lua
-require("vscode-diff").setup({
+require("codediff").setup({
   diff = {
     max_computation_time_ms = 100,  -- 100ms
   }
@@ -112,11 +113,11 @@ Set your maximum wait time and the plugin respects it. No surprises or hangs, ev
 
 ## Technical Details
 
-The algorithm processes each changed region independently. Timeout applies to each Myers computation separately, not the total time.
+The timeout is shared across line alignment, line matching, character refinement, and move detection. It applies to the complete diff computation rather than restarting for each changed region.
 
 This means:
 - Fast regions complete and provide full detail
-- Slow regions timeout and fall back to line-level
+- When the deadline expires, remaining refinement is skipped and line-level changes are preserved
 - The timeout value doesn't need to be perfect - it naturally adapts to the complexity of your changes
 
 

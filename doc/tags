@@ -13,6 +13,7 @@ codediff-highlight-groups	codediff.txt	/*codediff-highlight-groups*
 codediff-history	codediff.txt	/*codediff-history*
 codediff-history-line-range	codediff.txt	/*codediff-history-line-range*
 codediff-layout	codediff.txt	/*codediff-layout*
+codediff-line-matcher	codediff.txt	/*codediff-line-matcher*
 codediff-lua-api	codediff.txt	/*codediff-lua-api*
 codediff-moved-code	codediff.txt	/*codediff-moved-code*
 codediff-quickstart	codediff.txt	/*codediff-quickstart*

@@ -428,9 +428,7 @@ function M.compute_merge_fillers_and_conflicts(base_to_input1_diff, base_to_inpu
   for _, ma in ipairs(mapping_alignments) do
     -- A region is conflicting if BOTH sides have changes (inner1 and inner2 both non-empty)
     -- OR if both sides have changes (checked by looking at if the ranges differ from base)
-    local has_left_changes = #ma.inner1 > 0 or (ma.output1_range.end_line - ma.output1_range.start_line) ~= (ma.base_range.end_line - ma.base_range.start_line)
-    local has_right_changes = #ma.inner2 > 0 or (ma.output2_range.end_line - ma.output2_range.start_line) ~= (ma.base_range.end_line - ma.base_range.start_line)
-    local is_conflict = has_left_changes and has_right_changes
+    local is_conflict = ma.has_input1 and ma.has_input2
 
     if is_conflict then
       -- Add to conflict blocks for action handling

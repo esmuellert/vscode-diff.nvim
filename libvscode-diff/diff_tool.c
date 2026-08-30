@@ -234,7 +234,9 @@ int main(int argc, char* argv[]) {
         .ignore_trim_whitespace = false,
         .max_computation_time_ms = timeout_ms,
         .compute_moves = true,
-        .extend_to_subwords = false
+        .extend_to_subwords = false,
+        .line_matcher_strategy = LINE_MATCHER_VSCODE,
+        .line_matcher_threshold = 0.75
     };
 
     // Compute diff with timing
