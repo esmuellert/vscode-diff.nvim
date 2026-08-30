@@ -88,6 +88,69 @@ end
 --- fires a selection per cursor movement, so a slow open must not paint over
 --- a newer one.
 --- @param show fun(is_inline: boolean)
+--- Is `file_path` staged right now, according to the explorer's last status?
+--- Returns nil when there is no status to consult.
+--- @param explorer table
+--- @param file_path string
+--- @return boolean|nil
+local function has_staged_changes(explorer, file_path)
+  local status = explorer.status_result
+  if not status then
+    return nil
+  end
+  for _, staged_file in ipairs(status.staged or {}) do
+    if staged_file.path == file_path then
+      return true
+    end
+  end
+  return false
+end
+
+--- True when the session already shows exactly this comparison, so opening it
+--- again would only reset the cursor and repaint.
+---
+--- The explorer fires a selection on every refresh, and a repaint triggers the
+--- next refresh: that loop is the flicker behind #317 and #401.
+---
+--- @param session table
+--- @param explorer table
+--- @param file_path string Path as the explorer names it
+--- @param abs_path string Absolute path
+--- @param group string "staged" | "unstaged" | "conflicts"
+--- @return boolean
+local function already_showing(session, explorer, file_path, abs_path, group)
+  local same_file = (session.modified and session.modified.absolute == abs_path) or (session.original and session.original.absolute == abs_path)
+  if not same_file then
+    return false
+  end
+
+  -- Conflict revisions :2/:3 are mutable, so the staged-base check below would
+  -- see a change on every refresh and rebuild forever.
+  if group == "conflicts" then
+    return session.result_win ~= nil and vim.api.nvim_win_is_valid(session.result_win)
+  end
+
+  -- Staged and unstaged views of one file compare against different things,
+  -- so the same path is not the same diff.
+  if (group == "staged") ~= (session.modified_revision == ":0") then
+    return false
+  end
+
+  if group == "staged" then
+    return true
+  end
+
+  -- An unstaged view compares against :0 once the file has staged content and
+  -- against HEAD before that, so the base moves when staging does. With no
+  -- status to consult there is nothing to say it moved.
+  local staged = has_staged_changes(explorer, file_path)
+  if staged == nil then
+    return true
+  end
+  local base_is_index = session.original_revision ~= nil and session.original_revision:match("^:[0-3]$") ~= nil
+  return staged == base_is_index
+end
+
 local function show_when_still_selected(explorer, file_path, show)
   vim.schedule(function()
     if explorer.current_file_path ~= file_path then
@@ -371,48 +434,8 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
     -- Check if this exact diff is already being displayed
     -- Same file can have different diffs (staged vs HEAD, working vs staged)
     local session = lifecycle.get_session(tabpage)
-    if session then
-      local is_same_file = (session.modified and session.modified.absolute == abs_path) or (session.original and session.original.absolute == abs_path)
-
-      if is_same_file and not opts.force then
-        -- Conflict mode: skip if already showing the same conflict file
-        -- (revisions :2/:3 are mutable so the staged-base-change logic below
-        --  would incorrectly force a re-render on every refresh cycle)
-        if group == "conflicts" and session.result_win and vim.api.nvim_win_is_valid(session.result_win) then
-          return
-        end
-
-        -- Check if it's the same diff comparison
-        local is_staged_diff = group == "staged"
-        local current_is_staged = session.modified_revision == ":0"
-
-        if is_staged_diff == current_is_staged then
-          -- Same diff type — but also check if comparison base changed
-          -- (e.g. unstaged file gains staged changes: HEAD → :0)
-          if group ~= "staged" then
-            local current_status = explorer.status_result
-            if current_status then
-              local file_has_staged = false
-              for _, sf in ipairs(current_status.staged or {}) do
-                if sf.path == file_path then
-                  file_has_staged = true
-                  break
-                end
-              end
-              local current_is_mutable = session.original_revision and session.original_revision:match("^:[0-3]$")
-              if file_has_staged ~= (current_is_mutable and true or false) then
-                -- Comparison base needs to change — don't skip
-              else
-                return
-              end
-            else
-              return
-            end
-          else
-            return
-          end
-        end
-      end
+    if session and not opts.force and already_showing(session, explorer, file_path, abs_path, group) then
+      return
     end
 
     if base_revision and target_revision and target_revision ~= "WORKING" then
