@@ -88,10 +88,8 @@ end
 --- fires a selection per cursor movement, so a slow open must not paint over
 --- a newer one.
 --- @param show fun(is_inline: boolean)
---- Is `file_path` staged right now, according to the explorer's last status?
---- Returns nil when there is no status to consult.
---- @param explorer table
---- @param file_path string
+--- Whether `file_path` is staged, per the explorer's last status.
+--- nil when there is no status to consult.
 --- @return boolean|nil
 local function has_staged_changes(explorer, file_path)
   local status = explorer.status_result
@@ -106,16 +104,8 @@ local function has_staged_changes(explorer, file_path)
   return false
 end
 
---- True when the session already shows exactly this comparison, so opening it
---- again would only reset the cursor and repaint.
----
---- The explorer fires a selection on every refresh, and a repaint triggers the
---- next refresh: that loop is the flicker behind #317 and #401.
----
---- @param session table
---- @param explorer table
---- @param file_path string Path as the explorer names it
---- @param abs_path string Absolute path
+--- True when the session already shows exactly this comparison. Opening it
+--- again only repaints, and the repaint fires the next refresh: #317, #401.
 --- @param group string "staged" | "unstaged" | "conflicts"
 --- @return boolean
 local function already_showing(session, explorer, file_path, abs_path, group)
@@ -124,14 +114,14 @@ local function already_showing(session, explorer, file_path, abs_path, group)
     return false
   end
 
-  -- Conflict revisions :2/:3 are mutable, so the staged-base check below would
-  -- see a change on every refresh and rebuild forever.
+  -- :2/:3 are mutable, so the staged-base check below would see a change on
+  -- every refresh and rebuild forever.
   if group == "conflicts" then
     return session.result_win ~= nil and vim.api.nvim_win_is_valid(session.result_win)
   end
 
-  -- Staged and unstaged views of one file compare against different things,
-  -- so the same path is not the same diff.
+  -- The two views compare against different things, so the same path is not
+  -- the same diff.
   if (group == "staged") ~= (session.modified_revision == ":0") then
     return false
   end
@@ -140,9 +130,8 @@ local function already_showing(session, explorer, file_path, abs_path, group)
     return true
   end
 
-  -- An unstaged view compares against :0 once the file has staged content and
-  -- against HEAD before that, so the base moves when staging does. With no
-  -- status to consult there is nothing to say it moved.
+  -- Unstaged compares against :0 once the file has staged content, HEAD before
+  -- that. No status to consult means nothing says the base moved.
   local staged = has_staged_changes(explorer, file_path)
   if staged == nil then
     return true
@@ -152,8 +141,6 @@ local function already_showing(session, explorer, file_path, abs_path, group)
 end
 
 --- Expand every directory node beneath `node`, recursively.
---- @param tree table
---- @param node table
 local function expand_directories(tree, node)
   if not node:has_children() then
     return

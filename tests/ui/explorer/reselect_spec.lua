@@ -1,9 +1,5 @@
--- Re-selecting the file already on screen must not rebuild the diff.
---
--- The explorer fires a selection on every refresh, and rebuilding resets the
--- cursor and repaints, which fires another refresh: the "flicker" of #317 and
--- #401. The guard that stops it had no test -- removing it left the whole suite
--- green, because nothing counted rebuilds.
+-- Re-selecting the file already on screen must not rebuild the diff: the
+-- rebuild repaints, the repaint fires another refresh. That is #317 and #401.
 
 local h = dofile("tests/helpers.lua")
 h.ensure_plugin_loaded()
@@ -121,14 +117,9 @@ describe("explorer re-selection", function()
   end)
 
   it("rebuilds an unstaged view once the file gains staged content", function()
-    -- An unstaged view compares against HEAD until the file has staged
-    -- content, then against :0. Staging moves that base, so the diff on screen
-    -- is no longer the one being asked for -- even though the file, the group
-    -- and the staged/unstaged type are all unchanged.
-    --
-    -- The staging is faked on the explorer's own status rather than run
-    -- through git, because a real `git add` wakes the refresh watcher and it
-    -- would rebuild on its own, which proves nothing about this guard.
+    -- Staging moves the comparison base from HEAD to :0, so the diff changes
+    -- even though file, group and type do not. Staged on the explorer's own
+    -- status: a real `git add` wakes the watcher, which rebuilds by itself.
     local explorer = open_explorer()
 
     select(explorer, "a.txt")
