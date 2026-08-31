@@ -89,6 +89,41 @@ function M.build_tree_nodes(commits, git_root, opts)
   return tree_nodes
 end
 
+--- Expand every directory node under `node_ids`, recursively.
+--- @param tree table
+--- @param node_ids table
+local function expand_directories(tree, node_ids)
+  for _, node_id in ipairs(node_ids) do
+    local node = tree:get_node(node_id)
+    if node and node.data and node.data.type == "directory" then
+      node:expand()
+      expand_directories(tree, node:get_child_ids() or {})
+    end
+  end
+end
+
+--- First file node under `node_ids`, expanding directories on the way down.
+--- @param tree table
+--- @param node_ids table
+--- @return table|nil
+local function find_first_file(tree, node_ids)
+  for _, node_id in ipairs(node_ids) do
+    local node = tree:get_node(node_id)
+    if node and node.data then
+      if node.data.type == "file" then
+        return node
+      elseif node.data.type == "directory" then
+        node:expand()
+        local child_file = find_first_file(tree, node:get_child_ids() or {})
+        if child_file then
+          return child_file
+        end
+      end
+    end
+  end
+  return nil
+end
+
 -- Create file history panel
 -- commits: array of commit objects from git.get_commit_list
 -- git_root: absolute path to git repository root
@@ -246,16 +281,7 @@ function M.create(commits, git_root, tabpage, width, opts)
 
         -- Auto-expand all directory nodes in tree mode
         if view_mode == "tree" then
-          local function expand_directories(node_ids)
-            for _, node_id in ipairs(node_ids) do
-              local node = tree:get_node(node_id)
-              if node and node.data and node.data.type == "directory" then
-                node:expand()
-                expand_directories(node:get_child_ids() or {})
-              end
-            end
-          end
-          expand_directories(commit_node:get_child_ids() or {})
+          expand_directories(tree, commit_node:get_child_ids() or {})
         end
 
         commit_node:expand()
@@ -325,7 +351,6 @@ function M.create(commits, git_root, tabpage, width, opts)
 
       ---@type SessionConfig
       local session_config = {
-        mode = "history",
         git_root = git_root,
         original = path.make_ref(base_revision and file_path or (old_path or file_path), git_root),
         modified = path.make_ref(file_path, git_root),
@@ -366,47 +391,26 @@ function M.create(commits, git_root, tabpage, width, opts)
   if first_commit_node then
     vim.schedule(function()
       if is_single_file_mode then
-        -- Single file mode: directly select the file at first commit
-        -- Use file_path from commit data if available (handles renames), fallback to opts.file_path
-        local file_path = first_commit_node.data.file_path or opts.file_path
-        local file_data = {
-          path = file_path,
+        -- file_path from the commit rather than opts, so a rename resolves to
+        -- the name the file had at that commit.
+        history.on_file_select({
+          path = first_commit_node.data.file_path or opts.file_path,
           commit_hash = first_commit_node.data.hash,
           git_root = git_root,
-        }
-        history.on_file_select(file_data)
-      else
-        -- Multi-file mode: expand first commit and select first file
-        load_commit_files(first_commit_node, function()
-          if first_commit_node:has_children() then
-            -- Find first file node (may need to traverse directories in tree mode)
-            local function find_first_file(node_ids)
-              for _, node_id in ipairs(node_ids) do
-                local node = tree:get_node(node_id)
-                if node and node.data then
-                  if node.data.type == "file" then
-                    return node
-                  elseif node.data.type == "directory" then
-                    -- Expand directory and search its children
-                    node:expand()
-                    local child_file = find_first_file(node:get_child_ids() or {})
-                    if child_file then
-                      return child_file
-                    end
-                  end
-                end
-              end
-              return nil
-            end
-
-            local first_file = find_first_file(first_commit_node:get_child_ids() or {})
-            if first_file and first_file.data then
-              tree:render()
-              history.on_file_select(first_file.data)
-            end
-          end
-        end)
+        })
+        return
       end
+
+      load_commit_files(first_commit_node, function()
+        if not first_commit_node:has_children() then
+          return
+        end
+        local first_file = find_first_file(tree, first_commit_node:get_child_ids() or {})
+        if first_file and first_file.data then
+          tree:render()
+          history.on_file_select(first_file.data)
+        end
+      end)
     end)
   end
 

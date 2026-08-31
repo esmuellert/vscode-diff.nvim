@@ -2,6 +2,26 @@
 local M = {}
 
 local virtual_file = require("codediff.core.virtual_file")
+local path = require("codediff.core.path")
+
+--- True when the panel opens before any file is chosen, so the panes start
+--- empty and the panel fills them on first selection.
+--- @param session_config SessionConfig
+--- @return boolean
+function M.is_panel_placeholder(session_config)
+  local panel_cfg = session_config.panel
+  if not panel_cfg then
+    return false
+  end
+  if panel_cfg.name == "history" then
+    return panel_cfg.data ~= nil
+  end
+  if panel_cfg.name == "explorer" then
+    -- Empty paths, or dir mode, which has no git_root but does have panel data.
+    return path.is_empty(session_config.original) or (not session_config.git_root and panel_cfg.data ~= nil)
+  end
+  return false
+end
 
 -- Helper: Check if revision is virtual (commit hash or STAGED)
 -- Virtual: "STAGED" or commit hash | Real: nil or "WORKING"

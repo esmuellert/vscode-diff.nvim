@@ -18,7 +18,6 @@ end
 -- Helper to create diff view using new API
 local function create_test_diff_view(original_lines, modified_lines, left_path, right_path)
   local session_config = {
-    mode = "standalone", -- view.create will create new tab
     git_root = nil,
     original = path.make_ref(left_path, nil),
     modified = path.make_ref(right_path, nil),
@@ -220,7 +219,8 @@ describe("Render View", function()
     for _ = 1, 30 do
       vim.cmd("normal! \5") -- <C-e>
     end
-    -- Headless has no UI, so WinScrolled does not fire on its own.
+    -- Synchronous spec execution never returns to the main loop, so
+    -- WinScrolled is not dispatched. Fire it manually.
     vim.api.nvim_exec_autocmds("WinScrolled", {})
 
     assert.is_true(topline(mod_win) > 1, "the diff pane should have scrolled")

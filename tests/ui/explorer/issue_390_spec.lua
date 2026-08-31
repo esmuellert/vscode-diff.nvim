@@ -60,7 +60,7 @@ describe('Issue #390 regression — deleted file shows content in revision mode'
     local ok = vim.wait(8000, function()
       for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
         local sess = lifecycle.get_session(tp)
-        if sess and sess.explorer and sess.explorer.tree and sess.explorer.tree._nodes then
+        if sess and (sess.panel or {}).view and (sess.panel or {}).view.tree and (sess.panel or {}).view.tree._nodes then
           return true
         end
       end
@@ -72,8 +72,8 @@ describe('Issue #390 regression — deleted file shows content in revision mode'
     local explorer
     for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
       local s = lifecycle.get_session(tp)
-      if s and s.explorer then
-        explorer = s.explorer
+      if s and (s.panel or {}).view then
+        explorer = (s.panel or {}).view
         break
       end
     end

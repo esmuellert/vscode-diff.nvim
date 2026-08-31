@@ -36,7 +36,12 @@ local function normalize_inline_layout(tabpage)
   return true
 end
 
-local function normalize_side_by_side_layout(tabpage)
+--- Reshape a tab to one pane and a session that says so; side_by_side.update
+--- opens the second pane itself when it sees single_pane.
+--- Exported because conflict mode needs it too.
+--- @param tabpage number
+--- @return boolean
+function M.normalize_side_by_side_layout(tabpage)
   local session = lifecycle.get_session(tabpage)
   if not session then
     return false
@@ -58,26 +63,27 @@ end
 
 -- Re-render the current file in the new layout.
 -- For explorer/history: call rerender_current which re-triggers on_file_select.
--- For standalone: rebuild session_config from existing session fields.
+-- For a bare diff (no panel): rebuild session_config from existing session fields.
 local function rerender_current_file(tabpage)
   local session = lifecycle.get_session(tabpage)
   if not session then
     return false
   end
 
-  if session.mode == "explorer" then
-    local explorer = lifecycle.get_explorer(tabpage)
-    return explorer and require("codediff.ui.explorer").rerender_current(explorer) or false
+  local panel = session.panel
+  local panel_name = panel and panel.name
+
+  if panel_name == "explorer" then
+    return panel.view and require("codediff.ui.explorer").rerender_current(panel.view) or false
   end
 
-  if session.mode == "history" then
-    local history = lifecycle.get_explorer(tabpage)
-    return history and require("codediff.ui.history").rerender_current(history) or false
+  if panel_name == "history" then
+    return panel.view and require("codediff.ui.history").rerender_current(panel.view) or false
   end
 
-  -- Standalone mode: rebuild from session fields
+  -- No panel: rebuild from session fields
   local session_config = {
-    mode = session.mode,
+    panel = session.panel,
     git_root = session.git_root,
     original = session.original,
     modified = session.modified,
@@ -100,7 +106,7 @@ function M.toggle(tabpage)
   end
 
   local target_layout = session.layout == "inline" and "side-by-side" or "inline"
-  local normalize = target_layout == "inline" and normalize_inline_layout or normalize_side_by_side_layout
+  local normalize = target_layout == "inline" and normalize_inline_layout or M.normalize_side_by_side_layout
   local previous_layout = session.layout
 
   -- Disable compact mode before changing layout (window IDs will change)

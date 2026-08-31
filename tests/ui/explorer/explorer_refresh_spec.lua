@@ -34,7 +34,7 @@ describe("Explorer refresh and single-file stability", function()
     local tabpage, explorer
     local ready = vim.wait(10000, function()
       for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
-        local e = lifecycle.get_explorer(tp)
+        local e = lifecycle.get_panel_view(tp)
         if e and e.winid and vim.api.nvim_win_is_valid(e.winid) then
           tabpage, explorer = tp, e
           return true

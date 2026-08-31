@@ -124,7 +124,7 @@ describe("Issue #498 regression — unborn HEAD is treated as the empty tree", f
 
     local session_ok = vim.wait(6000, function()
       local session = lifecycle.get_session(vim.api.nvim_get_current_tabpage())
-      return session and session.explorer ~= nil
+      return session and (session.panel or {}).view ~= nil
     end, 100)
     assert.is_true(session_ok, "explorer should populate")
     vim.wait(3000)
@@ -155,7 +155,7 @@ describe("Issue #498 regression — unborn HEAD is treated as the empty tree", f
 
     local session_ok = vim.wait(6000, function()
       local session = lifecycle.get_session(vim.api.nvim_get_current_tabpage())
-      return session and session.explorer ~= nil
+      return session and (session.panel or {}).view ~= nil
     end, 100)
     assert.is_true(session_ok, "explorer should populate")
 
@@ -166,7 +166,7 @@ describe("Issue #498 regression — unborn HEAD is treated as the empty tree", f
     --   line 3: Staged Changes (1)
     --   line 4:   test.md A
     local sess = lifecycle.get_session(vim.api.nvim_get_current_tabpage())
-    local explorer = sess.explorer
+    local explorer = (sess.panel or {}).view
     local staged_row
     for line = 1, vim.api.nvim_buf_line_count(explorer.bufnr) do
       local node = explorer.tree:get_node(line)

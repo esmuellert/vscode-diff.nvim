@@ -122,7 +122,16 @@ describe("Welcome Page", function()
       vim.wo[other_win].signcolumn = "yes"
       vim.wo[other_win].statuscolumn = "%=%l"
 
-      lifecycle.create_session(tabpage, "standalone", nil, "", "", nil, nil, regular_buf, other_buf, main_win, other_win, {}, nil)
+      lifecycle.create_session(tabpage, {
+        original = "",
+        modified = "",
+      }, {
+        original_bufnr = regular_buf,
+        modified_bufnr = other_buf,
+        original_win = main_win,
+        modified_win = other_win,
+        lines_diff = {},
+      })
       vim.api.nvim_set_current_win(main_win)
 
       vim.api.nvim_win_set_buf(main_win, welcome_buf)
@@ -222,7 +231,7 @@ describe("Welcome Page", function()
         if not session then
           return false
         end
-        if not session.explorer then
+        if not (session.panel or {}).view then
           return false
         end
         -- Wait for diff to render (buffers loaded)
@@ -237,7 +246,7 @@ describe("Welcome Page", function()
 
       local session = lifecycle.get_session(tabpage)
       assert.is_not_nil(session, "Session should exist")
-      assert.is_not_nil(session.explorer, "Explorer should exist")
+      assert.is_not_nil((session.panel or {}).view, "Explorer should exist")
 
       -- Verify two windows are valid (before discard)
       local orig_win = session.original_win
@@ -256,7 +265,7 @@ describe("Welcome Page", function()
 
       -- Trigger refresh
       local refresh = require("codediff.ui.explorer.refresh")
-      local explorer = session.explorer
+      local explorer = (session.panel or {}).view
       refresh.refresh(explorer)
 
       -- Wait for welcome buffer to appear
