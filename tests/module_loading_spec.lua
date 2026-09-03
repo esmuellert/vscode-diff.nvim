@@ -118,6 +118,21 @@ describe("Explorer submodules", function()
   end)
 end)
 
+-- ── side-by-side view ──────────────────────────────────────────────────
+describe("Side-by-side view module", function()
+  it("loads the facade and exports its existing API", function()
+    local ok, mod = pcall(require, "codediff.ui.view.side_by_side")
+    assert.is_true(ok, "Failed to require codediff.ui.view.side_by_side: " .. tostring(mod))
+    assert.is_function(mod.create)
+    assert.is_function(mod.update)
+    assert.is_function(mod.show_untracked_file)
+    assert.is_function(mod.show_deleted_file)
+    assert.is_function(mod.show_added_virtual_file)
+    assert.is_function(mod.show_deleted_virtual_file)
+    assert.is_function(mod.show_welcome)
+  end)
+end)
+
 -- ── lifecycle ───────────────────────────────────────────────────────────
 describe("Lifecycle submodules", function()
   describe("module loading", function()
