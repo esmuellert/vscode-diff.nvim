@@ -217,7 +217,7 @@ local function build_app()
 
   app:subcommand(ap.Command.new("install"):handler(function(m)
     local force = m:bang()
-    local installer = require("codediff.core.installer")
+    local installer = require("codediff.core.installer.libvscode_diff")
     if force then
       vim.notify("Reinstalling libvscode-diff...", vim.log.levels.INFO)
     end

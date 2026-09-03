@@ -39,7 +39,10 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
 - Neovim >= 0.7.0 (for Lua FFI support; 0.10+ recommended for vim.system)
 - Git (for git diff features)
 - `curl` or `wget` (for automatic binary download)
+
 **No compiler required!** The plugin automatically downloads pre-built binaries from GitHub releases.
+
+Explorer auto-refresh uses a checksum-verified `codediff-watcher` binary when available and falls back to serialized 500ms polling if download, startup, or runtime watching fails. Automatic download installs the versioned executable in the plugin root alongside `libvscode-diff`. Set `CODEDIFF_WATCHER_PATH` to use a manually installed watcher, or `CODEDIFF_WATCHER_NO_AUTO_INSTALL=1` to disable watcher downloads.
 
 ### Using lazy.nvim
 
@@ -115,7 +118,7 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
       hidden = false,  -- Initial visibility state
       width = 40,         -- Width when position is "left" (columns)
       height = 15,        -- Height when position is "bottom" (lines)
-      auto_refresh = true,  -- Auto-refresh file list on focus / git index changes (set false to avoid lag in huge repos; R still refreshes manually)
+      auto_refresh = true,  -- Native file watching with polling fallback (R still refreshes manually)
       indent_markers = true,  -- Show indent markers in tree view (│, ├, └)
       initial_focus = "explorer",  -- Initial focus: "explorer", "original", or "modified"
       icons = {

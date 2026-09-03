@@ -3,81 +3,12 @@
 
 local M = {}
 
+local common = require("codediff.core.installer.common")
+
 -- Get the plugin root directory using shared path utility
 local path_util = require("codediff.core.path")
 local function get_plugin_root()
   return path_util.get_plugin_root()
-end
-
--- Detect whether we're running under Termux on Android. Termux presents as
--- Linux via `ffi.os` and via `uname -s`, but its ABI is bionic libc — not the
--- glibc our normal `linux-*` binaries link against — so a glibc-linked .so
--- fails to `dlopen` with "library libm.so.6 not found" (#333). Detection
--- follows the standard Termux conventions: TERMUX_VERSION is only ever set by
--- Termux, and PREFIX points inside its filesystem layout.
-local function is_termux()
-  local termux_version = vim.fn.getenv("TERMUX_VERSION")
-  if termux_version ~= vim.NIL and termux_version ~= "" then
-    return true
-  end
-  local prefix = vim.fn.getenv("PREFIX")
-  if type(prefix) == "string" and prefix:match("^/data/data/com%.termux") then
-    return true
-  end
-  return false
-end
-
--- Detect OS
-local function detect_os()
-  local ffi = require("ffi")
-  if ffi.os == "Windows" then
-    return "windows"
-  elseif ffi.os == "OSX" then
-    return "macos"
-  elseif is_termux() then
-    -- Termux runs on Android's bionic libc; we ship a separate NDK-built
-    -- binary for it so downloads point at the right ABI.
-    return "android"
-  else
-    return "linux"
-  end
-end
-
--- Detect architecture
-local function detect_arch()
-  local ffi = require("ffi")
-
-  -- Windows-specific detection using environment variables
-  if ffi.os == "Windows" then
-    local processor_arch = vim.fn.getenv("PROCESSOR_ARCHITECTURE")
-    local processor_arch_w6432 = vim.fn.getenv("PROCESSOR_ARCHITEW6432")
-
-    -- PROCESSOR_ARCHITEW6432 is set when running 32-bit process on 64-bit Windows
-    local arch = processor_arch_w6432 ~= vim.NIL and processor_arch_w6432 or processor_arch
-
-    if arch then
-      arch = arch:lower()
-      if arch:match("amd64") or arch:match("x64") then
-        return "x64"
-      elseif arch:match("arm64") then
-        return "arm64"
-      end
-    end
-  end
-
-  -- Unix-like systems: use uname
-  local uname = vim.loop.os_uname()
-  local machine = uname.machine:lower()
-
-  -- Handle different naming conventions
-  if machine:match("x86_64") or machine:match("amd64") or machine:match("x64") then
-    return "x64"
-  elseif machine:match("aarch64") or machine:match("arm64") then
-    return "arm64"
-  end
-
-  -- If we still can't detect, return error
-  return nil, "Unsupported architecture: " .. (machine or "unknown")
 end
 
 -- Get library extension for current OS
@@ -177,37 +108,6 @@ local function build_download_url(os, arch, version)
   return url, local_filename, nil
 end
 
--- Check if a command exists
-local function command_exists(cmd)
-  local ffi = require("ffi")
-  if ffi.os == "Windows" then
-    -- On Windows, use 'where' command instead of 'which'
-    local handle = io.popen("where " .. cmd .. " 2>nul")
-    if handle then
-      local result = handle:read("*a")
-      handle:close()
-      return result ~= ""
-    end
-    return false
-  else
-    local handle = io.popen("which " .. cmd .. " 2>/dev/null")
-    if handle then
-      local result = handle:read("*a")
-
-      -- Try `type` if `which` fails
-      if result == "" then
-        handle:close()
-        handle = io.popen("type " .. cmd .. " 2>/dev/null")
-        result = handle:read("*a")
-      end
-
-      handle:close()
-      return result ~= ""
-    end
-    return false
-  end
-end
-
 -- Check if Neovim is running from Nix store
 -- When nvim is from Nix, it uses Nix's own ld-linux which does NOT search
 -- system library paths (/usr/lib, ldconfig cache). Libraries must be either:
@@ -224,7 +124,7 @@ end
 -- This is more reliable than ffi.load() which may find libraries via LD_LIBRARY_PATH
 -- that aren't available when our binary loads (e.g., NixOS intermittent failures).
 local function check_system_libgomp()
-  local os_name = detect_os()
+  local os_name = common.detect_os()
 
   -- Only check on Linux (macOS and Windows don't use libgomp)
   if os_name ~= "linux" then
@@ -259,58 +159,9 @@ local function check_system_libgomp()
   return false
 end
 
--- Download file using curl, wget, or PowerShell
-local function download_file(url, dest_path)
-  local ffi = require("ffi")
-  local cmd_args
-
-  -- Try curl first (most common, best error handling)
-  if command_exists("curl") then
-    cmd_args = { "curl", "-fsSL", "-o", dest_path, url }
-  elseif command_exists("wget") then
-    cmd_args = { "wget", "-q", "-O", dest_path, url }
-  elseif ffi.os == "Windows" then
-    -- On Windows, try PowerShell Invoke-WebRequest
-    cmd_args = {
-      "powershell",
-      "-NoProfile",
-      "-Command",
-      string.format("Invoke-WebRequest -Uri '%s' -OutFile '%s'", url, dest_path),
-    }
-  else
-    return false, "No download tool found. Please install curl or wget."
-  end
-
-  -- Use vim.system if available (Neovim 0.10+), fallback to os.execute
-  if vim.system then
-    local result = vim.system(cmd_args, { text = true }):wait()
-    if result.code == 0 then
-      return true
-    else
-      local err_msg = result.stderr or result.stdout or "Unknown error"
-      return false, string.format("Download failed: %s", err_msg)
-    end
-  else
-    -- Fallback for older Neovim versions
-    local cmd = table.concat(
-      vim.tbl_map(function(arg)
-        -- Basic escaping for shell
-        return string.format("'%s'", arg:gsub("'", "'\\''"))
-      end, cmd_args),
-      " "
-    )
-    local exit_code = os.execute(cmd)
-    if exit_code == true or exit_code == 0 then
-      return true
-    else
-      return false, string.format("Download failed with exit code: %s", tostring(exit_code))
-    end
-  end
-end
-
 -- Install libgomp if needed
 local function install_libgomp_if_needed(opts)
-  local os_name = detect_os()
+  local os_name = common.detect_os()
 
   -- Only needed on Linux
   if os_name ~= "linux" then
@@ -341,7 +192,7 @@ local function install_libgomp_if_needed(opts)
     vim.notify("System libgomp.so.1 not found, downloading...", vim.log.levels.INFO)
   end
 
-  local arch, arch_err = detect_arch()
+  local arch, arch_err = common.detect_arch()
   if not arch then
     local msg = "Failed to detect architecture: " .. (arch_err or "unknown error")
     vim.notify(msg, vim.log.levels.ERROR)
@@ -365,7 +216,7 @@ local function install_libgomp_if_needed(opts)
 
   -- Download to temporary location
   local temp_path = plugin_root .. "/libgomp.so.1.tmp"
-  local success, err = download_file(url, temp_path)
+  local success, err = common.download_file(url, temp_path)
 
   if not success then
     local msg = "Failed to download libgomp: " .. (err or "unknown error")
@@ -451,17 +302,13 @@ function M.install(opts)
   end
 
   -- Detect platform
-  local os_name = detect_os()
-  local arch, arch_err = detect_arch()
+  local os_name = common.detect_os()
+  local arch, arch_err = common.detect_arch()
 
   if not arch then
     local msg = "Failed to detect architecture: " .. (arch_err or "unknown error")
     vim.notify(msg, vim.log.levels.ERROR)
     return false, msg
-  end
-
-  if not opts.silent then
-    vim.notify(string.format("Installing libvscode-diff v%s for %s %s...", current_version, os_name, arch), vim.log.levels.INFO)
   end
 
   -- Build download URL
@@ -473,13 +320,17 @@ function M.install(opts)
     return false, msg
   end
 
-  if not opts.silent then
-    vim.notify("Downloading from: " .. url, vim.log.levels.INFO)
-  end
-
   -- Download to temporary location first
   local temp_path = plugin_root .. "/" .. local_filename .. ".tmp"
-  local success, err = download_file(url, temp_path)
+  local success, err = common.download({
+    name = "libvscode-diff",
+    version = current_version,
+    os = os_name,
+    arch = arch,
+    url = url,
+    destination = temp_path,
+    silent = opts.silent,
+  })
 
   if not success then
     local msg = "Failed to download library: " .. (err or "unknown error")
@@ -503,9 +354,7 @@ function M.install(opts)
     return false, msg
   end
 
-  if not opts.silent then
-    vim.notify("Successfully installed libvscode-diff!", vim.log.levels.INFO)
-  end
+  common.notify_success("libvscode-diff", opts.silent)
 
   -- Also check and install libgomp if needed
   install_libgomp_if_needed(opts)

@@ -4,19 +4,7 @@ local M = {}
 local config = require("codediff.config")
 local tree_module = require("codediff.ui.explorer.tree")
 local welcome = require("codediff.ui.welcome")
--- Setup auto-refresh triggers for explorer.
--- Returns a cleanup function that should be called when the explorer is destroyed.
---
--- Runs an explicit 500ms poll while the explorer is visible. This replaces the
--- earlier `.git/` fs_event watcher, which had a self-triggering loop: our own
--- `git status` briefly created `.git/index.lock`, waking the watcher and
--- firing another refresh. That loop delivered ~2 refreshes/second by
--- accident; #480 killed it by filtering `*.lock` events, but the filter also
--- suppressed the events that signal external working-tree changes (e.g. a
--- terminal `touch new_file.txt`), so those stopped showing up until the user
--- focused the explorer. The formal poll restores instant detection with the
--- same worst-case CPU profile as the old bug, minus the self-triggering
--- mechanics, and lets us drop the whole watcher plumbing.
+-- Setup native repository watching with polling as startup/runtime fallback.
 function M.setup_auto_refresh(explorer, tabpage)
   local explorer_config = config.options.explorer or {}
   if explorer_config.auto_refresh == false then
@@ -24,69 +12,120 @@ function M.setup_auto_refresh(explorer, tabpage)
     return
   end
 
-  local poll_interval_ms = 500
-
   local uv = vim.uv or vim.loop
-  local poll_timer = uv.new_timer()
+  local poll_timer
+  local unsubscribe
+  local cleaned = false
+  local refresh_running = false
+  local refresh_pending = false
+  local pending_force = false
   local group = vim.api.nvim_create_augroup("CodeDiffExplorerRefresh_" .. tabpage, { clear = true })
 
-  local function cleanup()
-    if poll_timer then
-      pcall(function()
-        poll_timer:stop()
-      end)
-      pcall(function()
-        poll_timer:close()
-      end)
-      poll_timer = nil
+  local function stop_polling()
+    if not poll_timer then
+      return
     end
+    pcall(function()
+      poll_timer:stop()
+    end)
+    pcall(function()
+      poll_timer:close()
+    end)
+    poll_timer = nil
+  end
+
+  local function cleanup()
+    if cleaned then
+      return
+    end
+    cleaned = true
+    stop_polling()
+    if unsubscribe then
+      unsubscribe()
+      unsubscribe = nil
+    end
+    explorer._request_auto_refresh = nil
+    explorer._native_watcher_ready = nil
     pcall(vim.api.nvim_del_augroup_by_id, group)
   end
 
   explorer._cleanup_auto_refresh = cleanup
 
-  local function tick()
-    if not vim.api.nvim_tabpage_is_valid(tabpage) then
+  local request_refresh
+  request_refresh = function(force)
+    if cleaned then
       return
     end
-    if explorer.is_hidden then
+    if refresh_running then
+      refresh_pending = true
+      pending_force = pending_force or force == true
       return
     end
-    -- Skip ticks whose target directory is gone or not yet a git repo.
-    -- This closes two race windows that used to emit a noisy
-    -- `vim.notify("Failed to refresh: fatal: not a git repository ...", ERROR)`
-    -- to the user (and to test stderr):
-    --   1. A tab is closing but the timer is still scheduled between the
-    --      `after_each`-triggered `rm -rf repo` and the TabClosed autocmd
-    --      running the cleanup — a stale tick fires against the deleted
-    --      directory.
-    --   2. First tick after :CodeDiff on a slow filesystem (Windows CI):
-    --      the explorer opens before `git init` has finished writing
-    --      `.git/`, and the first 500ms tick beats the initialization.
-    -- Either way, a poll aimed at a directory that isn't a git repo now is
-    -- correctly a no-op — the next tick (500ms later) either finds the repo
-    -- or the tab is gone. A user who `rm -rf`s their own repo behind the
-    -- explorer gets silence, not an error dialog.
+    refresh_running = true
+    M.refresh(explorer, function()
+      if cleaned then
+        return
+      end
+      require("codediff.ui.auto_refresh").sync_mutable_buffers(tabpage)
+      refresh_running = false
+      if refresh_pending then
+        local force_pending = pending_force
+        refresh_pending = false
+        pending_force = false
+        request_refresh(force_pending)
+      end
+    end, force)
+  end
+
+  local function tick(force)
+    if not vim.api.nvim_tabpage_is_valid(tabpage) or explorer.is_hidden then
+      return
+    end
+    -- A queued fallback tick may outlive the tab or repository setup/teardown.
     local git_root = explorer.git_root
     if git_root and git_root ~= "" then
       if vim.fn.isdirectory(git_root) == 0 then
         return
       end
-      -- `.git` may be either a directory (normal repo) or a file (worktrees,
-      -- submodules — `gitdir: <path>` pointer). Missing on both counts means
-      -- the directory exists but isn't a repo yet.
+      -- Linked worktrees and submodules use a .git pointer file.
       local dot_git = git_root .. "/.git"
       if vim.fn.isdirectory(dot_git) == 0 and vim.fn.filereadable(dot_git) == 0 then
         return
       end
     end
-    M.refresh(explorer)
-    local auto_refresh = require("codediff.ui.auto_refresh")
-    auto_refresh.sync_mutable_buffers(tabpage)
+    request_refresh(force)
   end
 
-  if poll_timer then
-    poll_timer:start(poll_interval_ms, poll_interval_ms, vim.schedule_wrap(tick))
+  explorer._request_auto_refresh = function()
+    tick(true)
+  end
+
+  local function start_polling()
+    if cleaned or poll_timer then
+      return
+    end
+    poll_timer = uv.new_timer()
+    if poll_timer then
+      poll_timer:start(500, 500, vim.schedule_wrap(tick))
+    end
+  end
+
+  start_polling()
+  if explorer.git_root and explorer.git_root ~= "" then
+    unsubscribe = require("codediff.core.watcher").subscribe(explorer.git_root, {
+      on_ready = function()
+        explorer._native_watcher_ready = true
+        stop_polling()
+        tick(true)
+      end,
+      on_refresh = function()
+        tick(true)
+      end,
+      on_error = function()
+        explorer._native_watcher_ready = false
+        start_polling()
+      end,
+    })
   end
 
   vim.api.nvim_create_autocmd("TabClosed", {
@@ -272,16 +311,28 @@ local function rebuild_tree(explorer, status_result, collapsed_state)
 end
 
 -- Refresh explorer with updated git status
-function M.refresh(explorer)
+function M.refresh(explorer, done, force)
   local git = require("codediff.core.git")
+  local completed = false
+  local function complete()
+    if completed then
+      return
+    end
+    completed = true
+    if done then
+      done()
+    end
+  end
 
   -- Skip refresh if explorer is hidden
   if explorer.is_hidden then
+    complete()
     return
   end
 
   -- Verify window is still valid before accessing
   if not vim.api.nvim_win_is_valid(explorer.winid) then
+    complete()
     return
   end
 
@@ -292,17 +343,14 @@ function M.refresh(explorer)
     vim.schedule(function()
       if err then
         vim.notify("Failed to refresh: " .. err, vim.log.levels.ERROR)
+        complete()
         return
       end
 
-      -- Skip the whole downstream refresh (tree rebuild, re-selection,
-      -- mutable-buffer sync) when the status is identical to the previous
-      -- tick. `git status` still runs every tick so coverage is unchanged;
-      -- this only avoids UI churn (tree re-render, re-selection re-running
-      -- layout.arrange, extmark rewrites) that would flicker the interface
-      -- and can interrupt the user (manual pane sizes reset, tree flatten
-      -- flake, cursor jumps) even though nothing actually changed.
-      if vim.deep_equal(status_result, explorer.status_result) then
+      -- Watch notifications are invalidation hints. Skip UI churn when the
+      -- resulting status did not actually change.
+      if not force and vim.deep_equal(status_result, explorer.status_result) then
+        complete()
         return
       end
 
@@ -342,13 +390,14 @@ function M.refresh(explorer)
             status = found_file.status,
             git_root = explorer.git_root,
             group = found_group,
-          }, { no_jump = true })
+          }, { no_jump = true, force = force })
         else
           -- Committed or removed.
           clear_current_file(explorer)
           show_welcome_page(explorer)
         end
       end
+      complete()
     end)
   end
 

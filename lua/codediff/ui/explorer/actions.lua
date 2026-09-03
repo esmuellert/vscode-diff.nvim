@@ -141,6 +141,9 @@ function M.toggle_visibility(explorer)
     explorer.split:show()
     explorer.is_hidden = false
     explorer.winid = explorer.split.winid
+    if explorer._request_auto_refresh then
+      explorer._request_auto_refresh()
+    end
 
     vim.schedule(function()
       layout.arrange(tabpage)
