@@ -34,6 +34,8 @@ end
 describe("Explorer refresh and single-file stability", function()
   local temp_dir
   local original_cwd
+  local original_get_panel_view
+  local original_get_status_with_line_stats
 
   local function open(focus_file)
     local lifecycle = require("codediff.ui.lifecycle")
@@ -94,6 +96,14 @@ describe("Explorer refresh and single-file stability", function()
   end)
 
   after_each(function()
+    if original_get_panel_view then
+      require("codediff.ui.lifecycle").get_panel_view = original_get_panel_view
+      original_get_panel_view = nil
+    end
+    if original_get_status_with_line_stats then
+      require("codediff.core.git").get_status_with_line_stats = original_get_status_with_line_stats
+      original_get_status_with_line_stats = nil
+    end
     require("codediff.ui.lifecycle").cleanup_all()
     vim.cmd("tabnew")
     vim.cmd("tabonly")
@@ -102,6 +112,45 @@ describe("Explorer refresh and single-file stability", function()
     if temp_dir and vim.fn.isdirectory(temp_dir) == 1 then
       vim.fn.delete(temp_dir, "rf")
     end
+  end)
+
+  it("drops a refresh result when the explorer no longer owns the tab", function()
+    config.options.explorer.auto_refresh = false
+    local tabpage, explorer = open("file1.txt")
+    local lifecycle = require("codediff.ui.lifecycle")
+    local git = require("codediff.core.git")
+    local refresh = require("codediff.ui.explorer.refresh")
+    local status_before = vim.deepcopy(explorer.status_result)
+    local git_callback
+    local completed = 0
+
+    original_get_status_with_line_stats = git.get_status_with_line_stats
+    git.get_status_with_line_stats = function(_, callback)
+      git_callback = callback
+    end
+    refresh.refresh(explorer, function()
+      completed = completed + 1
+    end)
+    assert.is_function(git_callback)
+
+    original_get_panel_view = lifecycle.get_panel_view
+    lifecycle.get_panel_view = function(candidate)
+      assert.equals(tabpage, candidate)
+      return nil
+    end
+    git_callback(nil, {
+      unstaged = {
+        { path = "file1.txt", status = "M" },
+        { path = "new.txt", status = "??" },
+      },
+      staged = {},
+      conflicts = {},
+    })
+
+    assert.is_true(vim.wait(1000, function()
+      return completed == 1
+    end, 10))
+    assert.same(status_before, explorer.status_result)
   end)
 
   it("picks up an externally-created untracked file automatically", function()
