@@ -345,6 +345,12 @@ function M.refresh(explorer, done, force)
 
   local function process_result(err, status_result)
     vim.schedule(function()
+      local lifecycle = require("codediff.ui.lifecycle")
+      if lifecycle.get_panel_view(explorer.tabpage) ~= explorer or not vim.api.nvim_win_is_valid(explorer.winid) then
+        complete()
+        return
+      end
+
       if err then
         vim.notify("Failed to refresh: " .. err, vim.log.levels.ERROR)
         complete()
@@ -370,7 +376,6 @@ function M.refresh(explorer, done, force)
       -- Show welcome page when all files are clean (skip if already showing)
       local total_files = #(status_result.unstaged or {}) + #(status_result.staged or {}) + #(status_result.conflicts or {})
       if total_files == 0 then
-        local lifecycle = require("codediff.ui.lifecycle")
         local session = lifecycle.get_session(explorer.tabpage)
         local already_welcome = session and welcome.is_welcome_buffer(session.modified_bufnr)
         clear_current_file(explorer)
