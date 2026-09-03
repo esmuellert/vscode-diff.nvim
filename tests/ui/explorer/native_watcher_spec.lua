@@ -1,5 +1,7 @@
 describe("explorer native watcher", function()
   local uv = vim.uv or vim.loop
+  local config
+  local original_auto_refresh_enabled
   local original_new_timer
   local original_watcher
   local original_auto_refresh
@@ -17,6 +19,9 @@ describe("explorer native watcher", function()
   local sync_completions
 
   before_each(function()
+    config = require("codediff.config")
+    original_auto_refresh_enabled = config.options.explorer.auto_refresh
+    watcher_handlers = nil
     repository = vim.fn.tempname()
     vim.fn.mkdir(repository .. "/.git", "p")
     timers = {}
@@ -84,6 +89,7 @@ describe("explorer native watcher", function()
     package.loaded["codediff.core.watcher"] = original_watcher
     package.loaded["codediff.ui.auto_refresh"] = original_auto_refresh
     uv.new_timer = original_new_timer
+    config.options.explorer.auto_refresh = original_auto_refresh_enabled
     vim.fn.delete(repository, "rf")
   end)
 
@@ -145,6 +151,48 @@ describe("explorer native watcher", function()
     assert.is_false(refresh_forces[1])
     refresh_completions[1]()
     sync_completions[1]()
+  end)
+
+  it("serializes direct refreshes when automatic refresh is disabled", function()
+    config.options.explorer.auto_refresh = false
+    local explorer = setup()
+
+    assert.equals(0, #timers)
+    assert.is_nil(watcher_handlers)
+
+    local forced_completed = 0
+    local ordinary_completed = 0
+    refresh_module.refresh(explorer)
+    refresh_module.refresh(explorer, function()
+      forced_completed = forced_completed + 1
+    end, true)
+    refresh_module.refresh(explorer, function()
+      ordinary_completed = ordinary_completed + 1
+    end, false)
+
+    assert.equals(1, refresh_count)
+    assert.is_false(refresh_forces[1])
+    assert.equals(0, forced_completed)
+    assert.equals(0, ordinary_completed)
+
+    refresh_completions[1]()
+    assert.equals(1, sync_count)
+    assert.equals(1, refresh_count)
+
+    sync_completions[1]()
+    assert.equals(2, refresh_count)
+    assert.is_true(refresh_forces[2])
+    assert.equals(0, forced_completed)
+    assert.equals(0, ordinary_completed)
+
+    refresh_completions[2]()
+    assert.equals(2, sync_count)
+    assert.equals(0, forced_completed)
+    assert.equals(0, ordinary_completed)
+
+    sync_completions[2]()
+    assert.equals(1, forced_completed)
+    assert.equals(1, ordinary_completed)
   end)
 
   it("drops a trailing refresh when cleanup happens during mutable sync", function()

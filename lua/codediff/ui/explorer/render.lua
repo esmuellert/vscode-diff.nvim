@@ -75,7 +75,7 @@ local function open_diff_when_still_selected(ctx, sides)
 end
 
 --- conflict_ours_position names where OURS sits on screen; original_win is on
---- the left after conflict_window.lua's win_splitmove(rightbelow=false).
+--- the left after the conflict view's win_splitmove(rightbelow=false).
 --- @return string original_rev, string modified_rev
 local function conflict_revisions()
   if (config.options.diff.conflict_ours_position or "right") == "right" then

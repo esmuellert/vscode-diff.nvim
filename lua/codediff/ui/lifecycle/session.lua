@@ -158,7 +158,7 @@ function M.create_session(tabpage, session_config, panes)
 
   -- Force disable winbar to prevent alignment issues (except in conflict mode)
   local function sync_window_ui(sess, win)
-    -- In conflict mode, preserve existing winbar titles (set by conflict_window.lua)
+    -- In conflict mode, preserve existing winbar titles set by the conflict view.
     if sess and sess.result_win and vim.api.nvim_win_is_valid(sess.result_win) then
       return
     end
