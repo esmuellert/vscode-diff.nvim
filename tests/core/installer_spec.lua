@@ -1,7 +1,7 @@
 -- Test: Installer Module
 -- Validates automatic binary installation and version management
 
-local installer = require('codediff.core.installer')
+local installer = require('codediff.core.installer.libvscode_diff')
 local version = require("codediff.version")
 
 describe("Installer Module", function()

@@ -111,8 +111,9 @@ local function run_git_async(args, opts, callback)
     -- refresh that read-only queries perform, which takes `.git/index.lock`.
     -- Required locks (e.g. the one `git add` needs) are unaffected.
     --
-    -- The explorer polls status every 500ms. Without this, a poll landing while
-    -- the user stages or discards a hunk owns index.lock just long enough to
+    -- The explorer's fallback path polls status every 500ms. Without this, a
+    -- poll landing while the user stages or discards a hunk owns index.lock
+    -- just long enough to
     -- make the staging command fail with
     -- `Unable to create '.../.git/index.lock': File exists`.
     --

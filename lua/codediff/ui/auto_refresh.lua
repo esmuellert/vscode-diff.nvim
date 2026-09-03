@@ -333,7 +333,7 @@ function M.refresh_result_now(bufnr)
 end
 
 -- Sync mutable revision buffers (:0-:3) with current git index content.
--- Called when .git directory changes. Only writes if content actually changed,
+-- Called when repository state changes. Only writes if content actually changed,
 -- which triggers TextChanged → auto_refresh recomputes diff automatically.
 -- @param tabpage number: Tabpage whose session buffers to sync
 function M.sync_mutable_buffers(tabpage)

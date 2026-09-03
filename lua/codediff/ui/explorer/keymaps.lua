@@ -135,7 +135,11 @@ function M.setup(explorer)
   -- Refresh explorer (R key)
   if explorer_keymaps.refresh then
     panel_map(explorer_keymaps.refresh, function()
-      refresh_module.refresh(explorer)
+      if explorer._request_auto_refresh then
+        explorer._request_auto_refresh()
+      else
+        refresh_module.refresh(explorer)
+      end
     end, "Refresh explorer")
   end
 
