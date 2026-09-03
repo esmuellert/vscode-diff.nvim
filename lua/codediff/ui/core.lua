@@ -458,7 +458,7 @@ end
 -- left_lines_content: array of input1 content lines
 -- right_lines_content: array of input2 content lines
 function M.render_merge_view(left_bufnr, right_bufnr, base_to_left_diff, base_to_right_diff, base_lines, left_lines_content, right_lines_content)
-  local merge_alignment = require("codediff.ui.merge_alignment")
+  local merge_alignment = require("codediff.ui.conflict.merge")
 
   -- Clear existing highlights and fillers
   vim.api.nvim_buf_clear_namespace(left_bufnr, ns_highlight, 0, -1)

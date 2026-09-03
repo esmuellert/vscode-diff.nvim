@@ -6,8 +6,8 @@ local config = require("codediff.config")
 local helpers = require("codediff.ui.view.helpers")
 local readiness = require("codediff.ui.view.readiness")
 local render = require("codediff.ui.view.render")
+local conflict_view = require("codediff.ui.conflict.view")
 local view_keymaps = require("codediff.ui.view.keymaps")
-local conflict_window = require("codediff.ui.view.conflict_window")
 local panel = require("codediff.ui.view.panel")
 local welcome_window = require("codediff.ui.view.welcome_window")
 
@@ -17,9 +17,9 @@ local is_panel_placeholder = helpers.is_panel_placeholder
 local show_real_file_buffer = helpers.show_real_file_buffer
 local open_real_file = helpers.open_real_file
 local compute_and_render = render.compute_and_render
-local compute_and_render_conflict = render.compute_and_render_conflict
+local compute_and_render_conflict = conflict_view.compute_and_render_conflict
 local setup_auto_refresh = render.setup_auto_refresh
-local setup_conflict_result_window = conflict_window.setup_conflict_result_window
+local setup_conflict_result_window = conflict_view.setup_conflict_result_window
 local setup_all_keymaps = view_keymaps.setup_all_keymaps
 
 --- Split direction that lands the modified pane on the side the user asked for.

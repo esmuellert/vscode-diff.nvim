@@ -102,7 +102,7 @@ function M.setup_conflict_result_window(tabpage, session_config, original_win, m
   -- conflict_diffs.conflict_blocks (from compute_merge_fillers_and_conflicts) is
   -- the visual filler list for the side panes; the Result-buffer-oriented blocks
   -- (with result_range) come from compute_auto_merged_result.
-  local merge_alignment = require("codediff.ui.merge_alignment")
+  local merge_alignment = require("codediff.ui.conflict.merge")
   local result_lines, result_conflict_blocks = merge_alignment.compute_auto_merged_result(
     conflict_diffs.base_to_original_diff,
     conflict_diffs.base_to_modified_diff,

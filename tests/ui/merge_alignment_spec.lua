@@ -1,7 +1,7 @@
 -- Test: Merge Alignment
 -- Tests the 3-way merge alignment algorithm using the current API
 
-local merge_alignment = require("codediff.ui.merge_alignment")
+local merge_alignment = require("codediff.ui.conflict.merge")
 
 describe("Merge Alignment", function()
   -- Helper to create mock diff results

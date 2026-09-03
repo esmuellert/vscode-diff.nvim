@@ -11,7 +11,7 @@
 
 local h = require('tests.helpers')
 local diff_module = require('codediff.core.diff')
-local merge_alignment = require('codediff.ui.merge_alignment')
+local merge_alignment = require('codediff.ui.conflict.merge')
 
 describe('Issue #353 regression - 3-way merge auto-merge', function()
   before_each(function()
@@ -134,10 +134,9 @@ describe('Issue #353 regression - 3-way merge auto-merge', function()
   end)
 end)
 
--- End-to-end-ish test: stand up a real merge-conflicted git repo, mirror what
--- conflict_window.lua does to seed the Result buffer, and assert the Result
--- buffer's contents directly. This catches regressions in the wiring between
--- conflict_window.lua and compute_auto_merged_result, not just the algorithm.
+-- End-to-end-ish test: stand up a real merge-conflicted git repo, mirror how
+-- the conflict view seeds the Result buffer, and assert the Result content.
+-- This catches wiring regressions, not just auto-merge algorithm regressions.
 describe('Issue #353 regression - end-to-end with a real git merge', function()
   local repo
 
@@ -234,9 +233,9 @@ describe('Issue #353 regression - end-to-end with a real git merge', function()
     local status = repo.git("status --porcelain deps.lua")
     assert.is_true(status:find("UU", 1, true) ~= nil, 'deps.lua should be in UU state')
 
-    -- Reproduce the conflict-window's seed computation.
+    -- Reproduce the conflict view's seed computation.
     local diff_opts = { max_computation_time_ms = 2000 }
-    -- Stage layout matches conflict_window.lua: original=:3 (incoming/theirs),
+    -- Stage layout matches the conflict view: original=:3 (incoming/theirs),
     -- modified=:2 (current/ours) in the default conflict_ours_position="right".
     local base_to_original = diff_module.compute_diff(base_lines, theirs_lines, diff_opts)
     local base_to_modified = diff_module.compute_diff(base_lines, ours_lines, diff_opts)

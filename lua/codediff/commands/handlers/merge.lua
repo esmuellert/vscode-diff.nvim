@@ -51,7 +51,7 @@ function M.run(opts, global_opts)
       -- conflict_ours_position controls where :2 (OURS) appears on screen
       local ours_position = config.options.diff.conflict_ours_position or "right"
 
-      -- After conflict_window.lua's win_splitmove(rightbelow=false):
+      -- After the conflict view's win_splitmove(rightbelow=false):
       -- - original_win is on LEFT
       -- - modified_win is on RIGHT
       local original_rev, modified_rev
