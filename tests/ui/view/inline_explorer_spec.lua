@@ -388,7 +388,7 @@ describe("Inline diff with explorer", function()
   -- on every call, so each refresh tick swapped a fresh scratch buffer into
   -- the modified window and reset the cursor. The fix replaces that with
   -- bufadd(virtual_file.create_url(...)), which returns a stable bufnr keyed
-  -- by (git_root, revision, path) — same pattern as side_by_side.lua.
+  -- by (git_root, revision, path) — same pattern as the side-by-side view.
   it("Repeated show_single_file for staged virtual file keeps bufnr stable (#401)", function()
     if vim.fn.executable("git") ~= 1 then
       pending("git not available")

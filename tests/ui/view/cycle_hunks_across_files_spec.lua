@@ -235,8 +235,8 @@ describe("cycle_hunks_across_files (#161)", function()
   end)
 
   it("ON in INLINE mode: [c on first hunk hops to LAST hunk of previous file", function()
-    -- Inline mode uses a different render path (inline_view.lua) than the
-    -- side-by-side path (render.lua). Both must honor pending_cursor_landing.
+    -- Inline mode uses a different render path (`inline_view/render.lua`) than
+    -- the side-by-side path (`view/render.lua`). Both honor pending_cursor_landing.
     local cfg = require("codediff.config")
     cfg.options = vim.deepcopy(cfg.defaults)
     cfg.options.diff.layout = "inline"

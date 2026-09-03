@@ -210,7 +210,7 @@ describe('Issue #353 regression - end-to-end with a real git merge', function()
     repo.git("merge theirs --no-edit")
 
     -- Read the three stages directly from the index, just like
-    -- side_by_side.lua's conflict path does (via git.get_file_content :1/:2/:3).
+    -- the side-by-side conflict path does (via git.get_file_content :1/:2/:3).
     local function git_show(spec)
       local out = repo.git("show " .. spec .. ":deps.lua")
       local lines = {}
