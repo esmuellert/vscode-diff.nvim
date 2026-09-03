@@ -98,12 +98,10 @@ describe("FFI Integration", function()
     end
   end)
 
-  -- Test 10: Version string exists
-  it("Can get version string", function()
+  -- Test 10: Native and Lua versions agree
+  it("Embeds the plugin version", function()
     local version = diff.get_version()
-    assert.equal("string", type(version), "Version should be a string")
-    assert.is_true(#version > 0, "Version should not be empty")
-    -- Note: original had print statement, keeping as comment for parity
-    -- print("    (Version: " .. version .. ")")
+    local expected = require("codediff.version").VERSION
+    assert.equal(expected, version, "Native library version should match VERSION")
   end)
 end)

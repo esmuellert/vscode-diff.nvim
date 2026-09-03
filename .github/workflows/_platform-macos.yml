@@ -7,6 +7,7 @@ name: Build library (macOS)
 #   arch     - "x64" (Intel) or "arm64" (Apple Silicon)
 #   runs-on  - GitHub runner label (macos-15-intel or macos-latest)
 #   artifact - Name of the uploaded artifact (e.g. "macos-arm64")
+#   version  - Optional release version applied before building
 
 on:
   workflow_call:
@@ -20,6 +21,10 @@ on:
       artifact:
         required: true
         type: string
+      version:
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -31,6 +36,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+
+      - name: Apply release version
+        if: inputs.version != ''
+        env:
+          BUILD_VERSION: ${{ inputs.version }}
+        run: printf '%s\n' "$BUILD_VERSION" > VERSION
 
       - name: Set up Node.js
         uses: actions/setup-node@v5

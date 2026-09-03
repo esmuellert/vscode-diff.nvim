@@ -8,7 +8,19 @@ name: Build and Test
 
 on:
   workflow_call:
+    inputs:
+      version:
+        description: Version to apply before building release artifacts.
+        required: false
+        type: string
+        default: ''
   workflow_dispatch:
+    inputs:
+      version:
+        description: Version to apply before building artifacts.
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -27,6 +39,7 @@ jobs:
       arch: ${{ matrix.arch }}
       runs-on: ${{ matrix.runs-on }}
       artifact: ${{ matrix.artifact }}
+      version: ${{ inputs.version }}
 
   macos:
     name: ${{ matrix.runs-on }}
@@ -41,6 +54,7 @@ jobs:
       arch: ${{ matrix.arch }}
       runs-on: ${{ matrix.runs-on }}
       artifact: ${{ matrix.artifact }}
+      version: ${{ inputs.version }}
 
   windows:
     name: ${{ matrix.runs-on }}
@@ -55,6 +69,7 @@ jobs:
       arch: ${{ matrix.arch }}
       runs-on: ${{ matrix.runs-on }}
       artifact: ${{ matrix.artifact }}
+      version: ${{ inputs.version }}
 
   android:
     name: ubuntu-latest (${{ matrix.android_abi }})
@@ -69,3 +84,4 @@ jobs:
       arch: ${{ matrix.arch }}
       android_abi: ${{ matrix.android_abi }}
       artifact: ${{ matrix.artifact }}
+      version: ${{ inputs.version }}

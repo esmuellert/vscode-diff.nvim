@@ -1,0 +1,29 @@
+# git-cliff configuration for semantic version calculation.
+
+[bump]
+features_always_bump_minor = true
+breaking_always_bump_major = true
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+protect_breaking_commits = true
+filter_commits = true
+tag_pattern = "^v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"
+sort_commits = "newest"
+
+commit_parsers = [
+    { message = "^feat", group = "Features" },
+    { message = "^fix", group = "Fixes" },
+    { message = "^perf", group = "Performance" },
+    { message = "^revert", group = "Reverts" },
+    { message = "^refactor", group = "Refactors" },
+    { message = "^docs", skip = true },
+    { message = "^chore", skip = true },
+    { message = "^build", skip = true },
+    { message = "^test", skip = true },
+    { message = "^style", skip = true },
+    { message = "^format", skip = true },
+    { message = "^ci", skip = true },
+]

@@ -33,18 +33,5 @@ clean:
 	if exist build rmdir /s /q build
 	if exist libvscode_diff.dll del /q libvscode_diff.dll
 
-bump-patch:
-	node scripts/bump_version.mjs patch
-
-bump-minor:
-	node scripts/bump_version.mjs minor
-
-bump-major:
-	node scripts/bump_version.mjs major
-
-bump-prerelease:
-	node scripts/bump_version.mjs prerelease
-
 help:
 	@echo Targets: build, test, test-c, test-lua, lint, clean, help
-	@echo Version: bump-patch, bump-minor, bump-major, bump-prerelease
