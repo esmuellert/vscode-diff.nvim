@@ -14,6 +14,7 @@ describe("explorer native watcher", function()
   local refresh_forces
   local refresh_count
   local sync_count
+  local sync_completions
 
   before_each(function()
     repository = vim.fn.tempname()
@@ -23,6 +24,7 @@ describe("explorer native watcher", function()
     refresh_forces = {}
     refresh_count = 0
     sync_count = 0
+    sync_completions = {}
     unsubscribed = false
 
     original_new_timer = uv.new_timer
@@ -58,8 +60,9 @@ describe("explorer native watcher", function()
 
     original_auto_refresh = package.loaded["codediff.ui.auto_refresh"]
     package.loaded["codediff.ui.auto_refresh"] = {
-      sync_mutable_buffers = function()
+      sync_mutable_buffers = function(_, done)
         sync_count = sync_count + 1
+        sync_completions[#sync_completions + 1] = done
       end,
     }
 
@@ -115,12 +118,16 @@ describe("explorer native watcher", function()
 
     refresh_completions[1]()
     assert.equals(1, sync_count)
+    assert.equals(1, refresh_count)
+
+    sync_completions[1]()
     assert.equals(2, refresh_count)
     assert.is_true(refresh_forces[2])
 
     refresh_completions[2]()
     assert.equals(2, sync_count)
     assert.equals(2, refresh_count)
+    sync_completions[2]()
   end)
 
   it("keeps status-equality shortcuts for fallback polling", function()
@@ -131,6 +138,22 @@ describe("explorer native watcher", function()
     end, 10))
     assert.is_false(refresh_forces[1])
     refresh_completions[1]()
+    sync_completions[1]()
+  end)
+
+  it("drops a trailing refresh when cleanup happens during mutable sync", function()
+    setup()
+    watcher_handlers.on_ready()
+    watcher_handlers.on_refresh()
+    refresh_completions[1]()
+
+    assert.equals(1, sync_count)
+    cleanup()
+    cleanup = nil
+    sync_completions[1]()
+
+    assert.equals(1, refresh_count)
+    assert.is_true(unsubscribed)
   end)
 
   it("returns to polling after a running watcher fails", function()

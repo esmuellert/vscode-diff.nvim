@@ -66,14 +66,18 @@ function M.setup_auto_refresh(explorer, tabpage)
       if cleaned then
         return
       end
-      require("codediff.ui.auto_refresh").sync_mutable_buffers(tabpage)
-      refresh_running = false
-      if refresh_pending then
-        local force_pending = pending_force
-        refresh_pending = false
-        pending_force = false
-        request_refresh(force_pending)
-      end
+      require("codediff.ui.auto_refresh").sync_mutable_buffers(tabpage, function()
+        if cleaned then
+          return
+        end
+        refresh_running = false
+        if refresh_pending then
+          local force_pending = pending_force
+          refresh_pending = false
+          pending_force = false
+          request_refresh(force_pending)
+        end
+      end)
     end, force)
   end
 
