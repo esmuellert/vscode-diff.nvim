@@ -67,8 +67,8 @@ describe("explorer native watcher", function()
     }
 
     refresh_module = require("codediff.ui.explorer.refresh")
-    original_refresh = refresh_module.refresh
-    refresh_module.refresh = function(_, done, force)
+    original_refresh = refresh_module._refresh_once
+    refresh_module._refresh_once = function(_, done, force)
       refresh_count = refresh_count + 1
       refresh_completions[#refresh_completions + 1] = done
       refresh_forces[#refresh_forces + 1] = force == true
@@ -80,7 +80,7 @@ describe("explorer native watcher", function()
       cleanup()
       cleanup = nil
     end
-    refresh_module.refresh = original_refresh
+    refresh_module._refresh_once = original_refresh
     package.loaded["codediff.core.watcher"] = original_watcher
     package.loaded["codediff.ui.auto_refresh"] = original_auto_refresh
     uv.new_timer = original_new_timer
@@ -110,8 +110,12 @@ describe("explorer native watcher", function()
     assert.equals(1, refresh_count)
     assert.is_true(refresh_forces[1])
 
+    local direct_completed = 0
     watcher_handlers.on_refresh()
     watcher_handlers.on_refresh()
+    refresh_module.refresh(explorer, function()
+      direct_completed = direct_completed + 1
+    end)
     watcher_handlers.on_refresh()
     assert.equals(1, refresh_count)
     assert.is_true(refresh_forces[1])
@@ -122,12 +126,14 @@ describe("explorer native watcher", function()
 
     sync_completions[1]()
     assert.equals(2, refresh_count)
+    assert.equals(0, direct_completed)
     assert.is_true(refresh_forces[2])
 
     refresh_completions[2]()
     assert.equals(2, sync_count)
     assert.equals(2, refresh_count)
     sync_completions[2]()
+    assert.equals(1, direct_completed)
   end)
 
   it("keeps status-equality shortcuts for fallback polling", function()

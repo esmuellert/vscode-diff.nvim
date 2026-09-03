@@ -7,11 +7,6 @@ local welcome = require("codediff.ui.welcome")
 -- Setup native repository watching with polling as startup/runtime fallback.
 function M.setup_auto_refresh(explorer, tabpage)
   local explorer_config = config.options.explorer or {}
-  if explorer_config.auto_refresh == false then
-    explorer._cleanup_auto_refresh = function() end
-    return
-  end
-
   local uv = vim.uv or vim.loop
   local poll_timer
   local unsubscribe
@@ -19,7 +14,8 @@ function M.setup_auto_refresh(explorer, tabpage)
   local refresh_running = false
   local refresh_pending = false
   local pending_force = false
-  local group = vim.api.nvim_create_augroup("CodeDiffExplorerRefresh_" .. tabpage, { clear = true })
+  local pending_done = {}
+  local group
 
   local function stop_polling()
     if not poll_timer then
@@ -44,25 +40,37 @@ function M.setup_auto_refresh(explorer, tabpage)
       unsubscribe()
       unsubscribe = nil
     end
+    pending_done = {}
+    explorer._request_refresh = nil
     explorer._request_auto_refresh = nil
     explorer._native_watcher_ready = nil
-    pcall(vim.api.nvim_del_augroup_by_id, group)
+    if group then
+      pcall(vim.api.nvim_del_augroup_by_id, group)
+    end
   end
 
   explorer._cleanup_auto_refresh = cleanup
 
+  local function call_done(callbacks)
+    for _, callback in ipairs(callbacks) do
+      pcall(callback)
+    end
+  end
+
   local request_refresh
-  request_refresh = function(force)
+  request_refresh = function(force, done_callbacks)
+    done_callbacks = done_callbacks or {}
     if cleaned then
       return
     end
     if refresh_running then
       refresh_pending = true
       pending_force = pending_force or force == true
+      vim.list_extend(pending_done, done_callbacks)
       return
     end
     refresh_running = true
-    M.refresh(explorer, function()
+    M._refresh_once(explorer, function()
       if cleaned then
         return
       end
@@ -71,11 +79,14 @@ function M.setup_auto_refresh(explorer, tabpage)
           return
         end
         refresh_running = false
+        call_done(done_callbacks)
         if refresh_pending then
           local force_pending = pending_force
+          local done_pending = pending_done
           refresh_pending = false
           pending_force = false
-          request_refresh(force_pending)
+          pending_done = {}
+          request_refresh(force_pending, done_pending)
         end
       end)
     end, force)
@@ -100,9 +111,18 @@ function M.setup_auto_refresh(explorer, tabpage)
     request_refresh(force)
   end
 
+  explorer._request_refresh = function(force, done)
+    request_refresh(force, done and { done } or {})
+  end
   explorer._request_auto_refresh = function()
     tick(true)
   end
+
+  if explorer_config.auto_refresh == false then
+    return cleanup
+  end
+
+  group = vim.api.nvim_create_augroup("CodeDiffExplorerRefresh_" .. tabpage, { clear = true })
 
   local function start_polling()
     if cleaned or poll_timer then
@@ -314,8 +334,8 @@ local function rebuild_tree(explorer, status_result, collapsed_state)
   explorer.tree:render()
 end
 
--- Refresh explorer with updated git status
-function M.refresh(explorer, done, force)
+-- Execute one explorer refresh. Public callers use M.refresh below.
+function M._refresh_once(explorer, done, force)
   local git = require("codediff.core.git")
   local completed = false
   local function complete()
@@ -427,6 +447,14 @@ function M.refresh(explorer, done, force)
   else
     git.get_status_with_line_stats(explorer.git_root, process_result, explorer.pathspec)
   end
+end
+
+-- Queue every refresh source through the controller installed on the explorer.
+function M.refresh(explorer, done, force)
+  if explorer and explorer._request_refresh then
+    return explorer._request_refresh(force, done)
+  end
+  return M._refresh_once(explorer, done, force)
 end
 
 -- Rebuild the tree synchronously from the cached status_result. Used when only
