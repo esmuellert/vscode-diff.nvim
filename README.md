@@ -26,7 +26,7 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
 - **Side-by-side diff view** in a new tab with synchronized scrolling
 - **Inline (unified) diff view** — single-window layout with deleted lines as virtual overlays, with treesitter syntax highlighting
 - **Toggle layout** — switch between side-by-side and inline layout at runtime with `t`
-- **Git integration**: Compare between any git revision (HEAD, commits, branches, tags)
+- **Git integration**: Compare revisions or review a pull request by number without checking it out
 - **Same implementation as VSCode's diff engine**, providing identical visual highlighting for most scenarios
 - **Fast C-based diff computation** using FFI with **multi-core parallelization** (OpenMP)
 - **Async git operations** - non-blocking file retrieval from git
@@ -474,6 +474,44 @@ Show only changes introduced since branching from a base branch—exactly like a
 ```
 
 This uses `git merge-base` semantics (equivalent to `git diff main...HEAD`), showing only the changes introduced on your branch, not changes that happened on the base branch since you branched.
+
+#### Review a pull request
+
+Fetch and review a pull request without checking out its branch or changing the working tree:
+
+```vim
+:CodeDiff pr 512
+
+" Review a pull request in another local repository
+:CodeDiff --repo ~/code/codediff.nvim pr 512
+
+" Fetch from a target repository configured as upstream
+:CodeDiff pr 512 --remote upstream
+
+" Override the target branch when the PR targets a non-default branch
+:CodeDiff pr 512 --base release/3.x
+
+" Review only part of the PR
+:CodeDiff pr 512 -- lua/codediff
+```
+
+CodeDiff recognizes GitHub and Azure DevOps `refs/pull/` refs and GitLab `refs/merge-requests/` refs. It prefers the provider's synthetic merge ref, which identifies both sides of the review. If that ref is unavailable, CodeDiff fetches the PR head and compares it with the remote's default branch; use `--base` to override that fallback.
+
+Fetched commits are stored under `refs/codediff/pull-requests/`. Reopening the same PR updates its refs, and no local branch is created. The refs are retained so asynchronous file loading and later reviews can reuse them. Remove cached refs explicitly when they are no longer needed:
+
+```vim
+" Remove one PR from origin (use --remote for another remote)
+:CodeDiff pr clean 512
+:CodeDiff pr clean 512 --remote upstream
+
+" Remove every cached PR ref in this repository
+:CodeDiff pr clean --all
+
+" Limit --all to one remote
+:CodeDiff pr clean --all --remote upstream
+```
+
+Both cleanup forms support `--repo`/`-C`. Private repositories use the authentication already configured for the selected Git remote. No `gh`, `glab`, or `az` CLI is required.
 
 #### Scope to a subdirectory or path
 

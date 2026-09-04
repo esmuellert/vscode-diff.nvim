@@ -420,11 +420,17 @@ describe("Command E2E (real dispatch + render)", function()
   it("completion offers subcommands and git refs", function()
     vim.cmd("lcd " .. repo.dir)
     local cands = commands.complete("", "CodeDiff ")
-    for _, name in ipairs({ "file", "dir", "history", "merge", "install" }) do
+    for _, name in ipairs({ "file", "dir", "history", "pr", "merge", "install" }) do
       assert.is_true(vim.tbl_contains(cands, name), "offers subcommand " .. name)
     end
     assert.is_true(vim.tbl_contains(cands, "HEAD"), "offers HEAD ref")
     assert.is_true(vim.tbl_contains(commands.complete("--r", "CodeDiff --r"), "--repo"), "offers --repo flag")
+    assert.is_true(vim.tbl_contains(commands.complete("", "CodeDiff pr "), "clean"), "offers PR cleanup")
+    assert.is_true(vim.tbl_contains(commands.complete("--r", "CodeDiff pr 12 --r"), "--remote"), "offers PR remote flag")
+    assert.is_true(vim.tbl_contains(commands.complete("--b", "CodeDiff pr 12 --b"), "--base"), "offers PR base flag")
+    assert.is_true(vim.tbl_contains(commands.complete("--a", "CodeDiff pr clean --a"), "--all"), "offers cleanup all flag")
+    assert.is_false(vim.tbl_contains(commands.complete("-a", "CodeDiff pr clean -a"), "-a"), "does not offer a short cleanup alias")
+    assert.is_false(vim.tbl_contains(commands.complete("", "CodeDiff pr 12 -- "), "HEAD"), "PR path scope excludes revisions")
   end)
 
   it("completion after -- offers file paths, not subcommands or refs (#74)", function()
