@@ -1,0 +1,48 @@
+name: Assemble release assets
+description: Require every native library and create the checksum manifest.
+
+inputs:
+  version:
+    description: Release version without the v prefix.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Collect native libraries
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        rm -rf dist
+        mkdir -p dist
+
+        cp artifacts/linux-x64/libvscode_diff.so "dist/libvscode_diff_linux_x64_${VERSION}.so"
+        cp artifacts/linux-x64/libgomp.so.1 "dist/libgomp_linux_x64_${VERSION}.so.1"
+        cp artifacts/linux-arm64/libvscode_diff.so "dist/libvscode_diff_linux_arm64_${VERSION}.so"
+        cp artifacts/linux-arm64/libgomp.so.1 "dist/libgomp_linux_arm64_${VERSION}.so.1"
+        cp artifacts/macos-x64/libvscode_diff.dylib "dist/libvscode_diff_macos_x64_${VERSION}.dylib"
+        cp artifacts/macos-arm64/libvscode_diff.dylib "dist/libvscode_diff_macos_arm64_${VERSION}.dylib"
+        cp artifacts/windows-x64/libvscode_diff.dll "dist/libvscode_diff_windows_x64_${VERSION}.dll"
+        cp artifacts/windows-arm64/libvscode_diff.dll "dist/libvscode_diff_windows_arm64_${VERSION}.dll"
+        cp artifacts/android-arm64/libvscode_diff.so "dist/libvscode_diff_android_arm64_${VERSION}.so"
+        cp artifacts/android-x64/libvscode_diff.so "dist/libvscode_diff_android_x64_${VERSION}.so"
+
+        test "$(find dist -maxdepth 1 -type f | wc -l | tr -d '[:space:]')" -eq 10
+
+    - name: Create checksums
+      shell: bash
+      run: cd dist && sha256sum -- * > SHA256SUMS
+
+    - name: Upload release assets
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-assets
+        path: dist/*
+        if-no-files-found: error
+        overwrite: true

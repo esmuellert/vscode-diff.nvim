@@ -2,8 +2,8 @@ name: Build library (Android via NDK)
 
 # Cross-compile for Android (Termux, #333) on a Linux runner using the
 # preinstalled Android NDK. No functional tests run here — the target runtime
-# is Android and the runner is Linux — so verification is limited to an ABI
-# sanity check via `readelf` (must link against bionic, not glibc).
+# is Android and the runner is Linux — so verification is limited to the
+# generated version header and an ABI check against bionic.
 #
 # End-to-end verification is delegated to the issue reporter on a real device.
 #
@@ -12,6 +12,7 @@ name: Build library (Android via NDK)
 #                 client-side detect_arch() convention in installer.lua)
 #   android_abi - NDK ABI string: "arm64-v8a" or "x86_64"
 #   artifact    - Name of the uploaded artifact (e.g. "android-arm64")
+#   version     - Optional release version applied before building
 
 on:
   workflow_call:
@@ -25,6 +26,10 @@ on:
       artifact:
         required: true
         type: string
+      version:
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -36,6 +41,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+
+      - name: Apply release version
+        if: inputs.version != ''
+        env:
+          BUILD_VERSION: ${{ inputs.version }}
+        run: printf '%s\n' "$BUILD_VERSION" > VERSION
 
       - name: Build library
         env:
@@ -61,6 +72,12 @@ jobs:
           # The CMake target's POST_BUILD command copies the .so to repo root
           # (see libvscode-diff/CMakeLists.txt), so it's already at ./libvscode_diff.so.
           ls -la ./libvscode_diff.so
+
+      - name: Verify embedded version
+        run: |
+          expected=$(tr -d '[:space:]' < VERSION)
+          grep -F "#define VSCODE_DIFF_VERSION \"$expected\"" \
+            build-android/libvscode-diff/include/version.h
 
       - name: ABI sanity check (bionic-linked, no glibc SONAMEs)
         run: |

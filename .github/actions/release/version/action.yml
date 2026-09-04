@@ -1,0 +1,76 @@
+name: Release version
+description: Determine whether the current revision needs a release.
+
+outputs:
+  version:
+    description: Version used for builds, without the v prefix.
+    value: ${{ steps.bump.outputs.version }}
+  tag:
+    description: Version tag.
+    value: ${{ steps.bump.outputs.tag }}
+  released:
+    description: Whether release assets should be published.
+    value: ${{ steps.bump.outputs.released }}
+
+runs:
+  using: composite
+  steps:
+    - uses: taiki-e/install-action@v2
+      with:
+        tool: git-cliff
+
+    - name: Decide next version
+      id: bump
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        current=$(tr -d '[:space:]' < VERSION)
+        if [[ ! "$current" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+          echo "::error title=Invalid VERSION::$current is not a semantic version"
+          exit 1
+        fi
+
+        latest_tag=$(git describe --tags --abbrev=0 --match 'v[0-9]*')
+        if [[ ! "$latest_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+          echo "::error title=Invalid release tag::$latest_tag is not a semantic version tag"
+          exit 1
+        fi
+        if [ "$latest_tag" != "v$current" ]; then
+          echo "::error title=Version drift::VERSION is $current but the latest reachable tag is $latest_tag"
+          exit 1
+        fi
+
+        next_tag=$(git-cliff --no-exec --unreleased --bumped-version | tr -d '[:space:]')
+        if [[ ! "$next_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+          echo "::error title=Invalid next version::git-cliff returned '$next_tag'"
+          exit 1
+        fi
+        next=${next_tag#v}
+
+        if [ "$next" = "$current" ]; then
+          echo "Nothing to release (version unchanged at $current)"
+          {
+            echo "version=$current"
+            echo "tag=v$current"
+            echo "released=false"
+          } >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        if git rev-parse "$next_tag" >/dev/null 2>&1; then
+          echo "Tag $next_tag already exists — skipping"
+          {
+            echo "version=$current"
+            echo "tag=$next_tag"
+            echo "released=false"
+          } >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        echo "Next release: $next"
+        {
+          echo "version=$next"
+          echo "tag=$next_tag"
+          echo "released=true"
+        } >> "$GITHUB_OUTPUT"

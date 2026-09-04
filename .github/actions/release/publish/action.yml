@@ -1,0 +1,104 @@
+name: Publish release
+description: Commit the release version, push its tag, and create the GitHub release.
+
+inputs:
+  version:
+    description: Release version without the v prefix.
+    required: true
+  tag:
+    description: Version tag.
+    required: true
+  source_sha:
+    description: Main revision from which the release was built.
+    required: true
+  app_id:
+    description: GitHub App ID used to push the release commit.
+    required: true
+  app_private_key:
+    description: GitHub App private key used to push the release commit.
+    required: true
+  github_token:
+    description: Token used to create the GitHub release.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Generate GitHub App token
+      id: generate_token
+      uses: actions/create-github-app-token@v2
+      with:
+        app-id: ${{ inputs.app_id }}
+        private-key: ${{ inputs.app_private_key }}
+
+    - uses: actions/checkout@v5
+      with:
+        ref: ${{ inputs.source_sha }}
+        fetch-depth: 0
+        fetch-tags: true
+        token: ${{ steps.generate_token.outputs.token }}
+
+    - uses: actions/download-artifact@v4
+      with:
+        name: release-assets
+        path: dist
+
+    - name: Verify checksums
+      shell: bash
+      run: cd dist && sha256sum --check SHA256SUMS
+
+    - name: Commit and tag
+      id: publish
+      shell: bash
+      env:
+        SOURCE_SHA: ${{ inputs.source_sha }}
+        TAG: ${{ inputs.tag }}
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        printf '%s\n' "$VERSION" > VERSION
+        if git diff --quiet -- VERSION; then
+          echo "::error title=Version unchanged::VERSION already contains $VERSION"
+          exit 1
+        fi
+
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add VERSION
+        git commit -m "release: $TAG [skip ci]"
+
+        git tag -d "$TAG" 2>/dev/null || true
+        git tag -a "$TAG" -m "$TAG"
+
+        git fetch --quiet origin main
+        if [ "$(git rev-parse origin/main)" != "$SOURCE_SHA" ]; then
+          echo "::notice title=Release deferred::main moved; the queued run will cut $TAG"
+          echo "published=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        if git push --atomic origin "HEAD:refs/heads/main" "refs/tags/$TAG"; then
+          echo "published=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        git fetch --quiet origin main
+        if [ "$(git rev-parse origin/main)" != "$SOURCE_SHA" ]; then
+          echo "::notice title=Release deferred::lost the push race; the queued run will cut $TAG"
+          echo "published=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        echo "::error::push rejected while main is unchanged"
+        exit 1
+
+    - name: Create GitHub release
+      if: steps.publish.outputs.published == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+      run: |
+        gh release create "${{ inputs.tag }}" \
+          --verify-tag \
+          --title "Release ${{ inputs.tag }}" \
+          --generate-notes \
+          dist/*

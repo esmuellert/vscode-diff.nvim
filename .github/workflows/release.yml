@@ -2,202 +2,71 @@ name: Release
 
 on:
   push:
-    branches:
-      - main
-      - next
+    branches: [main]
     paths-ignore:
       - '*.md'
       - 'docs/**'
       - 'dev-docs/**'
-  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+      released: ${{ steps.release.outputs.released }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - id: release
+        uses: ./.github/actions/release/version
+
   build-and-test:
+    needs: version
     uses: ./.github/workflows/build-and-test.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
     permissions:
       contents: read
 
-  version-and-tag:
-    needs: build-and-test
+  assemble:
+    name: Assemble release assets
+    needs: [version, build-and-test]
+    if: needs.version.outputs.released == 'true'
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    outputs:
-      version: ${{ steps.get_version.outputs.version }}
-      tag_created: ${{ steps.check_tag.outputs.created }}
-      is_prerelease: ${{ steps.check_prerelease.outputs.is_prerelease }}
+    timeout-minutes: 10
     steps:
-      - name: Generate GitHub App Token
-        id: generate_token
-        uses: actions/create-github-app-token@v2
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/release/assemble-assets
         with:
-          app-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          version: ${{ needs.version.outputs.version }}
 
-      - name: Checkout repository
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-          token: ${{ steps.generate_token.outputs.token }}
-          ref: ${{ github.ref_name }}
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: 'lts/*'
-
-      - name: Configure Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Read current version
-        id: read_version
-        run: |
-          VERSION=$(cat VERSION | tr -d '\n')
-          echo "current_version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Current version: $VERSION"
-
-      - name: Check if prerelease version
-        id: check_prerelease
-        run: |
-          VERSION=${{ steps.read_version.outputs.current_version }}
-          if [[ "$VERSION" == *-* ]]; then
-            echo "is_prerelease=true" >> $GITHUB_OUTPUT
-            echo "Version $VERSION is a prerelease"
-          else
-            echo "is_prerelease=false" >> $GITHUB_OUTPUT
-            echo "Version $VERSION is a stable release"
-          fi
-
-      - name: Check if tag exists
-        id: check_existing_tag
-        run: |
-          VERSION=${{ steps.read_version.outputs.current_version }}
-          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-            echo "Tag v$VERSION already exists"
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-            echo "Tag v$VERSION does not exist"
-          fi
-
-      - name: Bump version (patch for main, prerelease for next)
-        id: bump_version
-        if: steps.check_existing_tag.outputs.exists == 'true'
-        run: |
-          if [ "${{ steps.check_prerelease.outputs.is_prerelease }}" == "true" ]; then
-            NEW_VERSION=$(make bump-prerelease | grep "→" | awk '{print $NF}')
-          else
-            NEW_VERSION=$(make bump-patch | grep "→" | awk '{print $NF}')
-          fi
-          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "Bumped version to: $NEW_VERSION"
-          # Reset the auto-commit made by bump_version.mjs so we can commit with [skip ci]
-          git reset --soft HEAD~1
-
-      - name: Commit version bump
-        if: steps.check_existing_tag.outputs.exists == 'true'
-        run: |
-          git add VERSION
-          git commit -m "chore: bump version to ${{ steps.bump_version.outputs.new_version }} [skip ci]"
-          git push origin ${{ github.ref_name }}
-
-      - name: Get final version
-        id: get_version
-        run: |
-          if [ "${{ steps.check_existing_tag.outputs.exists }}" == "true" ]; then
-            VERSION="${{ steps.bump_version.outputs.new_version }}"
-          else
-            VERSION="${{ steps.read_version.outputs.current_version }}"
-          fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Final version: $VERSION"
-
-      - name: Create and push tag
-        id: check_tag
-        run: |
-          VERSION=${{ steps.get_version.outputs.version }}
-          git tag "v$VERSION"
-          git push origin "v$VERSION"
-          echo "created=true" >> $GITHUB_OUTPUT
-          echo "Created and pushed tag: v$VERSION"
-
-  release:
-    needs: [version-and-tag]
+  publish:
+    name: Publish
+    needs: [version, assemble]
+    if: needs.version.outputs.released == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/release/publish
         with:
-          path: artifacts
-
-      - name: Prepare release assets
-        run: |
-          VERSION=${{ needs.version-and-tag.outputs.version }}
-          mkdir -p release-assets
-
-          # Linux x64
-          if [ -f artifacts/linux-x64/libvscode_diff.so ]; then
-            cp artifacts/linux-x64/libvscode_diff.so release-assets/libvscode_diff_linux_x64_${VERSION}.so
-          fi
-          if [ -f artifacts/linux-x64/libgomp.so.1 ]; then
-            cp artifacts/linux-x64/libgomp.so.1 release-assets/libgomp_linux_x64_${VERSION}.so.1
-          fi
-
-          # Linux ARM64
-          if [ -f artifacts/linux-arm64/libvscode_diff.so ]; then
-            cp artifacts/linux-arm64/libvscode_diff.so release-assets/libvscode_diff_linux_arm64_${VERSION}.so
-          fi
-          if [ -f artifacts/linux-arm64/libgomp.so.1 ]; then
-            cp artifacts/linux-arm64/libgomp.so.1 release-assets/libgomp_linux_arm64_${VERSION}.so.1
-          fi
-
-          # macOS x64
-          if [ -f artifacts/macos-x64/libvscode_diff.dylib ]; then
-            cp artifacts/macos-x64/libvscode_diff.dylib release-assets/libvscode_diff_macos_x64_${VERSION}.dylib
-          fi
-
-          # macOS ARM64
-          if [ -f artifacts/macos-arm64/libvscode_diff.dylib ]; then
-            cp artifacts/macos-arm64/libvscode_diff.dylib release-assets/libvscode_diff_macos_arm64_${VERSION}.dylib
-          fi
-
-          # Windows x64
-          if [ -f artifacts/windows-x64/libvscode_diff.dll ]; then
-            cp artifacts/windows-x64/libvscode_diff.dll release-assets/libvscode_diff_windows_x64_${VERSION}.dll
-          fi
-
-          # Windows ARM64
-          if [ -f artifacts/windows-arm64/libvscode_diff.dll ]; then
-            cp artifacts/windows-arm64/libvscode_diff.dll release-assets/libvscode_diff_windows_arm64_${VERSION}.dll
-          fi
-
-          # Android ARM64 (Termux, #333)
-          if [ -f artifacts/android-arm64/libvscode_diff.so ]; then
-            cp artifacts/android-arm64/libvscode_diff.so release-assets/libvscode_diff_android_arm64_${VERSION}.so
-          fi
-
-          # Android x64 (Termux on Chromebooks / Android-x86 / x86_64 emulators)
-          if [ -f artifacts/android-x64/libvscode_diff.so ]; then
-            cp artifacts/android-x64/libvscode_diff.so release-assets/libvscode_diff_android_x64_${VERSION}.so
-          fi
-
-          ls -lah release-assets/
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: v${{ needs.version-and-tag.outputs.version }}
-          name: Release v${{ needs.version-and-tag.outputs.version }}
-          draft: false
-          prerelease: ${{ needs.version-and-tag.outputs.is_prerelease == 'true' }}
-          files: release-assets/*
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          version: ${{ needs.version.outputs.version }}
+          tag: ${{ needs.version.outputs.tag }}
+          source_sha: ${{ github.sha }}
+          app_id: ${{ vars.APP_ID }}
+          app_private_key: ${{ secrets.APP_PRIVATE_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}

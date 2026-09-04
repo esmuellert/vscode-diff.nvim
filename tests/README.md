@@ -10,6 +10,7 @@ API in pure Lua + Neovim built-ins. No external test dependencies are required.
 C ↔ Lua boundary validation:
 - Data structure conversion
 - Memory management (no leaks)
+- Native and Lua version agreement
 - Edge cases (empty diffs, large files)
 
 **10 tests**

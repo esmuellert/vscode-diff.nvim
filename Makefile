@@ -2,7 +2,7 @@
 # Makefile wrapper for developers (uses CMake underneath)
 # Users: Use build.sh instead (no CMake required)
 
-.PHONY: all build test test-c test-lua lint format clean help bump-patch bump-minor bump-major bump-prerelease
+.PHONY: all build test test-c test-lua lint format clean help
 
 all: build
 
@@ -30,19 +30,6 @@ clean:
 	@rm -rf build
 	@rm -f libvscode_diff.so libvscode_diff.dylib
 
-bump-patch:
-	@node scripts/bump_version.mjs patch
-
-bump-minor:
-	@node scripts/bump_version.mjs minor
-
-bump-major:
-	@node scripts/bump_version.mjs major
-
-bump-prerelease:
-	@node scripts/bump_version.mjs prerelease
-
 help:
 	@echo "Targets: build, test, test-c, test-lua, lint, clean, help"
-	@echo "Version: bump-patch, bump-minor, bump-major, bump-prerelease"
 	@echo "Checks:  scripts/find_orphan_comments.py --rev main..HEAD"
