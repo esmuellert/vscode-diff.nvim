@@ -529,6 +529,22 @@ function M.get_file_content(revision, git_root, rel_path, callback)
   end)
 end
 
+-- Get file content for a buffer's file at a given revision (async convenience)
+-- Chains get_git_root -> get_relative_path -> get_file_content
+-- callback: function(err, lines, git_root, rel_path)
+function M.get_buf_file_content(file_path, revision, callback)
+  M.get_git_root(file_path, function(err_root, git_root)
+    if err_root then
+      callback(err_root, nil)
+      return
+    end
+    local rel_path = M.get_relative_path(file_path, git_root)
+    M.get_file_content(revision, git_root, rel_path, function(err_content, lines)
+      callback(err_content, lines, git_root, rel_path)
+    end)
+  end)
+end
+
 -- Check if a git status code indicates a merge conflict
 -- Git uses these status codes for conflicts:
 -- U = unmerged (both modified, added by us/them, deleted by us/them)
