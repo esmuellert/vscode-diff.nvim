@@ -21,7 +21,6 @@ local function create_test_diff_view(original_lines, modified_lines, left_path, 
   vim.fn.writefile(modified_lines, right_path)
 
   local session_config = {
-    mode = "standalone",
     git_root = nil,
     original = path.make_ref(left_path, nil),
     modified = path.make_ref(right_path, nil),

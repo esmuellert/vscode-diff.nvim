@@ -45,7 +45,6 @@ describe('Issue #387 regression — conflict-mode input panes stay green on Text
     local view = require("codediff.ui.view")
     local ready = false
     view.create({
-      mode = "standalone",
       git_root = repo.dir,
       original = path.make_ref("file.txt", repo.dir),
       modified = path.make_ref("file.txt", repo.dir),

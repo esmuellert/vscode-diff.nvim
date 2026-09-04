@@ -32,17 +32,19 @@ end
 
 local function create_explorer_placeholder(git_root)
   view.create({
-    mode = "explorer",
+    panel = {
+      name = "explorer",
+      data = {
+        status_result = {
+          unstaged = {},
+          staged = {},
+          conflicts = {},
+        },
+      },
+    },
     git_root = git_root,
     original = path.make_ref("", git_root),
     modified = path.make_ref("", git_root),
-    explorer_data = {
-      status_result = {
-        unstaged = {},
-        staged = {},
-        conflicts = {},
-      },
-    },
   })
 
   return vim.api.nvim_get_current_tabpage()
@@ -52,7 +54,6 @@ local function create_standalone_diff(left_lines, right_lines)
   local left = temp_file("layout_toggle_left.txt", left_lines)
   local right = temp_file("layout_toggle_right.txt", right_lines)
   view.create({
-    mode = "standalone",
     original = path.make_ref(left, nil),
     modified = path.make_ref(right, nil),
   })
@@ -73,7 +74,7 @@ local function open_codediff_and_wait(repo, entry_file)
   local ready = vim.wait(10000, function()
     for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
       local session = lifecycle.get_session(tp)
-      if session and session.explorer then
+      if session and (session.panel or {}).view then
         tabpage = tp
         local orig_buf, mod_buf = lifecycle.get_buffers(tp)
         return orig_buf and mod_buf and vim.api.nvim_buf_is_valid(orig_buf) and vim.api.nvim_buf_is_valid(mod_buf)
@@ -85,7 +86,7 @@ local function open_codediff_and_wait(repo, entry_file)
   assert.is_true(ready, "CodeDiff explorer session should be ready")
 
   local session = lifecycle.get_session(tabpage)
-  return tabpage, session, session.explorer
+  return tabpage, session, (session.panel or {}).view
 end
 
 local function open_history_and_wait(repo, entry_file)
@@ -111,15 +112,17 @@ local function open_history_and_wait(repo, entry_file)
   assert.is_true(commits and #commits > 0, "History should contain commits")
 
   view.create({
-    mode = "history",
+    panel = {
+      name = "history",
+      data = {
+        commits = commits,
+        range = "",
+        file_path = file_path,
+      },
+    },
     git_root = repo.dir,
     original = path.make_ref("", repo.dir),
     modified = path.make_ref("", repo.dir),
-    history_data = {
-      commits = commits,
-      range = "",
-      file_path = file_path,
-    },
   }, "")
 
   local tabpage
@@ -127,8 +130,8 @@ local function open_history_and_wait(repo, entry_file)
   local ready = vim.wait(10000, function()
     for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
       local session = lifecycle.get_session(tp)
-      local panel = lifecycle.get_explorer(tp)
-      if session and session.mode == "history" and panel then
+      local panel = lifecycle.get_panel_view(tp)
+      if session and session.panel and session.panel.name == "history" and panel then
         tabpage = tp
         history = panel
         return history.current_selection
@@ -174,7 +177,7 @@ end
 
 local function capture_layout_snapshot(tabpage)
   local session = lifecycle.get_session(tabpage)
-  local panel = session and session.explorer or nil
+  local panel = session and (session.panel or {}).view or nil
   local panel_win = panel and panel.winid
   local diff_win = session and session.modified_win
   return {
@@ -289,7 +292,7 @@ describe("Layout toggle", function()
 
     assert.is_true(view.toggle_layout(tabpage))
     wait_for(tabpage, function(current_session)
-      local current_history = lifecycle.get_explorer(tabpage)
+      local current_history = lifecycle.get_panel_view(tabpage)
       local mod_buf = current_session.modified_bufnr
       local marks = mod_buf and vim.api.nvim_buf_is_valid(mod_buf) and vim.api.nvim_buf_get_extmarks(mod_buf, inline.ns_inline, 0, -1, {}) or {}
       return current_session.layout == "inline"
@@ -303,7 +306,7 @@ describe("Layout toggle", function()
 
     assert.is_true(view.toggle_layout(tabpage))
     wait_for(tabpage, function(current_session)
-      local current_history = lifecycle.get_explorer(tabpage)
+      local current_history = lifecycle.get_panel_view(tabpage)
       return current_session.layout == "side-by-side"
         and current_session.original_win
         and current_session.modified_win
@@ -519,7 +522,6 @@ describe("Layout toggle", function()
 
     vim.api.nvim_buf_set_lines(session.original_bufnr, 0, -1, false, { "line 1", "left again", "line 3" })
     view.update(tabpage, {
-      mode = "standalone",
       original = path.make_ref(left, nil),
       modified = path.make_ref(right, nil),
     }, false)

@@ -58,7 +58,7 @@ describe("cycle_hunks_across_files (#161)", function()
     local ok = vim.wait(8000, function()
       for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
         local s = lifecycle.get_session(tp)
-        local e = lifecycle.get_explorer(tp)
+        local e = lifecycle.get_panel_view(tp)
         if has_expected_hunk_count(s, expected_hunk_count) and e and e.current_file_path == focus_file then
           return true
         end
@@ -70,7 +70,7 @@ describe("cycle_hunks_across_files (#161)", function()
     end
     for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
       local s = lifecycle.get_session(tp)
-      local e = lifecycle.get_explorer(tp)
+      local e = lifecycle.get_panel_view(tp)
       if s and e then
         return tp, s, e
       end
@@ -80,7 +80,7 @@ describe("cycle_hunks_across_files (#161)", function()
   -- Wait for the displayed file to switch AND its diff to fully re-render.
   local function wait_for_file_switch(tabpage, from_file, expected_hunk_count)
     local switched = vim.wait(8000, function()
-      local e = lifecycle.get_explorer(tabpage)
+      local e = lifecycle.get_panel_view(tabpage)
       return e and e.current_file_path and e.current_file_path ~= from_file
     end, 20)
     if not switched then
@@ -88,7 +88,7 @@ describe("cycle_hunks_across_files (#161)", function()
     end
     return vim.wait(8000, function()
       local s = lifecycle.get_session(tabpage)
-      local e = lifecycle.get_explorer(tabpage)
+      local e = lifecycle.get_panel_view(tabpage)
       local session_path = s and s.modified.absolute ~= "" and s.modified.absolute or s and s.original.absolute
       return session_path and e and e.current_file_path
         and session_path:find(e.current_file_path, 1, true) ~= nil
@@ -235,8 +235,8 @@ describe("cycle_hunks_across_files (#161)", function()
   end)
 
   it("ON in INLINE mode: [c on first hunk hops to LAST hunk of previous file", function()
-    -- Inline mode uses a different render path (inline_view.lua) than the
-    -- side-by-side path (render.lua). Both must honor pending_cursor_landing.
+    -- Inline mode uses a different render path (`inline_view/render.lua`) than
+    -- the side-by-side path (`view/render.lua`). Both honor pending_cursor_landing.
     local cfg = require("codediff.config")
     cfg.options = vim.deepcopy(cfg.defaults)
     cfg.options.diff.layout = "inline"

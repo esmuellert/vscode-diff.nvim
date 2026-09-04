@@ -4,8 +4,9 @@
 -- which fully replaces plenary.nvim. See tests/framework/init.lua for design
 -- notes.
 
--- Disable auto-installation in tests (library is already built by CI)
+-- Disable auto-installation in tests (native assets are supplied explicitly).
 vim.env.VSCODE_DIFF_NO_AUTO_INSTALL = "1"
+vim.env.CODEDIFF_WATCHER_NO_AUTO_INSTALL = "1"
 
 -- Disable ShaDa (fixes Windows permission issues in CI)
 vim.opt.shadafile = "NONE"

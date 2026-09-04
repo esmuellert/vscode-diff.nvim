@@ -33,21 +33,23 @@ describe("Inline diff with history-like configurations", function()
   end)
 
   -- Test 1: History placeholder creates inline session
-  -- When mode="history" with history_data, inline_view.create() should produce
+  -- When the panel is history with data, inline_view.create() should produce
   -- a placeholder session marked with layout="inline".
   it("history placeholder creates an inline session", function()
     local session_config = {
-      mode = "history",
+      panel = {
+        name = "history",
+        data = {
+          commits = {},
+          range = "HEAD",
+          file_path = "test.txt",
+        },
+      },
       git_root = "/tmp/fakerepo",
       original = path.make_ref("", "/tmp/fakerepo"),
       modified = path.make_ref("", "/tmp/fakerepo"),
       original_revision = nil,
       modified_revision = nil,
-      history_data = {
-        commits = {},
-        range = "HEAD",
-        file_path = "test.txt",
-      },
     }
 
     local result = inline_view.create(session_config)
@@ -60,7 +62,7 @@ describe("Inline diff with history-like configurations", function()
 
     assert.is_not_nil(session, "Session should be created for history placeholder")
     assert.equals("inline", session.layout, "Session layout should be 'inline'")
-    assert.equals("history", session.mode, "Session mode should be 'history'")
+    assert.equals("history", session.panel and session.panel.name, "Session panel should be 'history'")
     assert.is_not_nil(result, "create() should return a result table")
     assert.is_not_nil(result.modified_buf, "Result should include modified_buf")
     assert.is_not_nil(result.original_buf, "Result should include original_buf")
@@ -86,7 +88,6 @@ describe("Inline diff with history-like configurations", function()
     vim.fn.writefile(modified_lines, right_path)
 
     local session_config = {
-      mode = "standalone",
       git_root = nil,
       original = path.make_ref(left_path, nil),
       modified = path.make_ref(right_path, nil),
@@ -148,7 +149,6 @@ describe("Inline diff with history-like configurations", function()
 
     -- First create a normal inline view to establish a session
     local session_config = {
-      mode = "standalone",
       git_root = nil,
       original = path.make_ref(left_path, nil),
       modified = path.make_ref(right_path, nil),
@@ -220,7 +220,6 @@ describe("Inline diff with history-like configurations", function()
 
     -- Create initial inline view
     local session_config = {
-      mode = "standalone",
       git_root = nil,
       original = path.make_ref(left_path, nil),
       modified = path.make_ref(right_path, nil),
@@ -248,7 +247,6 @@ describe("Inline diff with history-like configurations", function()
 
     -- Update the view with new files (using the view router which checks session.layout)
     local update_config = {
-      mode = "standalone",
       git_root = nil,
       original = path.make_ref(new_left_path, nil),
       modified = path.make_ref(new_right_path, nil),

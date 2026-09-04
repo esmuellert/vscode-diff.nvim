@@ -5,31 +5,30 @@ local lifecycle = require("codediff.ui.lifecycle")
 local config = require("codediff.config")
 local resolve = require("codediff.keymap.resolve")
 local tracking = require("codediff.ui.conflict.tracking")
-local actions = require("codediff.ui.conflict.actions")
-local diffget = require("codediff.ui.conflict.diffget")
+local resolution = require("codediff.ui.conflict.resolution")
 local navigation = require("codediff.ui.conflict.navigation")
 
 -- Dot-repeatable actions are expr mappings (see conflict.tracking).
 local REPEATABLE_ACTIONS = {
-  { key = "accept_incoming", fn = actions.accept_incoming, desc = "Accept incoming change" },
-  { key = "accept_current", fn = actions.accept_current, desc = "Accept current change" },
-  { key = "accept_both", fn = actions.accept_both, desc = "Accept both changes" },
-  { key = "discard", fn = actions.discard, desc = "Discard changes (keep base)" },
+  { key = "accept_incoming", fn = resolution.accept_incoming, desc = "Accept incoming change" },
+  { key = "accept_current", fn = resolution.accept_current, desc = "Accept current change" },
+  { key = "accept_both", fn = resolution.accept_both, desc = "Accept both changes" },
+  { key = "discard", fn = resolution.discard, desc = "Discard changes (keep base)" },
 }
 
 local PLAIN_ACTIONS = {
-  { key = "accept_all_incoming", fn = actions.accept_all_incoming, desc = "Accept ALL incoming changes" },
-  { key = "accept_all_current", fn = actions.accept_all_current, desc = "Accept ALL current changes" },
-  { key = "accept_all_both", fn = actions.accept_all_both, desc = "Accept ALL both changes" },
-  { key = "discard_all", fn = actions.discard_all, desc = "Discard ALL, reset to base" },
+  { key = "accept_all_incoming", fn = resolution.accept_all_incoming, desc = "Accept ALL incoming changes" },
+  { key = "accept_all_current", fn = resolution.accept_all_current, desc = "Accept ALL current changes" },
+  { key = "accept_all_both", fn = resolution.accept_all_both, desc = "Accept ALL both changes" },
+  { key = "discard_all", fn = resolution.discard_all, desc = "Discard ALL, reset to base" },
   { key = "next_conflict", fn = navigation.navigate_next_conflict, desc = "Next conflict" },
   { key = "prev_conflict", fn = navigation.navigate_prev_conflict, desc = "Previous conflict" },
 }
 
 -- Vimdiff-style numbered diffget, only meaningful on the result buffer.
 local RESULT_ONLY_ACTIONS = {
-  { key = "diffget_incoming", fn = diffget.diffget_incoming, desc = "Get hunk from incoming (2do)" },
-  { key = "diffget_current", fn = diffget.diffget_current, desc = "Get hunk from current (3do)" },
+  { key = "diffget_incoming", fn = resolution.diffget_incoming, desc = "Get hunk from incoming (2do)" },
+  { key = "diffget_current", fn = resolution.diffget_current, desc = "Get hunk from current (3do)" },
 }
 
 --- Setup conflict keymaps for a session

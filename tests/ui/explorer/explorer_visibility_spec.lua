@@ -31,7 +31,7 @@ describe("Explorer toggle visibility", function()
     local actions = require("codediff.ui.explorer.actions")
     local lifecycle = require("codediff.ui.lifecycle")
     local tabpage = vim.api.nvim_get_current_tabpage()
-    local explorer_obj = lifecycle.get_session(tabpage).explorer
+    local explorer_obj = (lifecycle.get_session(tabpage).panel or {}).view
     assert.is_not_nil(explorer_obj, "explorer object should be attached to the session")
 
     -- Snapshot: initial state.

@@ -15,7 +15,7 @@ local config = require("codediff.config")
 -- Returns true if a hop was performed.
 local function hop_to_adjacent_file(direction)
   local tabpage = vim.api.nvim_get_current_tabpage()
-  local panel_obj = lifecycle.get_explorer(tabpage)
+  local panel_obj = lifecycle.get_panel_view(tabpage)
   if not panel_obj then
     -- Cross-file cycling only makes sense in explorer/history mode.
     return false
@@ -188,14 +188,14 @@ end
 -- Returns true if navigation succeeded, false otherwise
 function M.next_file()
   local tabpage = vim.api.nvim_get_current_tabpage()
-  local session = lifecycle.get_session(tabpage)
-  local panel_obj = lifecycle.get_explorer(tabpage)
+  local panel = lifecycle.get_panel(tabpage)
 
-  if not panel_obj then
+  if not (panel and panel.view) then
     return false
   end
 
-  local is_history_mode = session and session.mode == "history"
+  local panel_obj = panel.view
+  local is_history_mode = panel.name == "history"
 
   if is_history_mode then
     local history = require("codediff.ui.history")
@@ -217,14 +217,14 @@ end
 -- Returns true if navigation succeeded, false otherwise
 function M.prev_file()
   local tabpage = vim.api.nvim_get_current_tabpage()
-  local session = lifecycle.get_session(tabpage)
-  local panel_obj = lifecycle.get_explorer(tabpage)
+  local panel = lifecycle.get_panel(tabpage)
 
-  if not panel_obj then
+  if not (panel and panel.view) then
     return false
   end
 
-  local is_history_mode = session and session.mode == "history"
+  local panel_obj = panel.view
+  local is_history_mode = panel.name == "history"
 
   if is_history_mode then
     local history = require("codediff.ui.history")

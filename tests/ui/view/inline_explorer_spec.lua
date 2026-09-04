@@ -46,11 +46,10 @@ end
 local function create_explorer_placeholder(temp_dir)
   local status_result = { unstaged = {}, staged = {}, conflicts = {} }
   local session_config = {
-    mode = "explorer",
+    panel = { name = "explorer", data = { status_result = status_result } },
     git_root = temp_dir,
     original = path.make_ref("", temp_dir),
     modified = path.make_ref("", temp_dir),
-    explorer_data = { status_result = status_result },
   }
   local result = view.create(session_config)
   local tabpage = vim.api.nvim_get_current_tabpage()
@@ -60,7 +59,6 @@ end
 -- Helper: create an inline view with actual diff content (non-explorer standalone)
 local function create_inline_diff_view(original_lines, modified_lines, left_path, right_path)
   local session_config = {
-    mode = "standalone",
     git_root = nil,
     original = path.make_ref(left_path, nil),
     modified = path.make_ref(right_path, nil),
@@ -166,7 +164,6 @@ describe("Inline diff with explorer", function()
     vim.fn.writefile(modified_b, right_b)
 
     local update_config = {
-      mode = "standalone",
       git_root = nil,
       original = path.make_ref(left_b, nil),
       modified = path.make_ref(right_b, nil),
@@ -299,7 +296,7 @@ describe("Inline diff with explorer", function()
     vim.fn.writefile(mod_lines, mod_path)
 
     local update_config = {
-      mode = "explorer",
+      panel = { name = "explorer" },
       git_root = temp_dir,
       original = path.make_ref(orig_path, temp_dir),
       modified = path.make_ref(mod_path, temp_dir),
@@ -391,7 +388,7 @@ describe("Inline diff with explorer", function()
   -- on every call, so each refresh tick swapped a fresh scratch buffer into
   -- the modified window and reset the cursor. The fix replaces that with
   -- bufadd(virtual_file.create_url(...)), which returns a stable bufnr keyed
-  -- by (git_root, revision, path) — same pattern as side_by_side.lua.
+  -- by (git_root, revision, path) — same pattern as the side-by-side view.
   it("Repeated show_single_file for staged virtual file keeps bufnr stable (#401)", function()
     if vim.fn.executable("git") ~= 1 then
       pending("git not available")

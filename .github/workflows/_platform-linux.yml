@@ -8,6 +8,7 @@ name: Build library (Linux)
 #   arch     - "x64" or "arm64" (affects toolchain: devtoolset-11 vs system GCC)
 #   runs-on  - GitHub runner label (ubuntu-latest for x64, ubuntu-24.04-arm for arm64)
 #   artifact - Name of the uploaded artifact (e.g. "linux-x64")
+#   version  - Optional release version applied before building
 
 on:
   workflow_call:
@@ -21,6 +22,10 @@ on:
       artifact:
         required: true
         type: string
+      version:
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -33,10 +38,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: 'lts/*'
+      - name: Apply release version
+        if: inputs.version != ''
+        env:
+          BUILD_VERSION: ${{ inputs.version }}
+        run: printf '%s\n' "$BUILD_VERSION" > VERSION
 
       - name: Install build tools
         run: |

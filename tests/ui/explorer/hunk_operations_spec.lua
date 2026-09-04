@@ -120,7 +120,7 @@ local function open_codediff_and_wait(repo, timeout_ms)
   local ready = vim.wait(timeout_ms, function()
     for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
       local s = lifecycle.get_session(tp)
-      if s and s.explorer then
+      if s and (s.panel or {}).view then
         tabpage = tp
         local orig_buf, mod_buf = lifecycle.get_buffers(tp)
         if orig_buf and mod_buf then
@@ -134,7 +134,7 @@ local function open_codediff_and_wait(repo, timeout_ms)
   assert.is_true(ready, "CodeDiff explorer and diff panes should be ready")
 
   local session = lifecycle.get_session(tabpage)
-  local explorer = session.explorer
+  local explorer = (session.panel or {}).view
   assert.is_not_nil(explorer, "Explorer should exist on session")
 
   return tabpage, session, explorer

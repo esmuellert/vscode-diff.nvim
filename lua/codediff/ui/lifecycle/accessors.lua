@@ -1,8 +1,5 @@
 -- Accessor functions (getters and setters) for diff sessions
 local M = {}
--- Eagerly loaded: accessors run from scheduled callbacks that may execute
--- after the CWD changed, where a first-time require would fail.
-local keymap = require("codediff.keymap")
 
 -- Lazy require to avoid circular dependency: init → session → accessors → session
 local function get_active_diffs()
@@ -12,6 +9,12 @@ end
 -- Check if a revision represents a virtual buffer
 local function is_virtual_revision(revision)
   return revision ~= nil and revision ~= "WORKING"
+end
+
+local function clear_gutter_signs(sess)
+  local gutter_signs = require("codediff.ui.gutter_signs")
+  gutter_signs.clear_buffer(sess.original_bufnr)
+  gutter_signs.clear_buffer(sess.modified_bufnr)
 end
 
 -- ============================================================================
@@ -26,11 +29,26 @@ function M.get_session(tabpage)
   return active_diffs[tabpage]
 end
 
---- Get mode
-function M.get_mode(tabpage)
+--- Get the session's side panel descriptor, or nil for a bare diff
+function M.get_panel(tabpage)
   local active_diffs = get_active_diffs()
   local sess = active_diffs[tabpage]
-  return sess and sess.mode or nil
+  return sess and sess.panel or nil
+end
+
+--- Name of the session's side panel, or nil for a bare diff
+function M.get_panel_name(tabpage)
+  local panel = M.get_panel(tabpage)
+  return panel and panel.name or nil
+end
+
+--- Legacy "mode" string for the public CodeDiffOpen/CodeDiffClose payload.
+--- Documented in the README, so it keeps the pre-panel vocabulary even though
+--- nothing inside the plugin reads it any more.
+--- @param panel table|nil
+--- @return "explorer"|"history"|"standalone"
+function M.event_mode(panel)
+  return panel and panel.name or "standalone"
 end
 
 --- Get current session layout
@@ -125,10 +143,10 @@ function M.is_suspended(tabpage)
 end
 
 --- Get explorer reference (for explorer mode)
-function M.get_explorer(tabpage)
+function M.get_panel_view(tabpage)
   local active_diffs = get_active_diffs()
   local sess = active_diffs[tabpage]
-  return sess and sess.explorer
+  return sess and sess.panel and sess.panel.view
 end
 
 --- Get the merge base (stage :1) content for the conflict file.
@@ -229,6 +247,9 @@ function M.update_layout(tabpage, layout)
   end
 
   sess.layout = layout
+  if layout == "inline" then
+    clear_gutter_signs(sess)
+  end
   return true
 end
 
@@ -295,6 +316,14 @@ function M.update_buffers(tabpage, original_bufnr, modified_bufnr)
   end
 
   local state = require("codediff.ui.lifecycle.state")
+  local gutter_signs = require("codediff.ui.gutter_signs")
+
+  if sess.original_bufnr ~= original_bufnr and sess.original_bufnr ~= modified_bufnr then
+    gutter_signs.clear_buffer(sess.original_bufnr)
+  end
+  if sess.modified_bufnr ~= original_bufnr and sess.modified_bufnr ~= modified_bufnr then
+    gutter_signs.clear_buffer(sess.modified_bufnr)
+  end
 
   -- Hand mappings back to any buffer that is leaving the session. Without this
   -- the previous file keeps codediff's keys until the tab is closed.
@@ -306,8 +335,9 @@ function M.update_buffers(tabpage, original_bufnr, modified_bufnr)
     if modified_bufnr then
       keep[modified_bufnr] = true
     end
-    if sess.explorer and sess.explorer.bufnr then
-      keep[sess.explorer.bufnr] = true
+    local panel_view = sess.panel and sess.panel.view
+    if panel_view and panel_view.bufnr then
+      keep[panel_view.bufnr] = true
     end
     if sess.result_bufnr then
       keep[sess.result_bufnr] = true
@@ -351,17 +381,34 @@ function M.update_revisions(tabpage, original_revision, modified_revision)
 end
 
 --- Set explorer reference (for explorer mode)
-function M.set_explorer(tabpage, explorer)
+function M.set_panel_view(tabpage, view)
   local active_diffs = get_active_diffs()
   local sess = active_diffs[tabpage]
   if not sess then
     return false
   end
 
-  sess.explorer = explorer
+  sess.panel = sess.panel or {}
+  sess.panel.view = view
   if sess.reapply_keymaps then
     sess.reapply_keymaps()
   end
+  return true
+end
+
+--- Set whether this session is a 3-way merge view.
+--- Fixed for a given file, but view.update can retarget a session between a
+--- conflicted file and an ordinary one, so it has to follow.
+--- @param tabpage number
+--- @param merge boolean|nil
+--- @return boolean success
+function M.update_merge(tabpage, merge)
+  local active_diffs = get_active_diffs()
+  local sess = active_diffs[tabpage]
+  if not sess then
+    return false
+  end
+  sess.merge = merge or nil
   return true
 end
 
@@ -385,6 +432,9 @@ function M.set_result(tabpage, result_bufnr, result_win)
   -- Mark result window with restore flag
   if result_win and vim.api.nvim_win_is_valid(result_win) then
     vim.w[result_win].codediff_restore = 1
+  end
+  if result_win then
+    clear_gutter_signs(sess)
   end
 
   return true
@@ -478,337 +528,6 @@ function M.confirm_close_with_unsaved(tabpage)
     -- Cancel
     return false
   end
-end
-
---- Registry that owns every mapping this session installs.
---- Created lazily so sessions built by older call paths still work.
---- @param sess table
---- @return table|nil registry
-local function registry_for(sess)
-  if not sess then
-    return nil
-  end
-  if not sess.keymaps then
-    sess.keymaps = keymap.new("codediff-session")
-  end
-  return sess.keymaps
-end
-
---- Buffers that currently belong to a session, by role.
---- @param sess table
---- @return table<string, number> roles
-local function session_buffers(sess)
-  local buffers = {}
-  if sess.original_bufnr and vim.api.nvim_buf_is_valid(sess.original_bufnr) then
-    buffers.original = sess.original_bufnr
-  end
-  if sess.modified_bufnr and vim.api.nvim_buf_is_valid(sess.modified_bufnr) then
-    buffers.modified = sess.modified_bufnr
-  end
-  local explorer = sess.explorer
-  if explorer and explorer.bufnr and vim.api.nvim_buf_is_valid(explorer.bufnr) then
-    buffers.panel = explorer.bufnr
-  end
-  if sess.result_bufnr and vim.api.nvim_buf_is_valid(sess.result_bufnr) then
-    buffers.result = sess.result_bufnr
-  end
-  return buffers
-end
-
---- Set a keymap on all buffers in the diff tab (both diff buffers + explorer + result)
---- This is the unified API for setting tab-wide keymaps
---- @param tabpage number Tab page ID
---- @param mode string|string[] Keymap mode ('n', 'v', etc.)
---- @param lhs string Left-hand side of the keymap
---- @param rhs function|string Right-hand side (callback or command)
---- @param opts? table Optional keymap options (will be merged with buffer-local defaults)
---- @return boolean success True if keymaps were set
-function M.set_tab_keymap(tabpage, mode, lhs, rhs, opts)
-  local active_diffs = get_active_diffs()
-  local sess = active_diffs[tabpage]
-  if not sess then
-    return false
-  end
-
-  local reg = registry_for(sess)
-  local base_opts = { noremap = true, silent = true, nowait = true }
-  local merged = vim.tbl_extend("force", base_opts, opts or {})
-
-  for _, bufnr in pairs(session_buffers(sess)) do
-    reg:claim(bufnr, mode, lhs, rhs, merged)
-  end
-
-  return true
-end
-
---- Set a keymap on one specific buffer, owned by the session's registry.
---- Used for mappings that are scoped to a single role (hunk operations and the
---- hunk textobject on diff panes, conflict actions, panel actions).
---- @param tabpage number
---- @param bufnr number
---- @param mode string|string[]
---- @param lhs string|false|nil Configured binding; false/nil silently disables
---- @param rhs function|string
---- @param opts? table Forwarded verbatim to vim.keymap.set
---- @param meta? table { suspendable = boolean, priority = integer }
---- @return boolean success
-function M.set_buf_keymap(tabpage, bufnr, mode, lhs, rhs, opts, meta)
-  local active_diffs = get_active_diffs()
-  local sess = active_diffs[tabpage]
-  if not sess then
-    -- No session to own the mapping (a panel built outside a diff tab, for
-    -- example). Fall back to a plain buffer-local mapping so behavior matches
-    -- the pre-registry implementation rather than silently binding nothing.
-    if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
-      return false
-    end
-    local bound = false
-    for _, resolved in ipairs(keymap.key_list(lhs)) do
-      local ok = pcall(vim.keymap.set, mode, resolved, rhs, vim.tbl_extend("force", opts or {}, { buffer = bufnr }))
-      bound = bound or ok
-    end
-    return bound
-  end
-  return registry_for(sess):claim(bufnr, mode, lhs, rhs, opts, meta)
-end
-
---- True when the session currently owns a mapping for `lhs`.
---- Used by the help popup so it can describe what is really bound rather than
---- a hand-maintained list that drifts.
---- @param tabpage number
---- @param lhs string|false|nil
---- @param mode string|nil Restrict to one mode; any mode when omitted
---- @param bufnr number|nil Restrict to one buffer; any session buffer when omitted
---- @return boolean
-function M.owns_keymap(tabpage, lhs, mode, bufnr)
-  local sess = get_active_diffs()[tabpage]
-  if not sess or not sess.keymaps then
-    return false
-  end
-  return sess.keymaps:owns(lhs, mode, bufnr)
-end
-
---- Keys the session owns that are expected to appear in the help popup.
---- @param tabpage number
---- @return table<string, boolean> canonical lhs -> true
-function M.documented_keymaps(tabpage)
-  local sess = get_active_diffs()[tabpage]
-  if not sess or not sess.keymaps then
-    return {}
-  end
-  return sess.keymaps:documented_keys()
-end
-
---- Begin a keymap setup pass for `scope` on this session.
---- Claims made until end_keymap_scope are tagged; anything in the scope the
---- pass does not re-claim is released, so a shape change (layout toggle,
---- leaving conflict mode, reconfiguration) cannot leave stale mappings behind.
---- @param tabpage number
---- @param scope string
-function M.begin_keymap_scope(tabpage, scope)
-  local sess = get_active_diffs()[tabpage]
-  if sess then
-    registry_for(sess):begin_scope(scope)
-  end
-end
-
---- Finish a keymap setup pass, releasing claims it did not renew.
---- @param tabpage number
---- @param scope string|nil Names the pass to close; defaults to the innermost
-function M.end_keymap_scope(tabpage, scope)
-  local sess = get_active_diffs()[tabpage]
-  if sess and sess.keymaps then
-    sess.keymaps:end_scope(scope)
-  end
-end
-
---- Release every mapping belonging to `scope`.
---- @param tabpage number
---- @param scope string
-function M.release_keymap_scope(tabpage, scope)
-  local sess = get_active_diffs()[tabpage]
-  if sess and sess.keymaps then
-    sess.keymaps:release_scope(scope)
-  end
-end
-
---- Release a specific mapping the session installed on a buffer.
---- @param tabpage number
---- @param bufnr number
---- @param mode string|string[]
---- @param lhs string|false|nil
-function M.del_buf_keymap(tabpage, bufnr, mode, lhs)
-  local sess = get_active_diffs()[tabpage]
-  if not sess or not sess.keymaps then
-    local resolved = keymap.resolve(lhs)
-    if resolved and bufnr and vim.api.nvim_buf_is_valid(bufnr) then
-      for _, m in ipairs(type(mode) == "table" and mode or { mode }) do
-        pcall(vim.keymap.del, m, resolved, { buffer = bufnr })
-      end
-    end
-    return
-  end
-  sess.keymaps:release(bufnr, mode, lhs)
-end
-
---- Release every mapping the session installed on a buffer that is leaving it.
---- @param tabpage number
---- @param bufnr number
-function M.detach_keymap_buffer(tabpage, bufnr)
-  local sess = get_active_diffs()[tabpage]
-  if not sess or not sess.keymaps then
-    return
-  end
-  sess.keymaps:detach_buffer(bufnr)
-end
-
---- Suspend the session's mappings on borrowed (real file) buffers.
---- Called on TabLeave so codediff keys do not appear on those files in other
---- tabs. Panel mappings are registered as non-suspendable and stay installed.
---- @param tabpage number
-function M.clear_tab_keymaps(tabpage)
-  local sess = get_active_diffs()[tabpage]
-  if not sess or not sess.keymaps then
-    return
-  end
-  sess.keymaps:suspend()
-end
-
---- Reinstall mappings suspended by clear_tab_keymaps.
---- @param tabpage number
-function M.restore_tab_keymaps(tabpage)
-  local sess = get_active_diffs()[tabpage]
-  if not sess or not sess.keymaps then
-    return
-  end
-  sess.keymaps:resume()
-end
-
---- Release every mapping the session installed, handing each key back to
---- whatever owned it before codediff. Idempotent.
---- @param tabpage number
-function M.dispose_keymaps(tabpage)
-  local sess = get_active_diffs()[tabpage]
-  if not sess or not sess.keymaps then
-    return
-  end
-  sess.keymaps:dispose()
-  sess.keymaps = nil
-end
-
---- Setup auto-sync on file switch: automatically update diff when user edits a different file in working buffer
---- Only activates when one side is virtual (git revision) and other is working file
---- @param tabpage number Tabpage ID
---- @param original_is_virtual boolean Whether original side is virtual (git revision)
---- @param modified_is_virtual boolean Whether modified side is virtual
-function M.setup_auto_sync_on_file_switch(tabpage, original_is_virtual, modified_is_virtual)
-  -- Only setup if one side is virtual (commit) and other is working file
-  if original_is_virtual == modified_is_virtual then
-    return -- Both virtual or both real - no sync needed
-  end
-
-  local active_diffs = get_active_diffs()
-  local sess = active_diffs[tabpage]
-  if not sess then
-    vim.notify("[codediff] No session found for auto-sync setup", vim.log.levels.ERROR)
-    return
-  end
-
-  -- Determine which window is working
-  local working_win = original_is_virtual and sess.modified_win or sess.original_win
-  local working_side = original_is_virtual and "modified" or "original"
-
-  if not working_win or not vim.api.nvim_win_is_valid(working_win) then
-    vim.notify("[codediff] Working window not found for auto-sync", vim.log.levels.WARN)
-    return
-  end
-
-  -- Session stores paths as PathRefs, so read .absolute for identity comparison.
-  -- (The old sess[working_side .. "_path"] field is gone and left this nil, which
-  -- defeated the change guard below and caused spurious re-updates.)
-  local working_ref = sess[working_side]
-  local current_path = working_ref and working_ref.absolute or nil
-
-  -- Setup listener using BufWinEnter (fires when buffer enters window, even if existing buffer)
-  local sync_group = vim.api.nvim_create_augroup("codediff_working_sync_" .. tabpage, { clear = true })
-
-  -- Listen to BufWinEnter - fires when ANY buffer enters the window (including existing buffers)
-  vim.api.nvim_create_autocmd("BufWinEnter", {
-    group = sync_group,
-    callback = function(args)
-      -- Check if this buffer is in the working window
-      local buf_win = vim.fn.bufwinid(args.buf)
-      if buf_win ~= working_win then
-        return
-      end
-
-      local path = require("codediff.core.path")
-      local new_path = vim.api.nvim_buf_get_name(args.buf)
-
-      -- Skip virtual files - they're programmatic, not user navigation
-      if new_path:match("^codediff://") then
-        return
-      end
-
-      -- Normalize to the same absolute form used for the session PathRefs so the
-      -- identity comparison is reliable across platforms.
-      new_path = new_path ~= "" and path.make_ref(new_path, nil).absolute or ""
-
-      -- Check if file changed
-      if new_path == "" or new_path == current_path then
-        return
-      end
-
-      -- Update tracked path
-      current_path = new_path
-
-      -- Path changed! Need to update both sides
-      vim.schedule(function()
-        -- Get git root (might have changed if user switched to different repo)
-        local git = require("codediff.core.git")
-        local view = require("codediff.ui.view")
-
-        git.get_git_root(new_path, function(err, new_git_root)
-          if err then
-            -- Not in git, just update paths without git context
-            vim.schedule(function()
-              -- Get relative path if possible
-              local relative_path = new_path
-              if sess.git_root then
-                relative_path = git.get_relative_path(new_path, sess.git_root)
-              end
-
-              -- No pre-fetching needed, buffers will load content
-              view.update(tabpage, {
-                mode = sess.mode,
-                git_root = nil,
-                original = path.make_ref(working_side == "original" and new_path or relative_path, nil),
-                modified = path.make_ref(working_side == "modified" and new_path or relative_path, nil),
-                original_revision = working_side == "original" and nil or sess.original_revision,
-                modified_revision = working_side == "modified" and nil or sess.modified_revision,
-              })
-            end)
-            return
-          end
-
-          -- In git! Get relative path
-          local relative_path = git.get_relative_path(new_path, new_git_root)
-
-          -- No pre-fetching needed, buffers will load content
-          vim.schedule(function()
-            view.update(tabpage, {
-              mode = sess.mode,
-              git_root = new_git_root,
-              original = path.make_ref(relative_path, new_git_root),
-              modified = path.make_ref(relative_path, new_git_root),
-              original_revision = sess.original_revision,
-              modified_revision = sess.modified_revision,
-            })
-          end)
-        end)
-      end)
-    end,
-  })
 end
 
 return M

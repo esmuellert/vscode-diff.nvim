@@ -340,7 +340,7 @@ function M.refresh(tabpage)
   if not session.compact_default_applied and session.stored_diff_result and session.stored_diff_result.changes then
     session.compact_default_applied = true
     local changes = session.stored_diff_result.changes
-    local is_conflict = session.result_win ~= nil and vim.api.nvim_win_is_valid(session.result_win)
+    local is_conflict = session.merge == true
     if config.options.diff.compact and not is_conflict and changes and #changes > 0 then
       M.enable(tabpage)
     end

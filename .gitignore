@@ -8,6 +8,10 @@ test_diff_core
 **/build
 *.exe
 diff
+/codediff-watcher
+/codediff-watcher_*
+/.codediff-watcher-download-*
+/.codediff-watcher-extract-*
 
 # Bundled runtime dependencies (downloaded by installer)
 libgomp.so.1

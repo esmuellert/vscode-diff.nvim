@@ -250,7 +250,6 @@ describe("Move annotation virt_lines", function()
     highlights.setup()
 
     view.create({
-      mode = "standalone",
       original = path.make_ref("scripts/test_pairs/block_moved_down/original.txt", nil),
       modified = path.make_ref("scripts/test_pairs/block_moved_down/modified.txt", nil),
     })
@@ -309,7 +308,6 @@ describe("Move annotation virt_lines", function()
     highlights.setup()
 
     view.create({
-      mode = "standalone",
       original = path.make_ref("scripts/test_pairs/simple_swap/original.txt", nil),
       modified = path.make_ref("scripts/test_pairs/simple_swap/modified.txt", nil),
     })
@@ -364,7 +362,6 @@ describe("Move annotation virt_lines", function()
           highlights.setup()
 
           view.create({
-            mode = "standalone",
             original = path.make_ref(orig, nil),
             modified = path.make_ref(mod, nil),
           })

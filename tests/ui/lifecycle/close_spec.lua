@@ -21,7 +21,17 @@ local function create_session(exit_on_close)
   table.insert(created_buffers, modified_bufnr)
   vim.api.nvim_win_set_buf(windows[1], original_bufnr)
   vim.api.nvim_win_set_buf(windows[2], modified_bufnr)
-  lifecycle.create_session(tabpage, "standalone", nil, "original.txt", "modified.txt", nil, nil, original_bufnr, modified_bufnr, windows[1], windows[2], {}, nil, exit_on_close)
+  lifecycle.create_session(tabpage, {
+    original = "original.txt",
+    modified = "modified.txt",
+    exit_on_close = exit_on_close,
+  }, {
+    original_bufnr = original_bufnr,
+    modified_bufnr = modified_bufnr,
+    original_win = windows[1],
+    modified_win = windows[2],
+    lines_diff = {},
+  })
   return tabpage
 end
 

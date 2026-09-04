@@ -28,6 +28,8 @@
 
 5. **Pull Requests**: When asked to create a PR, push the branch as is (do not create a new branch), create PR with comprehensive description (summary, changes, benefits, testing), and enable auto-merge.
 
+6. **Release Titles**: Use a Conventional Commit prefix from `cliff.toml` when a PR should trigger a release bump.
+
 ## Path-Specific Instructions
 
-Path-specific instructions are defined in `.github/copilot-instructions.md` files within respective directories.
+Path-specific instructions live in `.github/instructions/*.instructions.md`, scoped by the `applyTo` glob in each file's frontmatter.
