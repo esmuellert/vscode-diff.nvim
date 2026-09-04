@@ -201,6 +201,7 @@ function M.create(status_result, git_root, tabpage, width, base_revision, target
       wrap = false,
       signcolumn = "no",
       foldcolumn = "0",
+      statuscolumn = "",
       spell = false,
       winfixwidth = true,
       winfixheight = true,

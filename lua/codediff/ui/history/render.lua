@@ -166,6 +166,7 @@ function M.create(commits, git_root, tabpage, width, opts)
       wrap = false,
       signcolumn = "no",
       foldcolumn = "0",
+      statuscolumn = "",
       spell = false,
     },
   })
