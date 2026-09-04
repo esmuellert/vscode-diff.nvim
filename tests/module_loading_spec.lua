@@ -1,7 +1,7 @@
--- Module loading smoke tests for every codediff.ui.* submodule.
+-- Module loading smoke tests for responsibility-based module trees.
 --
--- Each folder has a set of internal Lua files plus an `init.lua` façade that
--- re-exports them. The specs below verify:
+-- Each domain has a set of internal Lua files plus a façade that re-exports
+-- them. The specs below verify:
 --   1) `require(module_path)` succeeds without erroring (catches syntax
 --      mistakes, missing files, circular-require breakage).
 --   2) The public API surface is preserved — each exported function name is
@@ -13,6 +13,52 @@
 -- pcall(require) + assert.is_function on each export. One file is easier
 -- to locate, easier to keep in sync with the source, and slightly cheaper
 -- to run.
+
+-- ── git ─────────────────────────────────────────────────────────────────
+local git_exports = {
+  ["codediff.core.git.repository"] = { "get_git_root", "get_git_root_sync", "get_git_dir", "get_relative_path" },
+  ["codediff.core.git.revision"] = { "resolve_revision", "get_revision_parents", "get_merge_base", "resolve_path_at_revision", "get_rev_candidates" },
+  ["codediff.core.git.refs"] = { "list_remote_refs", "fetch_remote_refs", "list_local_refs", "delete_local_refs" },
+  ["codediff.core.git.content"] = { "clear_cache", "get_file_content" },
+  ["codediff.core.git.changes"] = { "get_status", "get_diff_revision", "get_diff_revisions", "get_diff_staged", "get_commit_files" },
+  ["codediff.core.git.statistics"] = { "get_status_with_line_stats", "get_diff_revision_with_line_stats", "get_diff_revisions_with_line_stats" },
+  ["codediff.core.git.worktree"] = { "apply_patch", "stage_file", "unstage_file", "stage_all", "unstage_all", "restore_file", "delete_untracked" },
+  ["codediff.core.git.history"] = { "get_commit_list" },
+}
+
+describe("Git submodules", function()
+  it("loads the process runner", function()
+    local runner = require("codediff.core.git.runner")
+    assert.is_function(runner.run_async)
+    assert.is_function(runner.run_sync)
+  end)
+
+  it("loads every responsibility module", function()
+    for module_name, exports in pairs(git_exports) do
+      local ok, mod = pcall(require, module_name)
+      assert.is_true(ok, "Failed to require " .. module_name .. ": " .. tostring(mod))
+      for _, name in ipairs(exports) do
+        assert.is_function(mod[name], module_name .. " does not export " .. name)
+      end
+    end
+  end)
+
+  it("preserves the complete public facade", function()
+    local git = require("codediff.core.git")
+    local export_count = 0
+    for _ in pairs(git) do
+      export_count = export_count + 1
+    end
+    assert.equals(31, export_count)
+
+    for module_name, exports in pairs(git_exports) do
+      local mod = require(module_name)
+      for _, name in ipairs(exports) do
+        assert.equals(mod[name], git[name], "Facade does not delegate " .. name)
+      end
+    end
+  end)
+end)
 
 -- ── explorer ────────────────────────────────────────────────────────────
 describe("Explorer submodules", function()
