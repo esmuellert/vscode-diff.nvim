@@ -268,6 +268,28 @@ describe("keymap help popup", function()
     cleanup()
   end)
 
+  it("shows custom Explorer mappings in place of overridden built-ins", function()
+    local tabpage, cleanup = open_explorer({
+      keymaps = {
+        explorer = {
+          custom = {
+            {
+              key = "R",
+              desc = "Inspect explorer entry",
+              callback = function() end,
+            },
+          },
+        },
+      },
+    })
+
+    local rendered = table.concat(help_lines(tabpage), "\n")
+    assert.is_truthy(rendered:find("Inspect explorer entry", 1, true))
+    assert.is_nil(rendered:find("Refresh explorer", 1, true))
+
+    cleanup()
+  end)
+
   it("does not advertise gm when move detection is off", function()
     -- compute_moves defaults to false, so align_move is never bound.
     local tabpage, cleanup = open_standalone()

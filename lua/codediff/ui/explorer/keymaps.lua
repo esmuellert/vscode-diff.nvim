@@ -3,9 +3,41 @@ local config = require("codediff.config")
 local resolve = require("codediff.keymap.resolve")
 local actions_module = require("codediff.ui.explorer.actions")
 local refresh_module = require("codediff.ui.explorer.refresh")
+local nodes_module = require("codediff.ui.explorer.nodes")
 local tree_utils = require("codediff.ui.lib.tree_utils")
 
 local M = {}
+
+local function is_explorer_alive(explorer)
+  return vim.api.nvim_buf_is_valid(explorer.bufnr) and vim.api.nvim_tabpage_is_valid(explorer.tabpage)
+end
+
+local function custom_keymap_context(explorer, node)
+  return {
+    entry = nodes_module.get_entry(node),
+    redraw = function()
+      if is_explorer_alive(explorer) then
+        explorer.tree:render()
+      end
+    end,
+    refresh = function()
+      if is_explorer_alive(explorer) then
+        refresh_module.refresh(explorer)
+      end
+    end,
+  }
+end
+
+local function setup_custom_keymaps(explorer, custom_keymaps, panel_map)
+  for _, keymap in ipairs(custom_keymaps or {}) do
+    panel_map(keymap.key, function()
+      local node = explorer.tree:get_node()
+      if node then
+        keymap.callback(custom_keymap_context(explorer, node))
+      end
+    end, keymap.desc, { priority = 1 })
+  end
+end
 
 -- Setup keymaps for explorer panel
 -- @param explorer: explorer object with tree, split, git_root, on_file_select, etc.
@@ -21,8 +53,9 @@ function M.setup(explorer)
   -- leak into user buffers and must survive tab switches (suspendable=false).
   -- Required lazily to avoid a module cycle through the lifecycle package.
   local lifecycle = require("codediff.ui.lifecycle")
-  local function panel_map(lhs, rhs, desc)
-    lifecycle.set_buf_keymap(explorer.tabpage, split.bufnr, "n", lhs, rhs, vim.tbl_extend("force", map_options, { desc = desc }), { suspendable = false })
+  local function panel_map(lhs, rhs, desc, meta)
+    local claim = vim.tbl_extend("force", { suspendable = false }, meta or {})
+    lifecycle.set_buf_keymap(explorer.tabpage, split.bufnr, "n", lhs, rhs, vim.tbl_extend("force", map_options, { desc = desc }), claim)
   end
 
   -- Toggle expand/collapse or select file
@@ -192,6 +225,10 @@ function M.setup(explorer)
     bufnr = split.bufnr,
     tabpage = explorer.tabpage,
   })
+
+  lifecycle.begin_keymap_scope(explorer.tabpage, "explorer-custom")
+  setup_custom_keymaps(explorer, explorer_keymaps.custom, panel_map)
+  lifecycle.end_keymap_scope(explorer.tabpage, "explorer-custom")
 
   -- Note: next_file/prev_file keymaps are set via view/keymaps.lua:setup_all_keymaps()
   -- which uses set_tab_keymap to set them on all buffers including explorer

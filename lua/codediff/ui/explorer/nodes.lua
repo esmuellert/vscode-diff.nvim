@@ -96,16 +96,20 @@ local function context_stats(stats)
   return vim.deepcopy(stats)
 end
 
+local function normalize_file(file, group)
+  return {
+    path = file.path,
+    old_path = file.old_path,
+    group = group or file.group,
+    status = file.status,
+    stats = context_stats(file.line_stats or file.stats),
+  }
+end
+
 local function normalize_files(files, group)
   local normalized = {}
   for _, file in ipairs(files or {}) do
-    normalized[#normalized + 1] = {
-      path = file.path,
-      old_path = file.old_path,
-      group = group or file.group,
-      status = file.status,
-      stats = context_stats(file.line_stats),
-    }
+    normalized[#normalized + 1] = normalize_file(file, group)
   end
   return normalized
 end
@@ -350,6 +354,33 @@ local function selected_background(is_selected)
     return nil
   end
   return vim.api.nvim_get_hl(0, { name = "CodeDiffExplorerSelected", link = false }).bg
+end
+
+function M.get_entry(node)
+  local data = node.data or {}
+  if data.type == "group" then
+    return {
+      kind = "group",
+      name = data.name,
+      group = data.name,
+      stats = context_stats(data.stats),
+      files = normalize_files(data.files, data.name),
+    }
+  end
+  if data.type == "directory" then
+    return {
+      kind = "directory",
+      name = data.name,
+      path = data.dir_path,
+      group = data.group,
+      stats = context_stats(data.stats),
+      files = normalize_files(data.files, data.group),
+    }
+  end
+
+  local entry = normalize_file(data, data.group)
+  entry.kind = "file"
+  return entry
 end
 
 -- Prepare node for rendering (format display)
