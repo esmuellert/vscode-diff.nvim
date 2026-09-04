@@ -1,7 +1,7 @@
 -- Test: Command completion
 -- Validates :CodeDiff command completion with dynamic git refs
 
-local git = require('codediff.core.git')
+local git = require("codediff.core.git")
 local commands = require("codediff.commands")
 
 describe("Command Completion", function()
@@ -103,6 +103,7 @@ describe("Command Completion", function()
 
     it("Contains expected subcommands", function()
       assert.is_true(vim.tbl_contains(commands.SUBCOMMANDS, "file"), "Should include 'file'")
+      assert.is_true(vim.tbl_contains(commands.SUBCOMMANDS, "pr"), "Should include 'pr'")
       assert.is_true(vim.tbl_contains(commands.SUBCOMMANDS, "install"), "Should include 'install'")
     end)
   end)

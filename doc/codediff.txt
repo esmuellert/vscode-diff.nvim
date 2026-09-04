@@ -12,6 +12,7 @@ QUICK START                                           *codediff-quickstart*
 After installing the plugin and running |:CodeDiff|, you can:
 - Browse changed files (default explorer)
 - Compare the current file with a git revision
+- Review a pull request without checking it out
 - Compare two files or directories
 
 ==============================================================================
@@ -44,6 +45,35 @@ Target another repository (explorer and history modes):   *codediff-repo*
 <
 Operate on the repository containing the given path (its root or any
 subdirectory) instead of the current buffer/cwd. `-C` is a git-style alias.
+
+Review a pull request without checking it out:                 *codediff-pr*
+>vim
+  :CodeDiff pr 512
+  :CodeDiff --repo ~/code/other-repo pr 512
+  :CodeDiff pr 512 --remote upstream
+  :CodeDiff pr 512 --base release/3.x
+  :CodeDiff pr 512 -- lua/codediff
+<
+CodeDiff recognizes GitHub and Azure DevOps `refs/pull/` refs and GitLab
+`refs/merge-requests/` refs. It prefers a synthetic merge ref, which identifies
+both sides of the review. Otherwise it compares the PR head with the remote's
+default branch; use --base for a non-default target. `origin` is the default
+remote. Existing Git remote authentication is used; no provider CLI is needed.
+
+Fetched refs live under `refs/codediff/pull-requests/`, are overwritten when the
+same PR is reopened, and do not create a local branch or change the working
+tree. They are retained for asynchronous file loading and reuse.
+
+Delete cached refs explicitly:                              *codediff-pr-clean*
+>vim
+  :CodeDiff pr clean 512
+  :CodeDiff pr clean 512 --remote upstream
+  :CodeDiff pr clean --all
+  :CodeDiff pr clean --all --remote upstream
+<
+The first form deletes every cached ref for one PR on `origin` unless --remote
+is supplied. --all deletes every cached PR ref in the selected repository;
+--remote limits it to one remote. Both forms support --repo/-C.
 
 Scope to a subdirectory or path:                          *codediff-pathspec*
 >vim
