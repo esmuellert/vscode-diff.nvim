@@ -204,7 +204,7 @@ end
 --- Compute + apply the compact fold settings for the current diff and
 --- (re)install the synced-fold keymaps. Idempotent and content-driven: shared
 --- by enable() and by every re-fold on a diff/file change. Does NOT touch
---- session.compact_mode or the saved fold state — that is enable/disable's job.
+--- session.compact_mode or the saved fold state — that is the activation/deactivation helpers' job.
 --- @param session table
 --- @param tabpage number
 local function apply_folds(session, tabpage)
@@ -227,6 +227,41 @@ local function apply_folds(session, tabpage)
   setup_fold_sync(session, tabpage)
 end
 
+--- Remove compact folds and restore the fold state captured by enable().
+--- Unlike disable(), this keeps the session preference intact so a file with
+--- no hunks only suspends compact mode until a foldable diff is shown again.
+--- @param session table
+--- @param tabpage number
+local function deactivate(session, tabpage)
+  local saved = session.compact_saved_fold_state or {}
+  for win, fold_state in pairs(saved) do
+    if vim.api.nvim_win_is_valid(win) then
+      vim.wo[win].foldmethod = fold_state.foldmethod
+      vim.wo[win].foldexpr = fold_state.foldexpr
+      vim.wo[win].foldlevel = fold_state.foldlevel
+      vim.wo[win].foldminlines = fold_state.foldminlines
+      -- Keep folds enabled while clearing definitions left by foldmethod=expr.
+      vim.wo[win].foldenable = true
+      vim.wo[win].foldtext = fold_state.foldtext
+      pcall(vim.api.nvim_win_call, win, function()
+        if fold_state.foldmethod == "manual" then
+          vim.cmd("silent! normal! zE")
+        else
+          vim.cmd("silent! normal! zR")
+        end
+      end)
+      -- zE/zR may change these window options; restore the user's values.
+      vim.wo[win].foldlevel = fold_state.foldlevel
+      vim.wo[win].foldminlines = fold_state.foldminlines
+      vim.wo[win].foldenable = fold_state.foldenable
+    end
+    visible_lines_by_win[win] = nil
+  end
+
+  teardown_fold_sync(session, tabpage)
+  session.compact_saved_fold_state = nil
+end
+
 --- Enable compact mode for a tabpage
 --- @param tabpage number
 --- @return boolean success
@@ -235,13 +270,17 @@ function M.enable(tabpage)
   if not session or not session.stored_diff_result then
     return false
   end
-  if session.compact_mode then
+  if session.compact_saved_fold_state then
+    session.compact_mode = true
     return true
   end
   if session.result_win and vim.api.nvim_win_is_valid(session.result_win) then
     vim.notify("Cannot enable compact mode in conflict mode", vim.log.levels.WARN)
     return false
   end
+
+  -- Preserve the session preference even when the current file has no hunks.
+  session.compact_mode = true
 
   local changes = session.stored_diff_result.changes
   if not changes or #changes == 0 then
@@ -264,7 +303,6 @@ function M.enable(tabpage)
     end
   end
 
-  session.compact_mode = true
   apply_folds(session, tabpage)
   return true
 end
@@ -274,27 +312,16 @@ end
 --- @return boolean success
 function M.disable(tabpage)
   local session = lifecycle.get_session(tabpage)
-  if not session or not session.compact_mode then
+  if not session then
     return false
   end
 
-  local saved = session.compact_saved_fold_state or {}
-  for win, fold_state in pairs(saved) do
-    if vim.api.nvim_win_is_valid(win) then
-      vim.wo[win].foldmethod = fold_state.foldmethod
-      vim.wo[win].foldexpr = fold_state.foldexpr
-      vim.wo[win].foldlevel = fold_state.foldlevel
-      vim.wo[win].foldminlines = fold_state.foldminlines
-      vim.wo[win].foldenable = fold_state.foldenable
-      vim.wo[win].foldtext = fold_state.foldtext
-    end
-    visible_lines_by_win[win] = nil
+  session.compact_mode = false
+  if not session.compact_saved_fold_state then
+    return true
   end
 
-  teardown_fold_sync(session, tabpage)
-
-  session.compact_saved_fold_state = nil
-  session.compact_mode = false
+  deactivate(session, tabpage)
   return true
 end
 
@@ -317,10 +344,10 @@ end
 
 --- Keep compact mode in sync after the diff is (re)computed or a file is
 --- switched. This is the single hook the view lifecycle calls:
----   * applies the configured "open in compact mode" default once, when the
----     first real diff is ready;
+---   * uses the session's configured compact preference;
 ---   * re-folds the current diff while compact is active;
----   * exits compact if the diff no longer has any changes.
+---   * suspends compact folds if the diff has no changes, preserving the
+---     session preference for the next foldable file.
 --- gc uses toggle()/enable()/disable() directly.
 --- @param tabpage number
 function M.refresh(tabpage)
@@ -329,31 +356,31 @@ function M.refresh(tabpage)
     return
   end
 
-  -- Open in compact mode by default (config) once, when the first real diff is
-  -- ready. Afterwards compact follows the user's gc toggle for the session.
-  --
-  -- The `.changes` check is what encodes "real diff is ready" — an explorer/
-  -- history session starts life with `stored_diff_result = {}` as a placeholder,
-  -- and `setup_all_keymaps` calls `M.refresh` before any file has been picked
-  -- (#496). Without the extra clause, the truthy `{}` would burn the one-shot
-  -- latch there and no later file selection could ever apply the default.
-  if not session.compact_default_applied and session.stored_diff_result and session.stored_diff_result.changes then
-    session.compact_default_applied = true
-    local changes = session.stored_diff_result.changes
-    local is_conflict = session.merge == true
-    if config.options.diff.compact and not is_conflict and changes and #changes > 0 then
-      M.enable(tabpage)
+  local is_conflict = session.merge == true or (session.result_win and vim.api.nvim_win_is_valid(session.result_win))
+  if is_conflict then
+    if session.compact_saved_fold_state then
+      deactivate(session, tabpage)
     end
     return
   end
 
   if not session.compact_mode then
+    if session.compact_saved_fold_state then
+      deactivate(session, tabpage)
+    end
     return
   end
 
   local changes = session.stored_diff_result and session.stored_diff_result.changes
   if not changes or #changes == 0 then
-    M.disable(tabpage)
+    -- A file without hunks suspends the active folds but keeps the session
+    -- preference for the next foldable file.
+    deactivate(session, tabpage)
+    return
+  end
+
+  if not session.compact_saved_fold_state then
+    M.enable(tabpage)
     return
   end
 
