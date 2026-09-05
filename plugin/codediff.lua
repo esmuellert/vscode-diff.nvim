@@ -32,5 +32,5 @@ end, {
   complete = function(arg_lead, cmd_line)
     return require("codediff.commands").complete(arg_lead, cmd_line)
   end,
-  desc = "VSCode-style diff view: :CodeDiff [<revision>] | merge <file> | file <revision> | install",
+  desc = "Live code review workspace for Neovim",
 })

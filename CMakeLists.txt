@@ -10,7 +10,7 @@ string(STRIP "${FULL_VERSION}" FULL_VERSION)
 # Extract base version for CMake (handles prerelease like 2.0.0-next.1)
 string(REGEX REPLACE "^([0-9]+\\.[0-9]+\\.[0-9]+).*" "\\1" BASE_VERSION "${FULL_VERSION}")
 
-project(vscode-diff-nvim VERSION ${BASE_VERSION})
+project(codediff-nvim VERSION ${BASE_VERSION})
 
 # Store full version for display/packaging
 set(PROJECT_FULL_VERSION "${FULL_VERSION}")
@@ -25,7 +25,7 @@ enable_testing()
 add_subdirectory(libvscode-diff)
 
 message(STATUS "===========================================")
-message(STATUS "  vscode-diff.nvim Plugin")
+message(STATUS "  codediff.nvim Plugin")
 message(STATUS "===========================================")
 message(STATUS "  Build the plugin:")
 message(STATUS "    cmake -B build")
