@@ -414,7 +414,9 @@ With one sign column, the blank priority-`7` sign hides signs with lower priorit
 
 The `:CodeDiff` command supports multiple modes:
 
-### File Explorer Mode
+### Review Repository Changes
+
+#### Working Tree and Revisions
 
 Open an interactive file explorer showing changed files:
 
@@ -446,7 +448,7 @@ Open an interactive file explorer showing changed files:
 :CodeDiff -C ~/code/other-repo history
 ```
 
-#### PR-like Diff (Merge-base)
+#### Merge-base Comparisons
 
 Show only changes introduced since branching from a base branch—exactly like a Pull Request:
 
@@ -464,7 +466,7 @@ Show only changes introduced since branching from a base branch—exactly like a
 
 This uses `git merge-base` semantics (equivalent to `git diff main...HEAD`), showing only the changes introduced on your branch, not changes that happened on the base branch since you branched.
 
-#### Review a pull request
+#### Pull Requests
 
 Fetch and review a pull request without checking out its branch or changing the working tree:
 
@@ -502,7 +504,7 @@ Fetched commits are stored under `refs/codediff/pull-requests/`. Reopening the s
 
 Both cleanup forms support `--repo`/`-C`. Private repositories use the authentication already configured for the selected Git remote. No `gh`, `glab`, or `az` CLI is required.
 
-#### Scope to a subdirectory or path
+#### Scope by Path
 
 Append `-- <path>` to narrow the explorer to a specific subtree — exactly like
 `git diff <rev> <rev> -- <path>`. Useful in large or monorepo-style repositories
@@ -523,7 +525,7 @@ to review just one component instead of hundreds of files:
 Paths are git pathspecs (relative to the repository root; multiple paths and
 git's glob syntax are supported).
 
-#### Show only staged changes
+#### Staged Changes
 
 ```vim
 :CodeDiff --staged           " index vs HEAD (--cached is an alias)
@@ -533,7 +535,9 @@ git's glob syntax are supported).
 Inside the default `:CodeDiff` explorer, `gS` on a file with both staged and
 unstaged changes jumps to its sibling in the other group (#352).
 
-### Git Diff Mode
+### Compare Files and Directories
+
+#### Current File Against a Revision
 
 Compare the current buffer with a git revision:
 
@@ -571,7 +575,7 @@ Compare the current buffer with a git revision:
 - Opens in a new tab automatically
 - Async operation - won't block Neovim
 
-### File Comparison Mode
+#### Two Files
 
 Compare two arbitrary files side-by-side:
 
@@ -579,7 +583,7 @@ Compare two arbitrary files side-by-side:
 :CodeDiff file file_a.txt file_b.txt
 ```
 
-### Directory Comparison Mode
+#### Two Directories
 
 Compare two directories without git:
 
@@ -593,7 +597,7 @@ Compare two directories without git:
 
 Shows files as Added (A), Deleted (D), or Modified (M) using file size plus byte-level content comparison. Select a file to view its diff.
 
-### File History Mode
+### Review History
 
 Review commits on a per-commit basis:
 
@@ -644,7 +648,9 @@ The history panel shows a list of commits. Each commit can be expanded to show i
 **History Keymaps:**
 - `i` - Toggle between list and tree view for files under commits
 
-### Git Merge Tool
+### Git Tool Integration
+
+#### Merge Tool
 
 Use CodeDiff as your git merge tool for resolving conflicts:
 
@@ -653,7 +659,7 @@ git config --global merge.tool codediff
 git config --global mergetool.codediff.cmd 'nvim "$MERGED" -c "CodeDiff --exit-on-close merge \"$MERGED\""'
 ```
 
-### Git Diff Tool
+#### Diff Tool
 
 Use CodeDiff as your git diff tool for viewing changes:
 
@@ -671,7 +677,9 @@ git difftool main feature-branch  # Compare branches
 git difftool -y                   # Skip confirmation prompts
 ```
 
-### Lua API
+### Extend CodeDiff
+
+#### Lua API
 
 ```lua
 -- Primary user API - setup configuration
@@ -710,7 +718,7 @@ git.get_git_root("/path/to/file.lua", function(err, git_root)
 end)
 ```
 
-### User Autocmd Events
+#### User Autocmd Events
 
 CodeDiff emits `User` autocmd events at key lifecycle points, allowing you to customize behavior without config flags:
 
