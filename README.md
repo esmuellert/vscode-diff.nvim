@@ -129,7 +129,9 @@ Both methods automatically place the library in the plugin root directory.
 
 ## Configuration
 
-**With custom configuration:**
+<details>
+<summary><strong>Full configuration reference</strong></summary>
+
 ```lua
 {
   "esmuellert/codediff.nvim",
@@ -313,6 +315,8 @@ Both methods automatically place the library in the plugin root directory.
   },
 }
 ```
+
+</details>
 
 ### Keymaps
 
