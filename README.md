@@ -94,7 +94,11 @@ Place the library in the plugin root directory using one of these filenames:
 
 **Option A: Download from GitHub releases** (recommended)
 
-From the [GitHub releases page](https://github.com/esmuellert/codediff.nvim/releases), choose the release matching your installed plugin version and the binary for your operating system and Neovim's CPU architecture. Place it in the plugin root directory and rename it to `libvscode_diff_<version>.so`/`.dylib`/`.dll`, where `<version>` matches the plugin version. The unversioned names listed above are also supported. If no pre-built binary is available for your platform, use Option B.
+1. Choose the [release](https://github.com/esmuellert/codediff.nvim/releases) matching your installed plugin version.
+2. Download the binary for your operating system and Neovim's CPU architecture.
+3. Place it in the plugin root directory and rename it using one of the filenames listed above.
+
+If no pre-built binary is available for your platform, use Option B.
 
 **Linux users**: If `libgomp.so.1` is unavailable to Neovim, also download `libgomp_linux_{arch}_{version}.so.1` from the same release for the same architecture and rename it to `libgomp.so.1` in the plugin root directory.
 
@@ -161,7 +165,7 @@ Both methods automatically place the library in the plugin root directory.
       filler_text = "╱",                   -- Repeated filler pattern; use "" for blank alignment rows
       disable_inlay_hints = true,         -- Disable inlay hints in diff windows for cleaner view
       max_computation_time_ms = 5000,     -- Maximum time for diff computation (VSCode default)
-      ignore_trim_whitespace = false,     -- Ignore leading/trailing whitespace changes (like diffopt+=iwhite)
+      ignore_trim_whitespace = false,     -- Ignore leading and trailing whitespace changes
       hide_merge_artifacts = false,       -- Hide merge tool temp files (*.orig, *.BACKUP.*, *.BASE.*, *.LOCAL.*, *.REMOTE.*)
       original_position = "left",         -- Position of original (old) content: "left" or "right"
       conflict_ours_position = "right",   -- Position of ours (:2) in conflict view: "left" or "right"
@@ -191,8 +195,8 @@ Both methods automatically place the library in the plugin root directory.
       indent_markers = true,  -- Show indent markers in tree view (│, ├, └)
       initial_focus = "explorer",  -- Initial focus: "explorer", "original", or "modified"
       icons = {
-        folder_closed = "",  -- Nerd Font folder icon (customize as needed)
-        folder_open = "",    -- Nerd Font folder-open icon
+        folder_closed = "\u{e5ff}", -- Nerd Font folder icon
+        folder_open = "\u{e5fe}",   -- Nerd Font open-folder icon
       },
       view_mode = "list",    -- "list" or "tree"
       flatten_dirs = true,   -- Flatten single-child directory chains in tree view
@@ -258,7 +262,7 @@ Both methods automatically place the library in the plugin root directory.
       },
       explorer = {
         select = "<CR>",    -- Open diff for selected file
-        hover = "K",        -- Show file diff preview
+        hover = "K",        -- Show full path
         refresh = "R",      -- Refresh git status
         toggle_view_mode = "i",  -- Toggle between 'list' and 'tree' views
         stage_all = "S",    -- Stage all files
@@ -293,7 +297,7 @@ Both methods automatically place the library in the plugin root directory.
       conflict = {
         accept_incoming = "<leader>ct",  -- Accept incoming (theirs/left) change
         accept_current = "<leader>co",   -- Accept current (ours/right) change
-        accept_both = "<leader>cb",      -- Accept both changes (incoming first)
+        accept_both = "<leader>cb",      -- Accept both changes
         discard = "<leader>cx",          -- Discard both, keep base
         -- Accept all (whole file) - uppercase versions
         accept_all_incoming = "<leader>cT",  -- Accept ALL incoming changes
@@ -310,38 +314,25 @@ Both methods automatically place the library in the plugin root directory.
 }
 ```
 
-#### Binding an action to more than one key
+### Keymaps
 
-Any keymap accepts a list, and the action answers to every key in it:
+Each keymap action accepts a single key or a list of keys:
 
 ```lua
 keymaps = { view = { quit = { "q", "<Esc>" } } }
 ```
 
-Set a keymap to `false` (or `{}`) to switch it off.
+Set an action to `false` or `{}` to disable it. An explicitly configured mapping takes precedence over another action's default. If two explicitly configured actions use the same key, CodeDiff warns that only one can work.
 
-#### Reusing a key another action already uses
+### Explorer line statistics
 
-Assigning a key that is another action's default hands the key to the one you asked for. The action that shipped with it is left unmapped rather than binding over the top:
+Line statistics are disabled by default because they run additional Git queries. Set `explorer.line_stats.enabled = true` to show per-file counts and group totals in Explorer views for repository status and revision comparisons. Untracked files are counted only when `count_untracked = true`; untracked files larger than `max_untracked_bytes` are skipped.
 
-```lua
-keymaps = { view = { toggle_explorer = "<leader>e" } }
--- <leader>e  toggles the explorer, as asked
--- <leader>b  unmapped (toggle_explorer moved away from it)
--- focus_explorer  unmapped (it shipped with <leader>e and gave it up)
-```
+Files display `+12 -4`, or `bin` for binary files. Group headings display totals such as `Changes (3 · +42 -8)`. Folder and group `stats` values contain `files_changed`, `insertions`, `deletions`, `binary_files`, and `unavailable_files`.
 
-Assign `focus_explorer` a free key of your own if you want to keep it. Setting two actions to the same key yourself leaves the outcome undefined, and codediff warns when it sees it.
+### Explorer line formatters
 
-`diff.filler_text` accepts any non-empty text pattern and repeats it across filler rows. Set it to `""` to hide the decoration while preserving the rows that keep side-by-side and conflict panes aligned. Non-empty patterns use the `CodeDiffFiller` highlight group.
-
-Explorer line statistics are disabled by default because they require extra Git queries and consume space in the default 40-column Explorer. Set `explorer.line_stats.enabled = true` to show per-file Git numstat counts and group totals in status, one-revision, and two-revision modes. Untracked files have no stats unless `count_untracked = true`; files larger than `max_untracked_bytes` are not read (1 MiB by default).
-
-Files use `+12 -4` (`bin` for binary files), and group headings use `Changes (3 · +42 -8)`. Aggregate folder and group stats contain `files_changed`, `insertions`, `deletions`, `binary_files`, and `unavailable_files`.
-
-#### Explorer line formatters
-
-`explorer.formatters.file`, `folder`, and `group` replace the complete corresponding explorer row. Each callback receives row metadata and returns a layout:
+`explorer.formatters.file`, `folder`, and `group` replace the complete corresponding Explorer row. Each callback receives row metadata and returns a layout:
 
 ```lua
 {
@@ -360,7 +351,7 @@ Files use `+12 -4` (`bin` for binary files), and group headings use `Changes (3 
 }
 ```
 
-A region contains styled `segments`. A numeric `truncate_priority` makes it truncatable; lower priorities truncate first. Regions without a priority stay fixed unless all content cannot fit. The renderer measures display cells, truncates with `explorer.ellipsis` (default `…`), right-aligns `right`, and preserves `min_gap` when space permits. The built-in file formatter truncates the directory, filename, then stats while keeping status fixed. The ellipsis can contain multiple characters and is clipped display-width-aware when necessary.
+A layout contains `left` and `right` lists of regions and an optional `min_gap` (default `2`). Each region contains styled `segments`. A numeric `truncate_priority` makes the region truncatable; lower values truncate first, while regions without a priority remain fixed until necessary. The `right` side is right-aligned, and truncated text uses `explorer.ellipsis`.
 
 Each segment is `{ text = string, hl? = highlight }`. `hl` accepts a Neovim highlight group, a `#RGB`/`#RRGGBB` foreground color, or a highlight definition such as `{ fg = "#3fb950", bold = true }`. Omitted highlights use `Normal`; selected file rows retain their selection background.
 
@@ -390,11 +381,9 @@ require("codediff").setup({
 
 ### Gutter signs
 
-```lua
--- Disabled by default; existing move annotations remain.
-gutter_signs = false
+Gutter signs are disabled by default and require Neovim 0.10 or newer. Enable them under `diff`:
 
--- Enabled defaults.
+```lua
 gutter_signs = {
   insert_text = "＋",
   delete_text = "－",
@@ -402,24 +391,24 @@ gutter_signs = {
   changed_priority = 100,
   unchanged_priority = nil,
 }
+```
 
--- Hide other Neovim signs with lower priorities.
+`insert_text` and `delete_text` must each occupy one or two display cells. To place a blank sign at priority `7` on unchanged lines, set:
+
+```lua
 gutter_signs = {
-  changed_priority = 100,
   unchanged_priority = 7,
 }
 ```
 
-Set this under `diff`. `insert_text` and `delete_text` must each occupy one or two display cells, as measured by `strdisplaywidth()`, because Neovim limits sign text to two display cells. The fullwidth defaults each occupy two display cells. A rejected sign is skipped with a warning and the rest of the diff still renders.
-
-CodeDiff uses persistent Neovim signs and does not modify `signcolumn` or `statuscolumn`. This example keeps a sign column and places signs after line numbers:
+Changed signs use priority `100` by default, so they remain visible. CodeDiff does not modify `signcolumn` or `statuscolumn`. This example reserves one sign column and places signs after line numbers:
 
 ```lua
 vim.opt.signcolumn = "yes"
 vim.opt.statuscolumn = "%C%=%l %s"
 ```
 
-`signcolumn = "yes:2"` allows a second sign on each line. Changed signs use priority 100 by default. An unchanged blocker at priority 99 can hide lower-priority Gitsigns, remote signs, diagnostics, or other signs across unchanged lines while the changed signs still win. Gutter signs require Neovim 0.10 or newer, because a sign extmark spanning several lines only decorates every line from 0.10 on. When enabled, they appear in every window displaying a buffer used by an active CodeDiff view. CodeDiff removes them when the view is suspended or closed.
+With one sign column, the blank priority-`7` sign hides signs with lower priorities. Set `signcolumn` to `"yes:2"` to allow a second sign column.
 
 ## Usage
 
