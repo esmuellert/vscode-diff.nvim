@@ -412,51 +412,48 @@ With one sign column, the blank priority-`7` sign hides signs with lower priorit
 
 ## Usage
 
-The `:CodeDiff` command supports multiple modes:
+Use `:CodeDiff` to review repository changes, pull requests, files, directories, and history.
 
 ### Review Repository Changes
 
 #### Working Tree and Revisions
 
-Open an interactive file explorer showing changed files:
+Open repository changes in the Explorer:
 
 ```vim
-" Show git status in explorer (default)
+" Review staged and unstaged changes
 :CodeDiff
 
-" Show changes for specific revision in explorer
-:CodeDiff HEAD~5
+" Compare a revision with the working tree
+:CodeDiff HEAD
 
-" Compare against a branch
-:CodeDiff main
-
-" Compare against a specific commit
-:CodeDiff abc123
-
-" Compare two revisions (e.g. HEAD vs main)
+" Compare two revisions
 :CodeDiff main HEAD
 
-" Override layout for this invocation (works with all subcommands)
+" Override the configured layout
 :CodeDiff --inline
 :CodeDiff main --side-by-side
 
-" Operate on another repository without leaving the current one.
-" Accepts the repo root or any path inside it; -C is a git-style alias.
-" Works with explorer and history modes.
+" Review another repository
 :CodeDiff --repo ~/code/other-repo
-:CodeDiff --repo ~/code/other-repo main
-:CodeDiff -C ~/code/other-repo history
+:CodeDiff -C ~/code/other-repo main
 ```
+
+Revision arguments accept commits, branches, and tags. `--inline` and `--side-by-side` override the configured layout for commands that open a review view. `--repo` and its `-C` alias accept a repository root or any path inside it, and work with repository review, pull requests, and history.
 
 #### Staged Changes
 
+Review only changes in the Git index:
+
 ```vim
-:CodeDiff --staged           " index vs HEAD (--cached is an alias)
-:CodeDiff --staged HEAD~3    " index vs another revision
+" Index vs HEAD
+:CodeDiff --staged
+
+" Index vs another revision
+:CodeDiff --staged HEAD~3
 ```
 
-Inside the default `:CodeDiff` explorer, `gS` on a file with both staged and
-unstaged changes jumps to its sibling in the other group (#352).
+`--cached` is an alias for `--staged`. In the default Explorer, `gS` switches between the staged and unstaged versions of a file that appears in both groups.
 
 #### Pull Requests
 
@@ -465,119 +462,88 @@ Fetch and review a pull request without checking out its branch or changing the 
 ```vim
 :CodeDiff pr 512
 
-" Review a pull request in another local repository
-:CodeDiff --repo ~/code/codediff.nvim pr 512
-
-" Fetch from a target repository configured as upstream
+" Fetch from another remote
 :CodeDiff pr 512 --remote upstream
 
-" Override the target branch when the PR targets a non-default branch
+" Override the target branch
 :CodeDiff pr 512 --base release/3.x
 
-" Review only part of the PR
+" Review only part of the pull request
 :CodeDiff pr 512 -- lua/codediff
+
+" Review a pull request in another local repository
+:CodeDiff --repo ~/code/codediff.nvim pr 512
 ```
 
-CodeDiff recognizes GitHub and Azure DevOps `refs/pull/` refs and GitLab `refs/merge-requests/` refs. It prefers the provider's synthetic merge ref, which identifies both sides of the review. If that ref is unavailable, CodeDiff fetches the PR head and compares it with the remote's default branch; use `--base` to override that fallback.
+CodeDiff supports GitHub, GitLab, and Azure DevOps using the authentication already configured for the selected Git remote. No provider CLI is required.
 
-Fetched commits are stored under `refs/codediff/pull-requests/`. Reopening the same PR updates its refs, and no local branch is created. The refs are retained so asynchronous file loading and later reviews can reuse them. Remove cached refs explicitly when they are no longer needed:
+CodeDiff stores fetched commits in private Git refs without creating a local branch. Remove cached refs when they are no longer needed:
 
 ```vim
-" Remove one PR from origin (use --remote for another remote)
 :CodeDiff pr clean 512
 :CodeDiff pr clean 512 --remote upstream
-
-" Remove every cached PR ref in this repository
 :CodeDiff pr clean --all
-
-" Limit --all to one remote
 :CodeDiff pr clean --all --remote upstream
 ```
 
-Both cleanup forms support `--repo`/`-C`. Private repositories use the authentication already configured for the selected Git remote. No `gh`, `glab`, or `az` CLI is required.
+The cleanup commands also support `--repo` and `-C`.
 
 #### Merge-base Comparisons
 
-Show only changes introduced since branching from a base branch—exactly like a Pull Request:
+Review changes introduced since a branch diverged from its base:
 
 ```vim
-" Compare merge-base(main, HEAD) vs working tree
-" Shows only YOUR changes since you branched from main
+" Merge base of main and HEAD vs working tree
 :CodeDiff main...
 
-" Compare merge-base(main, HEAD) vs HEAD (committed changes only)
+" Merge base of main and HEAD vs HEAD
 :CodeDiff main...HEAD
 
-" Compare merge-base between two branches
+" Merge base of two branches vs the target branch
 :CodeDiff develop...feature/new-ui
 ```
 
-This uses `git merge-base` semantics (equivalent to `git diff main...HEAD`), showing only the changes introduced on your branch, not changes that happened on the base branch since you branched.
+`<base>...` compares the merge base of `<base>` and `HEAD` with the working tree. `<base>...<target>` compares the merge base with `<target>`.
 
 #### Scope by Path
 
-Append `-- <path>` to narrow the explorer to a specific subtree — exactly like
-`git diff <rev> <rev> -- <path>`. Useful in large or monorepo-style repositories
-to review just one component instead of hundreds of files:
+Append `--` followed by one or more Git pathspecs relative to the repository root:
 
 ```vim
-" Only files under modules/network that changed between the two tags
-:CodeDiff v1.0.1 v1.0.2 -- modules/network
-
-" Only working-tree changes under a path
+" Working-tree changes under a path
 :CodeDiff -- src/api
 
-" Composes with merge-base and --repo
+" Changes between two revisions under a path
+:CodeDiff v1.0.1 v1.0.2 -- modules/network
+
+" Merge-base comparison under a path
 :CodeDiff main... -- packages/ui
-:CodeDiff --repo ~/code/other-repo v1 v2 -- lib
 ```
 
-Paths are git pathspecs (relative to the repository root; multiple paths and
-git's glob syntax are supported).
+Multiple pathspecs and Git glob syntax are supported.
 
 ### Compare Files and Directories
 
-#### Current File Against a Revision
+#### Current File and Revisions
 
-Compare the current buffer with a git revision:
+Compare the current file with a Git revision, or compare that file between two revisions:
 
 ```vim
-" Compare with last commit
+" Revision vs working buffer
 :CodeDiff file HEAD
 
-" Compare with previous commit
-:CodeDiff file HEAD~1
-
-" Compare with specific commit
-:CodeDiff file abc123
-
-" Compare with branch
-:CodeDiff file main
-
-" Compare with tag
-:CodeDiff file v1.0.0
-
-" Compare two revisions for current file
+" Two revisions
 :CodeDiff file main HEAD
 
-" PR-like diff: compare merge-base(main, HEAD) vs working tree
+" Merge base of main and HEAD vs working buffer
 :CodeDiff file main...
 ```
 
-**Requirements:**
-- Current buffer must be saved to a file
-- File must be in a git repository
-- Git revision must exist
-
-**Behavior:**
-- Left buffer: Git version (at specified revision) - readonly
-- Right buffer: Current buffer content - readonly
-- Opens in a new tab automatically
-- Async operation - won't block Neovim
+The current buffer must represent a file in a Git repository. With one revision, the working buffer remains editable and the revision content is read-only. With two revisions, both sides are read-only.
 
 #### Two Files
 
-Compare two arbitrary files side-by-side:
+Compare two files without Git:
 
 ```vim
 :CodeDiff file file_a.txt file_b.txt
@@ -585,159 +551,113 @@ Compare two arbitrary files side-by-side:
 
 #### Two Directories
 
-Compare two directories without git:
+Compare two directories without Git:
 
 ```vim
-" Auto-detect directories
-:CodeDiff ~/project-v1 ~/project-v2
-
-" Explicit dir subcommand
+" Explicit subcommand
 :CodeDiff dir /path/to/dir1 /path/to/dir2
+
+" Directories are also detected automatically
+:CodeDiff ~/project-v1 ~/project-v2
 ```
 
-Shows files as Added (A), Deleted (D), or Modified (M) using file size plus byte-level content comparison. Select a file to view its diff.
+The Explorer lists files as Added (A), Deleted (D), or Modified (M). Select a file to review its diff.
 
 ### Review History
 
-Review commits on a per-commit basis:
+By default, history shows the latest 100 non-merge commits. Expand a commit to see its changed files, then select a file to compare the commit with its parent.
 
 ```vim
-" Show last 50 commits
+" Open recent history
 :CodeDiff history
 
-" Show last N commits
-:CodeDiff history HEAD~10
-
-" Show commits in a range (great for PR review)
+" Review a commit range
+:CodeDiff history HEAD~10..HEAD
 :CodeDiff history origin/main..HEAD
 
-" Show commits for current file only
-:CodeDiff history HEAD~20 %
+" Limit history to the current file or another file
+:CodeDiff history %
+:CodeDiff history HEAD~10..HEAD path/to/file.lua
 
-" Show commits for a specific file
-:CodeDiff history HEAD~10 path/to/file.lua
+" Show the selected range from oldest to newest
+:CodeDiff history origin/main..HEAD --reverse
 
-" Show commits in chronological order (oldest first)
-:CodeDiff history --reverse
-:CodeDiff history HEAD~10 --reverse
-:CodeDiff history origin/main..HEAD -r
-:CodeDiff history HEAD~20 % --reverse
+" Compare each selected commit with the working tree
+:CodeDiff history origin/main..HEAD --base WORKING
 
-" Compare each commit against the current working tree
-:CodeDiff history --base WORKING
-
-" Compare each commit against HEAD
-:CodeDiff history --base HEAD
-
-" Line-range history: show only commits that changed the selected lines
+" Show commits that changed the selected lines
 :'<,'>CodeDiff history
-:'<,'>CodeDiff history HEAD~10
-:'<,'>CodeDiff history --reverse
+:'<,'>CodeDiff history HEAD~10..HEAD
 ```
 
-The history panel shows a list of commits. Each commit can be expanded to show its changed files. Select a file to view the diff between the commit and its parent (`commit^` vs `commit`).
-
-**Options:**
-- `--reverse` or `-r`: Show commits in chronological order (oldest first) instead of reverse chronological. Useful for following development story from beginning to end, or reviewing PR changes in the order they were made.
-- `--base` or `-b`: Compare each commit against a fixed revision instead of its parent. Accepts any git revision (`HEAD`, branch name, commit hash) or `WORKING` for the current working tree.
-- `--inline` / `--side-by-side`: Override the diff layout for this invocation. These flags work with all `:CodeDiff` subcommands.
-- `--exit-on-close`: Exit Neovim when the CodeDiff session closes. Intended for external diff and merge tool processes.
-
-**Visual selection:** When called with a visual range (`:'<,'>CodeDiff history`), only commits that modified the selected lines are shown. This uses `git log -L` under the hood and is useful for tracing the evolution of a specific function or block in a large file.
-
-**History Keymaps:**
-- `i` - Toggle between list and tree view for files under commits
+`--reverse` (or `-r`) shows commits from oldest to newest. `--base <revision>` (or `-b`) compares each commit with a fixed Git revision; use `WORKING` for the current working tree. When invoked with a visual range, history is limited to commits that changed the selected lines in the current file.
 
 ### Git Tool Integration
 
+`--exit-on-close` exits Neovim when the CodeDiff session closes, which is useful for processes started by Git.
+
 #### Merge Tool
 
-Use CodeDiff as your git merge tool for resolving conflicts:
+Configure CodeDiff as a Git merge tool, then run `git mergetool` to resolve conflicts:
 
 ```bash
 git config --global merge.tool codediff
 git config --global mergetool.codediff.cmd 'nvim "$MERGED" -c "CodeDiff --exit-on-close merge \"$MERGED\""'
+git mergetool
 ```
 
 #### Diff Tool
 
-Use CodeDiff as your git diff tool for viewing changes:
+Configure CodeDiff as a Git diff tool:
 
 ```bash
 git config --global diff.tool codediff
 git config --global difftool.codediff.cmd 'nvim "$LOCAL" "$REMOTE" +"CodeDiff --exit-on-close file $LOCAL $REMOTE"'
 ```
 
-Then use `git difftool` to view diffs:
+Then review uncommitted changes or compare revisions:
 
 ```bash
-git difftool                      # View all uncommitted changes
-git difftool HEAD~2 HEAD          # Compare two commits
-git difftool main feature-branch  # Compare branches
-git difftool -y                   # Skip confirmation prompts
+git difftool
+git difftool main feature-branch
 ```
 
 ### Extend CodeDiff
 
 #### Lua API
 
-```lua
--- Primary user API - setup configuration
-require("codediff").setup({
-  highlights = {
-    line_insert = "DiffAdd",
-    line_delete = "DiffDelete",
-    char_brightness = 1.4,
-  },
-})
+`require("codediff")` exposes the supported Lua API:
 
--- Advanced usage - direct access to internal modules
-local diff = require("codediff.diff")
-local render = require("codediff.ui")
-local git = require("codediff.git")
+| Function | Description |
+|----------|-------------|
+| `setup(opts)` | Apply CodeDiff configuration |
+| `next_hunk()` | Move to the next hunk |
+| `prev_hunk()` | Move to the previous hunk |
+| `next_file()` | Move to the next file, or the next commit in single-file history |
+| `prev_file()` | Move to the previous file, or the previous commit in single-file history |
 
--- Example 1: Compute diff between two sets of lines
-local lines_a = {"line 1", "line 2"}
-local lines_b = {"line 1", "modified line 2"}
-local lines_diff = diff.compute_diff(lines_a, lines_b)
-
--- Example 2: Get file content from git (async)
-git.get_file_content("HEAD~1", "/path/to/repo", "relative/path.lua", function(err, lines)
-  if err then
-    vim.notify(err, vim.log.levels.ERROR)
-    return
-  end
-  -- Use lines...
-end)
-
--- Example 3: Get git root for a file (async)
-git.get_git_root("/path/to/file.lua", function(err, git_root)
-  if not err then
-    -- File is in a git repository
-  end
-end)
-```
+The navigation functions return `true` when navigation succeeds and `false` otherwise. Modules under `codediff.core` and `codediff.ui` are internal and are not part of the supported API.
 
 #### User Autocmd Events
 
-CodeDiff emits `User` autocmd events at key lifecycle points, allowing you to customize behavior without config flags:
+CodeDiff emits `User` autocmd events for view lifecycle changes:
 
 | Event | When | Data |
 |-------|------|------|
-| `CodeDiffOpen` | After diff view is fully ready | `tabpage`, `mode` |
+| `CodeDiffOpen` | When a CodeDiff view opens | `tabpage`, `mode` |
 | `CodeDiffClose` | Before cleanup starts | `tabpage`, `mode` |
-| `CodeDiffFileSelect` | When a file is selected in explorer | `tabpage`, `path`, `status` |
+| `CodeDiffFileSelect` | When a file is selected in the Explorer | `tabpage`, `path`, `status` |
 
 `mode` is one of `"explorer"`, `"standalone"`, or `"history"`.
 
 <details>
-<summary>Example: Disable cursorline in diff windows</summary>
+<summary>Example: Disable cursorline in the CodeDiff tab</summary>
 
 ```lua
 vim.api.nvim_create_autocmd("User", {
   pattern = "CodeDiffOpen",
-  callback = function()
-    for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+  callback = function(event)
+    for _, win in ipairs(vim.api.nvim_tabpage_list_wins(event.data.tabpage)) do
       vim.wo[win].cursorline = false
     end
   end,
@@ -745,31 +665,6 @@ vim.api.nvim_create_autocmd("User", {
 ```
 
 </details>
-
-<details>
-<summary>Example: Hide tabline while CodeDiff is open</summary>
-
-```lua
-vim.api.nvim_create_autocmd("User", {
-  pattern = "CodeDiffOpen",
-  callback = function()
-    vim.g.codediff_saved_showtabline = vim.o.showtabline
-    vim.o.showtabline = 0
-  end,
-})
-vim.api.nvim_create_autocmd("User", {
-  pattern = "CodeDiffClose",
-  callback = function()
-    if vim.g.codediff_saved_showtabline then
-      vim.o.showtabline = vim.g.codediff_saved_showtabline
-      vim.g.codediff_saved_showtabline = nil
-    end
-  end,
-})
-```
-
-</details>
-```
 
 ## Architecture
 
