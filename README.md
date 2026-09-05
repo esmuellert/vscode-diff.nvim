@@ -51,6 +51,77 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
 }
 ```
 
+### Managing Library Installation
+
+The C library will be downloaded automatically on first use. No `build` step needed!
+
+The plugin automatically manages the C library installation:
+
+**Automatic Updates:**
+- The library is automatically downloaded on first use
+- When you update the plugin to a new version, the library is automatically updated to match
+- No manual intervention required!
+
+**Manual Installation Commands:**
+```vim
+" Install/update the library manually
+:CodeDiff install
+
+" Force reinstall (useful for troubleshooting)
+:CodeDiff install!
+```
+
+**Version Management:**
+The installer reads the `VERSION` file to download the matching library version from GitHub releases. This ensures compatibility between the Lua code and C library.
+
+### Manual Installation
+
+If you prefer to install manually without a plugin manager:
+
+1. **Clone the repository:**
+```bash
+git clone https://github.com/esmuellert/codediff.nvim ~/.local/share/nvim/codediff.nvim
+```
+
+2. **Add to your Neovim runtime path in `init.lua`:**
+```lua
+vim.opt.rtp:append("~/.local/share/nvim/codediff.nvim")
+```
+
+3. **Install the C library:**
+
+The plugin requires a C library binary in the plugin root directory. The plugin auto-detects these filenames:
+- `libvscode_diff.so` or `libvscode_diff_<version>.so` (Linux/BSD)
+- `libvscode_diff.dylib` or `libvscode_diff_<version>.dylib` (macOS)
+- `libvscode_diff.dll` or `libvscode_diff_<version>.dll` (Windows)
+
+**Option A: Download from GitHub releases** (recommended)
+
+Download the appropriate binary from the [GitHub releases page](https://github.com/esmuellert/codediff.nvim/releases) and place it in the plugin root directory. Rename it to match the expected format: `libvscode_diff.so`/`.dylib`/`.dll` or `libvscode_diff_<version>.so`/`.dylib`/`.dll`. **Linux users**: If your system lacks OpenMP, also download `libgomp_linux_{arch}_{version}.so.1` and rename it to `libgomp.so.1` in the same directory.
+
+**Option B: Build from source**
+
+Build requirements: a C11 compiler. CMake 3.15 or newer is optional for the developer build.
+
+Using build scripts (no CMake required):
+```bash
+# Linux/macOS/BSD
+./build.sh
+
+# Windows
+build.cmd
+```
+
+Or using CMake:
+```bash
+cmake -B build
+cmake --build build
+```
+
+Both methods automatically place the library in the plugin root directory.
+
+## Configuration
+
 **With custom configuration:**
 ```lua
 {
@@ -314,8 +385,6 @@ require("codediff").setup({
 })
 ```
 
-The C library will be downloaded automatically on first use. No `build` step needed!
-
 ### Gutter signs
 
 ```lua
@@ -348,73 +417,6 @@ vim.opt.statuscolumn = "%C%=%l %s"
 ```
 
 `signcolumn = "yes:2"` allows a second sign on each line. Changed signs use priority 100 by default. An unchanged blocker at priority 99 can hide lower-priority Gitsigns, remote signs, diagnostics, or other signs across unchanged lines while the changed signs still win. Gutter signs require Neovim 0.10 or newer, because a sign extmark spanning several lines only decorates every line from 0.10 on. When enabled, they appear in every window displaying a buffer used by an active CodeDiff view. CodeDiff removes them when the view is suspended or closed.
-
-### Managing Library Installation
-
-The plugin automatically manages the C library installation:
-
-**Automatic Updates:**
-- The library is automatically downloaded on first use
-- When you update the plugin to a new version, the library is automatically updated to match
-- No manual intervention required!
-
-**Manual Installation Commands:**
-```vim
-" Install/update the library manually
-:CodeDiff install
-
-" Force reinstall (useful for troubleshooting)
-:CodeDiff install!
-```
-
-**Version Management:**
-The installer reads the `VERSION` file to download the matching library version from GitHub releases. This ensures compatibility between the Lua code and C library.
-
-### Manual Installation
-
-If you prefer to install manually without a plugin manager:
-
-1. **Clone the repository:**
-```bash
-git clone https://github.com/esmuellert/codediff.nvim ~/.local/share/nvim/codediff.nvim
-```
-
-2. **Add to your Neovim runtime path in `init.lua`:**
-```lua
-vim.opt.rtp:append("~/.local/share/nvim/codediff.nvim")
-```
-
-3. **Install the C library:**
-
-The plugin requires a C library binary in the plugin root directory. The plugin auto-detects these filenames:
-- `libvscode_diff.so` or `libvscode_diff_<version>.so` (Linux/BSD)
-- `libvscode_diff.dylib` or `libvscode_diff_<version>.dylib` (macOS)
-- `libvscode_diff.dll` or `libvscode_diff_<version>.dll` (Windows)
-
-**Option A: Download from GitHub releases** (recommended)
-
-Download the appropriate binary from the [GitHub releases page](https://github.com/esmuellert/codediff.nvim/releases) and place it in the plugin root directory. Rename it to match the expected format: `libvscode_diff.so`/`.dylib`/`.dll` or `libvscode_diff_<version>.so`/`.dylib`/`.dll`. **Linux users**: If your system lacks OpenMP, also download `libgomp_linux_{arch}_{version}.so.1` and rename it to `libgomp.so.1` in the same directory.
-
-**Option B: Build from source**
-
-Build requirements: a C11 compiler. CMake 3.15 or newer is optional for the developer build.
-
-Using build scripts (no CMake required):
-```bash
-# Linux/macOS/BSD
-./build.sh
-
-# Windows
-build.cmd
-```
-
-Or using CMake:
-```bash
-cmake -B build
-cmake --build build
-```
-
-Both methods automatically place the library in the plugin root directory.
 
 ## Usage
 
