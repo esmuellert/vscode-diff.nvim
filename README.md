@@ -448,23 +448,15 @@ Open an interactive file explorer showing changed files:
 :CodeDiff -C ~/code/other-repo history
 ```
 
-#### Merge-base Comparisons
-
-Show only changes introduced since branching from a base branch—exactly like a Pull Request:
+#### Staged Changes
 
 ```vim
-" Compare merge-base(main, HEAD) vs working tree
-" Shows only YOUR changes since you branched from main
-:CodeDiff main...
-
-" Compare merge-base(main, HEAD) vs HEAD (committed changes only)
-:CodeDiff main...HEAD
-
-" Compare merge-base between two branches
-:CodeDiff develop...feature/new-ui
+:CodeDiff --staged           " index vs HEAD (--cached is an alias)
+:CodeDiff --staged HEAD~3    " index vs another revision
 ```
 
-This uses `git merge-base` semantics (equivalent to `git diff main...HEAD`), showing only the changes introduced on your branch, not changes that happened on the base branch since you branched.
+Inside the default `:CodeDiff` explorer, `gS` on a file with both staged and
+unstaged changes jumps to its sibling in the other group (#352).
 
 #### Pull Requests
 
@@ -504,6 +496,24 @@ Fetched commits are stored under `refs/codediff/pull-requests/`. Reopening the s
 
 Both cleanup forms support `--repo`/`-C`. Private repositories use the authentication already configured for the selected Git remote. No `gh`, `glab`, or `az` CLI is required.
 
+#### Merge-base Comparisons
+
+Show only changes introduced since branching from a base branch—exactly like a Pull Request:
+
+```vim
+" Compare merge-base(main, HEAD) vs working tree
+" Shows only YOUR changes since you branched from main
+:CodeDiff main...
+
+" Compare merge-base(main, HEAD) vs HEAD (committed changes only)
+:CodeDiff main...HEAD
+
+" Compare merge-base between two branches
+:CodeDiff develop...feature/new-ui
+```
+
+This uses `git merge-base` semantics (equivalent to `git diff main...HEAD`), showing only the changes introduced on your branch, not changes that happened on the base branch since you branched.
+
 #### Scope by Path
 
 Append `-- <path>` to narrow the explorer to a specific subtree — exactly like
@@ -524,16 +534,6 @@ to review just one component instead of hundreds of files:
 
 Paths are git pathspecs (relative to the repository root; multiple paths and
 git's glob syntax are supported).
-
-#### Staged Changes
-
-```vim
-:CodeDiff --staged           " index vs HEAD (--cached is an alias)
-:CodeDiff --staged HEAD~3    " index vs another revision
-```
-
-Inside the default `:CodeDiff` explorer, `gS` on a file with both staged and
-unstaged changes jumps to its sibling in the other group (#352).
 
 ### Compare Files and Directories
 
