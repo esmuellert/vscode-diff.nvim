@@ -184,7 +184,7 @@ Both methods automatically place the library in the plugin root directory.
       compute_moves = false,              -- Detect moved code blocks (opt-in, matches VSCode experimental.showMoves)
       compact_context_lines = 3,          -- Number of context lines around hunks in compact mode
       compact_sync_folds = true,          -- Sync fold open/close across panes (mirrors Vim diff mode behavior)
-      compact = false,                    -- Open diffs in compact mode by default (fold unchanged regions; toggle with gc)
+      compact = false,                    -- Default compact preference for each CodeDiff session; toggle with gc
     },
 
     -- Explorer panel configuration

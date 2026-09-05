@@ -11,6 +11,7 @@ local lifecycle = require("codediff.ui.lifecycle")
 local diff = require("codediff.core.diff")
 local highlights = require("codediff.ui.highlights")
 local path = require("codediff.core.path")
+local side_by_side_update = require("codediff.ui.view.side_by_side.update")
 
 local function get_temp_path(name)
   local is_win = vim.fn.has("win32") == 1 or vim.fn.has("win64") == 1
@@ -49,6 +50,33 @@ local function create_session(original, modified)
   return tabpage, lifecycle.get_session(tabpage), left, right
 end
 
+local function folded_lines(win)
+  if not (win and vim.api.nvim_win_is_valid(win)) then
+    return 0
+  end
+  return vim.api.nvim_win_call(win, function()
+    local count = 0
+    for line = 1, vim.fn.line("$") do
+      if vim.fn.foldclosed(line) ~= -1 then
+        count = count + 1
+      end
+    end
+    return count
+  end)
+end
+
+local function has_synced_fold_keymap(buf)
+  if not (buf and vim.api.nvim_buf_is_valid(buf)) then
+    return false
+  end
+  for _, map in ipairs(vim.api.nvim_buf_get_keymap(buf, "n")) do
+    if (map.desc or ""):find("codediff: synced fold", 1, true) then
+      return true
+    end
+  end
+  return false
+end
+
 describe("compact mode (#344)", function()
   before_each(function()
     -- M.setup merges on top of M.options (not defaults), so we have to
@@ -68,7 +96,12 @@ describe("compact mode (#344)", function()
     -- The two scratch buffers backing create_session persist across tests
     -- because their on-disk paths are the same; delete them so each test
     -- starts with a fresh keymap state.
-    for _, name in ipairs({ "compact_spec_left.txt", "compact_spec_right.txt" }) do
+    for _, name in ipairs({
+      "compact_spec_left.txt",
+      "compact_spec_right.txt",
+      "compact_spec_switch_left.txt",
+      "compact_spec_switch_right.txt",
+    }) do
       local path = get_temp_path(name)
       local bufnr = vim.fn.bufnr(path)
       if bufnr ~= -1 and vim.api.nvim_buf_is_valid(bufnr) then
@@ -276,7 +309,8 @@ describe("compact mode (#344)", function()
       assert.equal(0, #(session.stored_diff_result.changes or {}),
         "sanity: identical files should produce zero changes")
       assert.is_false(compact.enable(tabpage))
-      assert.is_not.equal(true, session.compact_mode)
+      assert.is_true(session.compact_mode, "enabling compact records the session preference even without hunks")
+      assert.is_nil(session.compact_saved_fold_state)
     end)
   end)
 
@@ -508,6 +542,37 @@ describe("compact mode (#344)", function()
       assert.equals("expr", vim.wo[s.modified_win].foldmethod, "compact should apply the fold-expr to the modified window on open")
     end)
 
+    it("issue #496: applies the default after an empty initial diff", function()
+      local config = require("codediff.config")
+      config.options = vim.deepcopy(config.defaults)
+      require("codediff").setup({ diff = { compact = true, compact_context_lines = 3 } })
+      highlights.setup()
+
+      local original = {}
+      for i = 1, 30 do
+        original[i] = "line " .. i
+      end
+      local tabpage, session = create_session(original, original)
+
+      assert.is_true(session.compact_mode, "the global default should be stored on the session immediately")
+      assert.is_nil(session.compact_saved_fold_state)
+
+      -- An empty result may omit the `changes` field entirely.
+      lifecycle.update_diff_result(tabpage, {})
+      compact.refresh(tabpage)
+      assert.is_true(session.compact_mode)
+      assert.is_nil(session.compact_saved_fold_state)
+
+      local modified = vim.deepcopy(original)
+      modified[15] = "changed"
+      vim.api.nvim_buf_set_lines(session.modified_bufnr, 0, -1, false, modified)
+      lifecycle.update_diff_result(tabpage, diff.compute_diff(original, modified))
+      compact.refresh(tabpage)
+
+      assert.is_true(session.compact_mode, "compact should apply when a later file gains a hunk")
+      assert.equals("expr", vim.wo[session.modified_win].foldmethod)
+    end)
+
     it("does not auto-enable compact mode when diff.compact = false", function()
       local config = require("codediff.config")
       config.options = vim.deepcopy(config.defaults)
@@ -520,6 +585,41 @@ describe("compact mode (#344)", function()
 
       local s = lifecycle.get_session(tabpage)
       assert.is_not.equal(true, s.compact_mode, "compact should stay off when diff.compact is false (the default)")
+    end)
+
+    it("allows manual enable before the first hunk when the default is false", function()
+      local original, modified = counts_with_changes()
+      local tabpage, session = create_session(original, original)
+
+      assert.is_false(session.compact_mode)
+      assert.is_false(compact.toggle(tabpage))
+      assert.is_true(session.compact_mode)
+
+      vim.api.nvim_buf_set_lines(session.modified_bufnr, 0, -1, false, modified)
+      lifecycle.update_diff_result(tabpage, diff.compute_diff(original, modified))
+      compact.refresh(tabpage)
+
+      assert.equals("expr", vim.wo[session.modified_win].foldmethod)
+    end)
+
+    it("keeps each session's compact preference isolated", function()
+      local config = require("codediff.config")
+      config.options = vim.deepcopy(config.defaults)
+      require("codediff").setup({ diff = { compact = true, compact_context_lines = 3 } })
+      highlights.setup()
+
+      local original, modified = counts_with_changes()
+      local first_tabpage, first_session = create_session(original, modified)
+      local second_tabpage, second_session = create_session(original, modified)
+
+      assert.is_not.equal(first_tabpage, second_tabpage)
+      assert.is_true(first_session.compact_mode)
+      assert.is_true(second_session.compact_mode)
+
+      assert.is_true(compact.disable(first_tabpage))
+      assert.is_false(first_session.compact_mode)
+      assert.is_true(second_session.compact_mode)
+      assert.equals("expr", vim.wo[second_session.modified_win].foldmethod)
     end)
 
     it("does not re-enable compact after a manual gc toggle-off (persists per session)", function()
@@ -545,6 +645,136 @@ describe("compact mode (#344)", function()
       -- A file switch re-runs the lifecycle hook; the default must NOT force compact back on
       compact.refresh(tabpage)
       assert.is_not.equal(true, lifecycle.get_session(tabpage).compact_mode, "compact must stay off after a manual toggle-off, even with diff.compact=true")
+    end)
+  end)
+
+  describe("issue #544: compact mode across no-hunk diffs", function()
+    local function diff_with_changes()
+      local original = {}
+      for i = 1, 30 do
+        original[i] = "line " .. i
+      end
+      local modified = vim.deepcopy(original)
+      modified[15] = "changed"
+      return original, modified
+    end
+
+    it("keeps the preference and clears stale folds when changes disappear", function()
+      local original, modified = diff_with_changes()
+      local tabpage, session = create_session(original, modified)
+
+      assert.is_true(compact.enable(tabpage))
+      assert.is_true(folded_lines(session.modified_win) > 0)
+      assert.is_true(has_synced_fold_keymap(session.original_bufnr))
+      assert.is_true(has_synced_fold_keymap(session.modified_bufnr))
+
+      vim.api.nvim_buf_set_lines(session.modified_bufnr, 0, -1, false, original)
+      lifecycle.update_diff_result(tabpage, diff.compute_diff(original, original))
+      compact.refresh(tabpage)
+
+      assert.is_true(session.compact_mode)
+      assert.equals(0, folded_lines(session.modified_win))
+      assert.is_false(has_synced_fold_keymap(session.original_bufnr))
+      assert.is_false(has_synced_fold_keymap(session.modified_bufnr))
+
+      vim.api.nvim_buf_set_lines(session.modified_bufnr, 0, -1, false, modified)
+      lifecycle.update_diff_result(tabpage, diff.compute_diff(original, modified))
+      compact.refresh(tabpage)
+
+      assert.is_true(session.compact_mode)
+      assert.is_true(folded_lines(session.modified_win) > 0)
+      assert.is_true(has_synced_fold_keymap(session.original_bufnr))
+      assert.is_true(has_synced_fold_keymap(session.modified_bufnr))
+    end)
+
+    it("preserves the preference across a real view update", function()
+      local original, modified = diff_with_changes()
+      local tabpage, session, left_path, right_path = create_session(original, modified)
+
+      assert.is_true(compact.enable(tabpage))
+      assert.is_true(folded_lines(session.original_win) > 0)
+      assert.is_true(folded_lines(session.modified_win) > 0)
+
+      local empty_left = get_temp_path("compact_spec_switch_left.txt")
+      local empty_right = get_temp_path("compact_spec_switch_right.txt")
+      vim.fn.writefile(original, empty_left)
+      vim.fn.writefile(original, empty_right)
+
+      assert.is_true(
+        side_by_side_update.update(
+          tabpage,
+          {
+            git_root = nil,
+            original = path.make_ref(empty_left, nil),
+            modified = path.make_ref(empty_right, nil),
+            original_revision = nil,
+            modified_revision = nil,
+          },
+          false
+        )
+      )
+      assert.is_true(
+        vim.wait(3000, function()
+          local current = lifecycle.get_session(tabpage)
+          return current
+            and current.stored_diff_result
+            and current.stored_diff_result.changes
+            and #current.stored_diff_result.changes == 0
+        end, 20),
+        "empty diff did not finish updating"
+      )
+
+      assert.is_true(session.compact_mode)
+      assert.equals(0, folded_lines(session.original_win))
+      assert.equals(0, folded_lines(session.modified_win))
+
+      assert.is_true(
+        side_by_side_update.update(
+          tabpage,
+          {
+            git_root = nil,
+            original = path.make_ref(left_path, nil),
+            modified = path.make_ref(right_path, nil),
+            original_revision = nil,
+            modified_revision = nil,
+          },
+          false
+        )
+      )
+      assert.is_true(
+        vim.wait(3000, function()
+          local current = lifecycle.get_session(tabpage)
+          return current
+            and current.stored_diff_result
+            and current.stored_diff_result.changes
+            and #current.stored_diff_result.changes > 0
+        end, 20),
+        "changed diff did not finish updating"
+      )
+
+      assert.is_true(session.compact_mode)
+      assert.is_true(folded_lines(session.original_win) > 0)
+      assert.is_true(folded_lines(session.modified_win) > 0)
+    end)
+
+    it("preserves a manual disable across a no-hunk diff", function()
+      local original, modified = diff_with_changes()
+      local tabpage, session = create_session(original, modified)
+
+      assert.is_true(compact.enable(tabpage))
+      vim.api.nvim_buf_set_lines(session.modified_bufnr, 0, -1, false, original)
+      lifecycle.update_diff_result(tabpage, diff.compute_diff(original, original))
+      compact.refresh(tabpage)
+
+      assert.is_true(compact.toggle(tabpage))
+      assert.is_false(session.compact_mode)
+
+      vim.api.nvim_buf_set_lines(session.modified_bufnr, 0, -1, false, modified)
+      lifecycle.update_diff_result(tabpage, diff.compute_diff(original, modified))
+      compact.refresh(tabpage)
+
+      assert.is_false(session.compact_mode)
+      assert.equals(0, folded_lines(session.modified_win))
     end)
   end)
 end)

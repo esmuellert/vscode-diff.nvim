@@ -50,7 +50,7 @@ M.defaults = {
     compute_moves = false, -- Detect moved code blocks (opt-in, may increase diff computation time)
     compact_context_lines = 3, -- Number of context lines around hunks in compact mode
     compact_sync_folds = true, -- Sync fold open/close across panes in compact mode (mirrors Vim diff mode behavior)
-    compact = false, -- Open diffs in compact mode by default (fold unchanged regions to hunks + context; still toggleable with the gc keymap)
+    compact = false, -- Default compact preference for each CodeDiff session; still toggleable with the gc keymap
   },
 
   -- Explorer panel configuration
