@@ -103,7 +103,7 @@ local function build_download_url(os, arch, version)
   -- Local filename (only includes version)
   local local_filename = get_lib_filename(version)
 
-  local url = string.format("https://github.com/esmuellert/vscode-diff.nvim/releases/download/v%s/%s", version, download_filename)
+  local url = string.format("https://github.com/esmuellert/codediff.nvim/releases/download/v%s/%s", version, download_filename)
 
   return url, local_filename, nil
 end
@@ -208,7 +208,7 @@ local function install_libgomp_if_needed(opts)
 
   -- Build libgomp download URL
   local libgomp_filename = string.format("libgomp_linux_%s_%s.so.1", arch, current_version)
-  local url = string.format("https://github.com/esmuellert/vscode-diff.nvim/releases/download/v%s/%s", current_version, libgomp_filename)
+  local url = string.format("https://github.com/esmuellert/codediff.nvim/releases/download/v%s/%s", current_version, libgomp_filename)
 
   if not opts.silent then
     vim.notify("Downloading libgomp from: " .. url, vim.log.levels.INFO)

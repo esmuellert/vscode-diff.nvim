@@ -79,7 +79,7 @@ local function build_app()
   local app = ap
     .Command
     .new("CodeDiff")
-    :about("VSCode-style diff view")
+    :about("Live code review workspace for Neovim")
     :arg(Arg.flag("inline"):long("--inline"):global(true))
     :arg(Arg.flag("side_by_side"):long("--side-by-side"):global(true))
     :arg(Arg.flag("exit_on_close"):long("--exit-on-close"):global(true))
