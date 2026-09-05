@@ -418,28 +418,35 @@ Use `:CodeDiff` to review repository changes, pull requests, files, directories,
 
 #### Working Tree and Revisions
 
-Open repository changes in the Explorer:
+Open an interactive file explorer showing changed files:
 
 ```vim
-" Review staged and unstaged changes
+" Show repository status in the Explorer
 :CodeDiff
 
 " Compare a revision with the working tree
-:CodeDiff HEAD
+:CodeDiff HEAD~5
 
-" Compare two revisions
+" Compare a branch with the working tree
+:CodeDiff main
+
+" Compare a commit with the working tree
+:CodeDiff abc123
+
+" Compare two revisions (e.g. main vs HEAD)
 :CodeDiff main HEAD
 
-" Override the configured layout
+" Override layout for this invocation
 :CodeDiff --inline
 :CodeDiff main --side-by-side
 
-" Review another repository
+" Operate on another repository without leaving the current one.
+" Accepts the repository root or any path inside it; -C is an alias.
+" Works with repository review, pull requests, and history.
 :CodeDiff --repo ~/code/other-repo
-:CodeDiff -C ~/code/other-repo main
+:CodeDiff --repo ~/code/other-repo main
+:CodeDiff -C ~/code/other-repo history
 ```
-
-Revision arguments accept commits, branches, and tags. `--inline` and `--side-by-side` override the configured layout for commands that open a review view. `--repo` and its `-C` alias accept a repository root or any path inside it, and work with repository review, pull requests, and history.
 
 #### Staged Changes
 
