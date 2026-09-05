@@ -673,213 +673,45 @@ vim.api.nvim_create_autocmd("User", {
 
 </details>
 
-## Architecture
-
-### Components
-
-- **C Module** (`libvscode-diff/`): Fast diff computation and render plan generation
-  - Myers diff algorithm
-  - Character-level refinement for highlighting
-  - Matches VSCode's `rangeMapping.ts` data structures
-
-- **Lua FFI Layer** (`lua/vscode-diff/diff.lua`): Bridge between C and Lua
-  - FFI declarations matching C structs
-  - Type conversions between C and Lua
-
-- **Render Module** (`lua/vscode-diff/render/`): Neovim buffer rendering
-  - VSCode-style highlight groups
-  - Virtual line insertion for alignment
-  - Side-by-side window management
-  - Git status explorer
-
-### Syntax Highlighting
-
-The plugin handles syntax highlighting differently based on buffer type:
-
-**Working files (editable):**
-- Behaves like normal buffers with standard highlighting
-- Inlay hints disabled by default (incompatible with diff highlights)
-- All LSP features available
-
-**Git history files (read-only):**
-- Virtual buffers stored in memory, discarded when tab closes
-- TreeSitter highlighting applied automatically (if installed)
-- LSP not attached (most features meaningless for historical files)
-- Semantic token highlighting fetched via LSP request when available
-
-### Highlight Groups
-
-The plugin defines highlight groups matching VSCode's diff colors:
-
-- `CodeDiffLineInsert` - Light green background for inserted lines
-- `CodeDiffLineDelete` - Light red background for deleted lines
-- `CodeDiffCharInsert` - Deep/dark green for inserted characters
-- `CodeDiffCharDelete` - Deep/dark red for deleted characters
-- `CodeDiffFiller` - Gray foreground for non-empty filler line patterns
-- `CodeDiffLineMove` - Background for moved lines (derived from DiffChange)
-- `CodeDiffCharMove` - Character-level highlight for moved text
-- `CodeDiffMoveFrom` - Sign/annotation color for move source
-- `CodeDiffMoveTo` - Sign/annotation color for move destination
-- `CodeDiffHelpSection` - Section headings in keymap help (links to Statement)
-- `CodeDiffHelpKey` - Key bindings in keymap help (links to Special)
-- `CodeDiffHelpSep` - Separators in keymap help (links to NonText)
-- `CodeDiffHelpDesc` - Descriptions in keymap help (links to Normal)
-- `CodeDiffGutterInsert` - Gutter insert sign (defaults to `CodeDiffLineInsert`)
-- `CodeDiffGutterDelete` - Gutter delete sign (defaults to `CodeDiffLineDelete`)
-- `CodeDiffGutterInsertNumber` - Gutter insert line number (defaults to `CodeDiffCharInsert`)
-- `CodeDiffGutterDeleteNumber` - Gutter delete line number (defaults to `CodeDiffCharDelete`)
-- `CodeDiffExplorerStatFiles` - Explorer file counts
-- `CodeDiffExplorerStatInsertions` - Explorer insertion counts
-- `CodeDiffExplorerStatDeletions` - Explorer deletion counts
-- `CodeDiffExplorerStatBinary` - Explorer binary-file labels
-
-<details open>
-<summary><b>📸 Visual Examples</b> (click to collapse)</summary>
-
-<br>
-
-**Dawnfox Light** - Default configuration with auto-detected brightness (`char_brightness = 0.92` for light themes):
-
-![Dawnfox Light theme with default auto color selection](https://github.com/user-attachments/assets/760fa8be-dba7-4eb5-b71b-c53fb3aa6edf)
-
-**Catppuccin Mocha** - Default configuration with auto-detected brightness (`char_brightness = 1.4` for dark themes):
-
-![Catppuccin Mocha theme with default auto color selection](https://github.com/user-attachments/assets/0187ff6c-9a2b-45dc-b9be-c15fd2a796d9)
-
-**Kanagawa Lotus** - Default configuration with auto-detected brightness (`char_brightness = 0.92` for light themes):
-
-![Kanagawa Lotus theme with default auto color selection](https://github.com/user-attachments/assets/9e4a0e1c-0ebf-47c8-a8b5-f8a0966c5592)
-
-</details>
-
-**Default behavior:**
-- Uses your colorscheme's `DiffAdd` and `DiffDelete` for line-level highlights
-- Character-level highlights are auto-adjusted based on `vim.o.background`:
-  - **Dark themes** (`background = "dark"`): Brightness multiplied by `1.4` (40% brighter)
-  - **Light themes** (`background = "light"`): Brightness multiplied by `0.92` (8% darker)
-- This auto-detection works out-of-box for most colorschemes
-- You can override with explicit `char_brightness` value if needed
-- Full-file highlighting for added, untracked, and deleted files is disabled by default
-- Set `diff.highlight_added_deleted_files = true` to enable it with `line_insert` and `line_delete`
-
-**Customization examples:**
-
-```lua
--- Use hex colors directly
-highlights = {
-  line_insert = "#1d3042",
-  line_delete = "#351d2b",
-  char_brightness = 1.5,  -- Override auto-detection with explicit value
-}
-
--- Override character colors explicitly
-highlights = {
-  line_insert = "DiffAdd",
-  line_delete = "DiffDelete",
-  char_insert = "#3fb950",
-  char_delete = "#ff7b72",
-}
-
--- Mix highlight groups and hex colors
-highlights = {
-  line_insert = "String",
-  char_delete = "#ff0000",
-}
-```
-
 ## Development
 
-### Building
+Development requires CMake 3.15 or newer, a C11 compiler, Neovim, and Git. `CMakeLists.txt` is the source of truth for native builds.
+
+### Build and Test
+
+Build the native library and run its tests:
 
 ```bash
-make clean && make
+cmake -S . -B build
+cmake --build build --config Release
+ctest --test-dir build --output-on-failure -C Release
 ```
 
-### Testing
+Run the Lua integration suite:
 
-Run all tests:
 ```bash
-make test              # Run all tests (C + Lua integration)
+./tests/run_tests.sh
 ```
 
-Run specific test suites:
+On Windows, use `tests\run_tests.cmd`.
+
+Check Lua formatting:
+
 ```bash
-make test-c            # C unit tests only
-make test-lua          # Lua integration tests only
+stylua --check lua
 ```
 
-For more details on the test structure, see [`tests/README.md`](tests/README.md).
+Run one Lua spec:
 
-### Project Structure
-
-```
-codediff.nvim/
-├── libvscode-diff/        # C diff engine
-│   ├── src/               # C implementation
-│   ├── include/           # C headers
-│   └── tests/             # C unit tests
-├── lua/
-│   ├── codediff/          # Main Lua modules
-│   │   ├── init.lua       # Main API
-│   │   ├── config.lua     # Configuration
-│   │   ├── diff.lua       # FFI interface
-│   │   ├── git.lua        # Git operations
-│   │   ├── commands.lua   # Command handlers
-│   │   ├── installer.lua  # Binary installer
-│   │   └── ui/            # UI components
-│   │       ├── core.lua       # Diff rendering
-│   │       ├── highlights.lua # Highlight setup
-│   │       ├── view/          # View management
-│   │       ├── explorer/      # Git status explorer
-│   │       ├── history/       # Commit history panel
-│   │       ├── lifecycle/     # Lifecycle management
-│   │       └── conflict/      # Conflict resolution
-│   └── vscode-diff/       # Backward compatibility shims
-├── plugin/                # Plugin entry point
-│   └── codediff.lua       # Auto-loaded on startup
-├── tests/                 # Test suite (in-tree tests/framework/)
-├── docs/                  # Documentation and development history
-├── Makefile               # Build automation
-└── README.md
+```bash
+nvim --headless --noplugin -u tests/init.lua \
+  -c "lua require('tests.framework').run_and_exit('tests/path/to/spec.lua')"
 ```
 
-## Roadmap
+## Contributing
 
-### Current Status: Complete ✅
-
-- [x] C-based diff computation with VSCode-identical algorithm
-- [x] Two-tier highlighting (line + character level)
-- [x] Side-by-side view with synchronized scrolling
-- [x] Git integration (async operations, status explorer, revision comparison)
-- [x] Auto-refresh on buffer changes (live diff updates)
-- [x] Syntax highlighting preservation (LSP semantic tokens + TreeSitter)
-- [x] Read-only buffers with virtual filler lines for alignment
-- [x] Flexible highlight configuration (colorscheme-aware)
-- [x] Integration tests (C + Lua via in-tree `tests/framework/` runner)
-- [x] File history mode (per-commit review, similar to DiffviewFileHistory)
-
-### Future Enhancements
-
-- [x] Inline diff mode (single buffer view)
-- [x] Moved code detection (VSCode parity)
-- [x] Fold support for large diffs
-
-## VSCode Reference
-
-This plugin follows VSCode's diff rendering architecture:
-
-- **Data structures**: Based on `src/vs/editor/common/diff/rangeMapping.ts`
-- **Decorations**: Based on `src/vs/editor/browser/widget/diffEditor/registrations.contribution.ts`
-- **Styling**: Based on `src/vs/editor/browser/widget/diffEditor/style.css`
+Contributions are welcome. Please include tests for behavioral changes and update user documentation when behavior changes.
 
 ## License
 
 MIT
-
-## Contributing
-
-Contributions are welcome! Please ensure:
-1. C tests pass (`make test`)
-2. Lua tests pass
-3. Code follows existing style
-4. Updates to README if adding features
