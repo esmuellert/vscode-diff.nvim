@@ -1,8 +1,10 @@
 # codediff.nvim
 
-[![Downloads](https://img.shields.io/github/downloads/esmuellert/vscode-diff.nvim/total?label=⬇%20downloads&color=blue)](https://github.com/esmuellert/vscode-diff.nvim/releases)
+**Keep the agent running. Review changes as they land.**
 
-A Neovim plugin that provides VSCode-style diff rendering with two-tier highlighting, supporting both side-by-side and inline (unified) layouts.
+CodeDiff is a live code review workspace for Neovim, built for human-in-the-loop AI development. Run any coding agent in the background while you inspect and navigate changes as they land.
+
+CodeDiff stays synchronized with a changing repository, so review can continue as the code evolves. From the same workspace, you can stage or discard changes, review branches and pull requests, browse history, and resolve merge conflicts.
 
 <div align="center">
 
@@ -20,29 +22,24 @@ https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
 
 ## Features
 
-- **Two-tier highlighting system**:
-  - Light backgrounds for entire modified lines (green for insertions, red for deletions)
-  - Deep/dark character-level highlights showing exact changes within lines
-- **Side-by-side diff view** in a new tab with synchronized scrolling
-- **Inline (unified) diff view** — single-window layout with deleted lines as virtual overlays, with treesitter syntax highlighting
-- **Toggle layout** — switch between side-by-side and inline layout at runtime with `t`
-- **Git integration**: Compare revisions or review a pull request by number without checking it out
-- **Same implementation as VSCode's diff engine**, providing identical visual highlighting for most scenarios
-- **Fast C-based diff computation** using FFI with **multi-core parallelization** (OpenMP)
-- **Async git operations** - non-blocking file retrieval from git
-- **Moved code detection** — identifies blocks of code that moved within a file, with visual indicators (highlights, signs, annotations) matching VSCode's experimental `showMoves` feature (opt-in)
+- **Live review:** Changes appear as they land while any coding agent works in the background.
+- **Human control:** Inspect, stage, unstage, or discard files and hunks from one review workspace.
+- **Complete workflows:** Review local changes, staged changes, revisions, pull requests, and history.
+- **Precise diffs:** See line and character changes in side-by-side or inline layouts.
+- **Focused navigation:** Move between files and hunks, fold unchanged code, and track moved blocks.
+- **Conflict resolution:** Resolve merge conflicts per block or across the whole file.
+- **Editor-native context:** Keep Tree-sitter and semantic highlighting in revision buffers.
 
 ## Installation
 
 ### Prerequisites
 
-- Neovim >= 0.7.0 (for Lua FFI support; 0.10+ recommended for vim.system)
-- Git (for git diff features)
-- `curl` or `wget` (for automatic binary download)
+- Neovim 0.7 or newer; 0.10 or newer is recommended
+- Git for repository workflows
+- `curl` or `wget` on Unix, or PowerShell on Windows, for automatic downloads
+- A Nerd Font is optional for the default Explorer folder icons
 
 **No compiler required!** The plugin automatically downloads pre-built binaries from GitHub releases.
-
-Explorer auto-refresh uses a checksum-verified `codediff-watcher` binary when available and falls back to serialized 500ms polling if download, startup, or runtime watching fails. Automatic download installs the versioned executable in the plugin root alongside `libvscode-diff`. Set `CODEDIFF_WATCHER_PATH` to use a manually installed watcher, or `CODEDIFF_WATCHER_NO_AUTO_INSTALL=1` to disable watcher downloads.
 
 ### Using lazy.nvim
 
@@ -53,8 +50,6 @@ Explorer auto-refresh uses a checksum-verified `codediff-watcher` binary when av
   cmd = "CodeDiff",
 }
 ```
-
-> **Note:** The plugin automatically adapts to your colorscheme's background (dark/light). It uses `DiffAdd` and `DiffDelete` for line-level diffs, and auto-adjusts brightness for character-level highlights (1.4x brighter for dark themes, 0.92x darker for light themes). See [Highlight Groups](#highlight-groups) for customization.
 
 **With custom configuration:**
 ```lua
@@ -402,7 +397,7 @@ Download the appropriate binary from the [GitHub releases page](https://github.c
 
 **Option B: Build from source**
 
-Build requirements: C compiler (GCC/Clang/MSVC/MinGW) or CMake 3.15+
+Build requirements: a C11 compiler. CMake 3.15 or newer is optional for the developer build.
 
 Using build scripts (no CMake required):
 ```bash
