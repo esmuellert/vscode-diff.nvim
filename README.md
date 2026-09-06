@@ -2,7 +2,7 @@
 
 **Keep the agent running. Review changes as they land.**
 
-CodeDiff is a live code review workspace for Neovim, built for human-in-the-loop AI development. Run any coding agent in the background while you inspect and navigate changes as they land.
+CodeDiff is a live code review workspace for Neovim with VSCode style diffs, built for human-in-the-loop AI development. Run any coding agent in the background while you inspect and navigate changes as they land.
 
 CodeDiff stays synchronized with a changing repository, so review can continue as the code evolves. From the same workspace, you can stage or discard changes, review branches and pull requests, browse history, and resolve merge conflicts.
 
@@ -15,6 +15,7 @@ https://github.com/user-attachments/assets/3c66a26d-5ff9-4dac-8035-a2f2b7bd2308
 ## Features
 
 - **Live review:** Changes appear as they land while any coding agent works in the background.
+- **VSCode style diffs:** Review side-by-side or inline changes with character-level highlighting.
 - **Human control:** Inspect, stage, unstage, or discard files and hunks from one review workspace.
 - **Complete workflows:** Review local changes, staged changes, revisions, pull requests, and history.
 - **Precise diffs:** See line and character changes in side-by-side or inline layouts.
