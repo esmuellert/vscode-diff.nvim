@@ -37,7 +37,6 @@ This document proposes a comprehensive refactoring of the vscode-diff.nvim plugi
  382  auto_refresh.lua                   ✅ Auto-refresh
  353  commands.lua                       ✅ Command handlers
  266  diff.lua                           ✅ FFI wrapper
- 260  render/semantic_tokens.lua         ✅ Semantic tokens
  206  render/highlights.lua              ✅ Highlight setup
  162  virtual_file.lua                   ✅ Virtual files
 
@@ -133,7 +132,6 @@ lua/vscode-diff/
 │   ├── init.lua                       (18 lines - KEEP)
 │   ├── highlights.lua                 (206 lines - KEEP)
 │   ├── core.lua                       (519 lines - KEEP, diff rendering engine)
-│   ├── semantic_tokens.lua            (260 lines - KEEP)
 │   ├── merge_alignment.lua            (462 lines - KEEP)
 │   ├── auto_refresh.lua               (382 lines - MOVE from root)
 │   │

@@ -5,7 +5,6 @@ local lifecycle = require("codediff.ui.lifecycle")
 local config = require("codediff.config")
 local diff_module = require("codediff.core.diff")
 local inline = require("codediff.ui.inline")
-local semantic = require("codediff.ui.semantic_tokens")
 local cursor_util = require("codediff.ui.view.cursor")
 
 function M.compute_and_render_inline(modified_buf, original_buf, original_lines, modified_lines, original_is_virtual, modified_is_virtual, modified_win, auto_scroll_to_first_hunk)
@@ -22,13 +21,6 @@ function M.compute_and_render_inline(modified_buf, original_buf, original_lines,
   end
 
   inline.render_inline_diff(modified_buf, lines_diff, original_lines, modified_lines)
-
-  if original_is_virtual then
-    semantic.apply_semantic_tokens(original_buf, modified_buf)
-  end
-  if modified_is_virtual then
-    semantic.apply_semantic_tokens(modified_buf, original_buf)
-  end
 
   if modified_win and vim.api.nvim_win_is_valid(modified_win) then
     vim.wo[modified_win].wrap = false

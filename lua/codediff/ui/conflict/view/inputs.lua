@@ -2,7 +2,6 @@
 local M = {}
 
 local core = require("codediff.ui.core")
-local semantic = require("codediff.ui.semantic_tokens")
 local config = require("codediff.config")
 local diff_module = require("codediff.core.diff")
 
@@ -42,10 +41,6 @@ function M.compute_and_render_conflict(original_buf, modified_buf, base_lines, o
 
   -- Render merge view with alignment and filler lines
   local render_result = core.render_merge_view(original_buf, modified_buf, base_to_original_diff, base_to_modified_diff, base_lines, original_lines, modified_lines)
-
-  -- Apply semantic tokens (both are virtual buffers in conflict mode)
-  semantic.apply_semantic_tokens(original_buf, modified_buf)
-  semantic.apply_semantic_tokens(modified_buf, original_buf)
 
   -- Setup window options with structural scroll-sync (filler lines enable proper alignment)
   if original_win and modified_win and vim.api.nvim_win_is_valid(original_win) and vim.api.nvim_win_is_valid(modified_win) then

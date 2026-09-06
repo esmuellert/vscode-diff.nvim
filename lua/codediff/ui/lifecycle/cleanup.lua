@@ -6,7 +6,6 @@ local keymaps = require("codediff.ui.lifecycle.keymaps")
 local session = require("codediff.ui.lifecycle.session")
 local state = require("codediff.ui.lifecycle.state")
 local welcome_window = require("codediff.ui.view.welcome_window")
-local compat = require("codediff.core.compat")
 
 -- Autocmd group for cleanup
 local augroup = vim.api.nvim_create_augroup("codediff_lifecycle", { clear = true })
@@ -55,30 +54,6 @@ local function cleanup_diff(tabpage)
   local panel_view = diff.panel and diff.panel.view
   if panel_view and panel_view._cleanup_auto_refresh then
     pcall(panel_view._cleanup_auto_refresh)
-  end
-
-  -- Send didClose notifications for virtual buffers
-  -- Compute URIs on-demand since we don't store them anymore
-  local original_virtual_uri = session.compute_virtual_uri(diff.git_root, diff.original_revision, diff.original.relative)
-  local modified_virtual_uri = session.compute_virtual_uri(diff.git_root, diff.modified_revision, diff.modified.relative)
-
-  -- Get LSP clients from any valid buffer
-  local ref_bufnr = vim.api.nvim_buf_is_valid(diff.original_bufnr) and diff.original_bufnr or diff.modified_bufnr
-  local clients = vim.lsp.get_clients({ bufnr = ref_bufnr })
-
-  for _, client in ipairs(clients) do
-    if client.server_capabilities.semanticTokensProvider then
-      if original_virtual_uri then
-        pcall(compat.lsp_notify, client, "textDocument/didClose", {
-          textDocument = { uri = original_virtual_uri },
-        })
-      end
-      if modified_virtual_uri then
-        pcall(compat.lsp_notify, client, "textDocument/didClose", {
-          textDocument = { uri = modified_virtual_uri },
-        })
-      end
-    end
   end
 
   -- Delete virtual buffers if they're still valid

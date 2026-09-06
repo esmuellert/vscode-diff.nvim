@@ -21,7 +21,7 @@ https://github.com/user-attachments/assets/3c66a26d-5ff9-4dac-8035-a2f2b7bd2308
 - **Precise diffs:** See line and character changes in side-by-side or inline layouts.
 - **Focused navigation:** Move between files and hunks, fold unchanged code, and track moved blocks.
 - **Conflict resolution:** Resolve merge conflicts per block or across the whole file.
-- **Editor-native context:** Keep Tree-sitter and semantic highlighting in revision buffers.
+- **Editor-native context:** Keep Tree-sitter syntax highlighting in revision buffers.
 
 ## Installation
 
