@@ -154,6 +154,21 @@ local function win_view(w)
   return api.nvim_win_call(w, vim.fn.winsaveview)
 end
 
+local function changed_windows(event, first)
+  local changed = {}
+  for key in pairs(event or {}) do
+    local win = tonumber(key)
+    if win then
+      changed[win] = true
+    end
+  end
+  local first_win = tonumber(first)
+  if first_win then
+    changed[first_win] = true
+  end
+  return next(changed) and changed or nil
+end
+
 function Group:_valid_wins()
   local out = {}
   for _, w in ipairs(self.wins) do
@@ -173,15 +188,60 @@ function Group:_is_member(w)
   return false
 end
 
+function Group:_restore_scrolloff(w)
+  local saved = self.saved_scrolloff[w]
+  if saved == nil then
+    return
+  end
+  self.saved_scrolloff[w] = nil
+  if api.nvim_win_is_valid(w) then
+    api.nvim_set_option_value("scrolloff", saved, { win = w, scope = "local" })
+  end
+end
+
+function Group:_invalidate_pending_echo(w)
+  self.pending_echo_generation[w] = (self.pending_echo_generation[w] or 0) + 1
+  self.pending_echo[w] = nil
+end
+
+function Group:_mark_pending_echo(w)
+  local generation = (self.pending_echo_generation[w] or 0) + 1
+  self.pending_echo_generation[w] = generation
+  self.pending_echo[w] = true
+end
+
+-- A filler correction can emit another WinScrolled in the same redraw turn.
+-- Keep ownership of the follower until that turn has fully drained.
+function Group:_settle_pending_echo(w)
+  local generation = self.pending_echo_generation[w]
+  if not generation or not self.pending_echo[w] then
+    return
+  end
+  vim.schedule(function()
+    if self.active and self.pending_echo_generation[w] == generation then
+      self.pending_echo[w] = nil
+    end
+  end)
+end
+
 --- Rebuild the per-window fill tables from current buffer fillers. Call after
 --- the diff/fillers are re-rendered.
 function Group:refresh()
+  for w in pairs(self.saved_scrolloff) do
+    self:_restore_scrolloff(w)
+  end
   self.ft = {}
   for _, w in ipairs(self:_valid_wins()) do
     self.ft[w] = build_fill_table(api.nvim_win_get_buf(w))
   end
   -- Fill tables changed; stored fingerprints are stale.
   self.expected = {}
+  self.pending_echo = {}
+  -- Invalidate scheduled echo-settling callbacks without resetting their
+  -- generation numbers (which could let an old callback match a new echo).
+  for w, generation in pairs(self.pending_echo_generation) do
+    self.pending_echo_generation[w] = generation + 1
+  end
 end
 
 --- Align every window other than `leader` to `leader`'s virtual-row position.
@@ -196,6 +256,8 @@ function Group:_apply(leader, jump)
   if not ftl then
     return
   end
+  self:_invalidate_pending_echo(leader)
+  self:_restore_scrolloff(leader)
   local lv = win_view(leader)
   local vrow = view_to_vrow(ftl, lv.topline, lv.topfill)
   self.vrow = vrow
@@ -222,6 +284,7 @@ function Group:_apply(leader, jump)
         local delta = target_top_vrow - cur_top_vrow
 
         if delta ~= 0 then
+          self:_mark_pending_echo(w)
           if not jump then
             -- Relative scroll (<C-e>/<C-y>) preserves the grid_scroll
             -- optimization so the follower is not fully repainted.
@@ -235,8 +298,13 @@ function Group:_apply(leader, jump)
           -- scroll fell short (e.g. near the top/bottom of the buffer).
           local after = win_view(w)
           if jump or after.topline ~= target_tl or (after.topfill or 0) ~= target_tf then
+            local scrolloff = api.nvim_get_option_value("scrolloff", { win = w })
+            if scrolloff > 0 and self.saved_scrolloff[w] == nil then
+              self.saved_scrolloff[w] = api.nvim_get_option_value("scrolloff", { win = w, scope = "local" })
+              api.nvim_set_option_value("scrolloff", 0, { win = w, scope = "local" })
+            end
             api.nvim_win_call(w, function()
-              vim.fn.winrestview({ topline = target_tl, topfill = target_tf })
+              vim.fn.winrestview({ topline = target_tl, topfill = target_tf, lnum = target_tl })
             end)
           end
         end
@@ -244,6 +312,7 @@ function Group:_apply(leader, jump)
         -- Mirror horizontal scroll (leftcol) without disturbing the vertical view.
         local fv = win_view(w)
         if (fv.leftcol or 0) ~= leftcol then
+          self:_mark_pending_echo(w)
           api.nvim_win_call(w, function()
             local v = vim.fn.winsaveview()
             v.leftcol = leftcol
@@ -280,30 +349,49 @@ function Group:resync(leader)
 end
 
 --- Detect which member window the user actually scrolled by comparing each
---- window's current view against the fingerprint we last recorded. This catches
---- topfill-only scrolls and mouse scrolls of a non-focused window, and it
---- ignores the echo scroll events produced by our own winrestview (their
---- fingerprint matches `expected`).
-function Group:_detect_leader()
+--- changed window's current view against the fingerprint we last recorded. This
+--- catches topfill-only scrolls and mouse scrolls of a non-focused window while
+--- avoiding unrelated window events and pending follower redraw echoes.
+function Group:_detect_leader(changed)
   local cur = api.nvim_get_current_win()
   local candidate
   for _, w in ipairs(self:_valid_wins()) do
-    local fp = view_fp(win_view(w))
-    if fp ~= self.expected[w] then
-      if w == cur then
-        return w -- prefer the focused window when it moved
+    if not changed or changed[w] then
+      local fp = view_fp(win_view(w))
+      if fp ~= self.expected[w] then
+        if w == cur then
+          return w -- prefer the focused window when it moved
+        end
+        candidate = candidate or w
       end
-      candidate = candidate or w
     end
   end
   return candidate
 end
 
-function Group:_on_scroll()
-  if self.syncing or self.paused then
+function Group:_consume_pending_echoes(changed)
+  if not changed then
     return
   end
-  local leader = self:_detect_leader()
+  local current = api.nvim_get_current_win()
+  for w in pairs(changed) do
+    if w ~= current and self.pending_echo[w] then
+      self:_restore_scrolloff(w)
+      self.expected[w] = view_fp(win_view(w))
+      self:_settle_pending_echo(w)
+    end
+  end
+end
+
+function Group:_on_scroll(changed)
+  if self.syncing then
+    return
+  end
+  self:_consume_pending_echoes(changed)
+  if self.paused then
+    return
+  end
+  local leader = self:_detect_leader(changed)
   if not leader then
     return
   end
@@ -326,6 +414,9 @@ end
 function Group:resume()
   self.paused = false
   self:resync()
+  for w in pairs(self.saved_scrolloff) do
+    self:_restore_scrolloff(w)
+  end
 end
 
 --- Tear down: remove autocmds and mark inactive.
@@ -333,6 +424,9 @@ function Group:unbind()
   if self.augroup then
     pcall(api.nvim_del_augroup_by_id, self.augroup)
     self.augroup = nil
+  end
+  for w in pairs(self.saved_scrolloff) do
+    self:_restore_scrolloff(w)
   end
   self.active = false
 end
@@ -352,6 +446,9 @@ function M.bind(opts)
     wins = vim.deepcopy(opts.wins),
     ft = {},
     expected = {},
+    pending_echo = {},
+    pending_echo_generation = {},
+    saved_scrolloff = {},
     syncing = false,
     paused = false,
     active = true,
@@ -368,12 +465,12 @@ function M.bind(opts)
   self.augroup = api.nvim_create_augroup("codediff_scrollsync_" .. tostring(self):gsub("%W", ""), { clear = true })
   api.nvim_create_autocmd("WinScrolled", {
     group = self.augroup,
-    callback = function()
+    callback = function(args)
       if not self.active then
         return
       end
       -- Only react when a member window is involved.
-      self:_on_scroll()
+      self:_on_scroll(changed_windows(vim.v.event, args.match))
     end,
   })
   -- A height change alters the topfill clamp; re-align to stay consistent.
@@ -407,6 +504,7 @@ end
 -- Exposed for tests.
 M._internal = {
   build_fill_table = build_fill_table,
+  changed_windows = changed_windows,
   vrow_of_line = vrow_of_line,
   view_to_vrow = view_to_vrow,
   vrow_to_view = vrow_to_view,
