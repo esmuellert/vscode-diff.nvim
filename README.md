@@ -8,15 +8,7 @@ CodeDiff stays synchronized with a changing repository, so review can continue a
 
 <div align="center">
 
-![VSCode-style diff view showing side-by-side comparison with two-tier highlighting](https://github.com/user-attachments/assets/473ae319-40ac-40e4-958b-a0f2525d1f94)
-
-</div>
-
-<div align="center">
-
-https://github.com/user-attachments/assets/64c41f01-dffe-4318-bce4-16eec8de356e
-
-**Demo: Quick walkthrough of diff features**
+https://github.com/user-attachments/assets/3c66a26d-5ff9-4dac-8035-a2f2b7bd2308
 
 </div>
 
