@@ -266,6 +266,43 @@ describe("Command E2E (real dispatch + render)", function()
     assert.is_true(wait_for_visible("c1"))
   end)
 
+  it("visual line history works from an active diff buffer (#463)", function()
+    vim.cmd("CodeDiff --inline file " .. repo.path("a.txt") .. " " .. repo.path("file.txt"))
+    local diff_tab = wait_for_diff_text("line 2 CHANGED")
+    assert.is_not_nil(diff_tab, "inline diff should open")
+
+    local diff_session = lifecycle.get_session(diff_tab)
+    assert.is_not_nil(diff_session)
+    vim.api.nvim_set_current_tabpage(diff_tab)
+    vim.api.nvim_set_current_win(diff_session.modified_win)
+    local modified_buf = diff_session.modified_bufnr
+    vim.api.nvim_buf_set_mark(modified_buf, "<", 1, 0, {})
+    vim.api.nvim_buf_set_mark(modified_buf, ">", 2, 0, {})
+
+    vim.cmd("'<,'>CodeDiff history")
+
+    local history_tab
+    assert.is_true(
+      vim.wait(10000, function()
+        for _, tp in ipairs(session_tabs()) do
+          local session = lifecycle.get_session(tp)
+          if session.panel and session.panel.name == "history" then
+            history_tab = tp
+            return true
+          end
+        end
+        return false
+      end, 50),
+      "visual line history should open a history session"
+    )
+
+    local history_session = lifecycle.get_session(history_tab)
+    assert.is_not_nil(history_session.panel.view)
+    assert.are.same({ 1, 2 }, history_session.panel.view.opts.line_range)
+    assert.equals("file.txt", history_session.panel.view.opts.file_path)
+    assert.is_true(wait_for_visible("c1"), "history should show commits for the selected lines")
+  end)
+
   -- ── Layout flags (on a real-file diff) ────────────────────────────────────
 
   it(":CodeDiff --inline file <a> <b> — inline layout", function()

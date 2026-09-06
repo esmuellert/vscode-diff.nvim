@@ -300,15 +300,16 @@ function M.complete(arg_lead, cmd_line)
 end
 
 function M.vscode_diff(opts)
-  -- Toggle: close the diff view if the current tab already is one.
+  -- Toggle only when called without a subcommand. Commands such as
+  -- `:CodeDiff history` must remain dispatchable from an active diff tab.
+  local fargs, bang = opts.fargs or {}, opts.bang
   local current_tab = vim.api.nvim_get_current_tabpage()
-  if lifecycle.get_session(current_tab) then
+  if #fargs == 0 and lifecycle.get_session(current_tab) then
     lifecycle.close(current_tab)
     return
   end
 
   -- Normalize the `install!` alias into the `install` subcommand + bang.
-  local fargs, bang = opts.fargs, opts.bang
   if fargs[1] == "install!" then
     fargs = vim.list_slice(fargs, 1, #fargs)
     fargs[1] = "install"
