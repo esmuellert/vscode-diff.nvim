@@ -37,6 +37,11 @@ describe("scrollsync virtual-row mapping", function()
     assert.equals(6, internal.vrow_of_line(ft, 4))
   end)
 
+  it("collects changed window IDs from WinScrolled data", function()
+    assert.same({ [12] = true, [13] = true, [14] = true }, internal.changed_windows({ all = {}, ["12"] = {}, [13] = {} }, "14"))
+    assert.is_nil(internal.changed_windows({}, ""))
+  end)
+
   it("vrow_to_view is the inverse of view_to_vrow", function()
     local _, buf = make_win({ "a", "b", "c", "d", "e", "f" }, { { after = 3, count = 4 } })
     local ft = internal.build_fill_table(buf)
@@ -71,19 +76,20 @@ describe("scrollsync manager alignment", function()
     pcall(vim.cmd, "tabclose")
   end)
 
-  local function setup_pair()
-    -- left = "delete" side (30 real lines + a 30-filler block replaced), right normal
+  local function setup_pair(insert_count)
+    insert_count = insert_count or 30
+    -- left = "delete" side (30 real lines + a filler block), right normal
     local left = {}
     for i = 1, 60 do
       left[i] = string.format("C%03d", i)
     end
-    local win_left = make_win(left, { { after = 20, count = 30 } })
+    local win_left = make_win(left, { { after = 20, count = insert_count } })
     vim.cmd("rightbelow vsplit")
     local right = {}
     for i = 1, 20 do
       right[i] = string.format("C%03d", i)
     end
-    for k = 0, 29 do
+    for k = 0, insert_count - 1 do
       right[20 + k + 1] = string.format("I%03d", k)
     end
     for i = 21, 60 do
@@ -91,6 +97,26 @@ describe("scrollsync manager alignment", function()
     end
     local win_right = make_win(right, {})
     return win_left, win_right
+  end
+
+  local function set_view(win, topline, cursor_line)
+    vim.api.nvim_win_call(win, function()
+      vim.fn.winrestview({ topline = topline, lnum = cursor_line })
+    end)
+  end
+
+  local function fire_win_scrolled(group, win)
+    group:_on_scroll({ [win] = true })
+  end
+
+  local function setup_pending_follower_echo()
+    local follower, leader = setup_pair()
+    local group = scroll.bind(tab, { follower, leader })
+    vim.api.nvim_set_current_win(leader)
+    set_view(leader, 35, 40)
+    group:resync(leader)
+    group:_mark_pending_echo(follower)
+    return { group = group, leader = leader, follower = follower }
   end
 
   it("binds windows and keeps native scrollbind off", function()
@@ -179,6 +205,89 @@ describe("scrollsync manager alignment", function()
     -- Follower topline must be (weakly) monotonic while scrolling down; any
     -- large backwards jump would be the scrollbind oscillation.
     assert.is_true(max_backjump <= 1, "follower topline should not oscillate; max backward jump was " .. max_backjump)
+  end)
+
+  it("waits for the pending follower's own WinScrolled event", function()
+    local scenario = setup_pending_follower_echo()
+
+    fire_win_scrolled(scenario.group, scenario.leader)
+    assert.is_true(scenario.group.pending_echo[scenario.follower], "another window must not consume the follower's echo")
+
+    fire_win_scrolled(scenario.group, scenario.follower)
+    vim.wait(10)
+    assert.is_nil(scenario.group.pending_echo[scenario.follower], "the follower's own event must consume its echo")
+  end)
+
+  it("issue #518: ignores delayed follower corrections without blocking later user scroll", function()
+    local scenario = setup_pending_follower_echo()
+    local leader_before = view(scenario.leader)
+
+    vim.schedule(function()
+      set_view(scenario.follower, 10, 20)
+      fire_win_scrolled(scenario.group, scenario.follower)
+    end)
+    vim.wait(100, function()
+      return scenario.group.pending_echo[scenario.follower] == nil
+    end)
+
+    local leader_after_correction = view(scenario.leader)
+    assert.equals(leader_before.topline, leader_after_correction.topline, "delayed redraw must not move the leader")
+    assert.equals(leader_before.topfill, leader_after_correction.topfill, "delayed redraw must not change leader filler")
+
+    set_view(scenario.follower, 15, 25)
+    fire_win_scrolled(scenario.group, scenario.follower)
+    assert.not_equal(leader_before.topline, view(scenario.leader).topline, "later user scroll must still move the leader")
+  end)
+
+  it("keeps the active leader fixed when a follower redraw corrects its view", function()
+    local scenario = setup_pending_follower_echo()
+    local leader_before = view(scenario.leader)
+    local leader_cursor_before = vim.api.nvim_win_get_cursor(scenario.leader)
+    set_view(scenario.follower, 10, 20)
+
+    fire_win_scrolled(scenario.group, scenario.follower)
+
+    local leader_after = view(scenario.leader)
+    assert.equals(leader_before.topline, leader_after.topline, "follower redraw must not move the leader")
+    assert.equals(leader_before.topfill, leader_after.topfill, "follower redraw must not change the leader's filler offset")
+    assert.same(leader_cursor_before, vim.api.nvim_win_get_cursor(scenario.leader), "follower redraw must not move the leader cursor")
+  end)
+
+  it("keeps the follower on the aligned baseline after leaving a full-screen filler", function()
+    local follower, leader = setup_pair(214)
+    local group = scroll.bind(tab, { follower, leader })
+    vim.api.nvim_set_current_win(leader)
+    vim.wo[follower].scrolloff = 8
+    set_view(follower, 21, 21)
+    set_view(leader, 21, 25)
+    group:resync(leader)
+    fire_win_scrolled(group, follower)
+
+    set_view(leader, 20, 24)
+    fire_win_scrolled(group, leader)
+    local follower_view = view(follower)
+    local follower_cursor = vim.api.nvim_win_get_cursor(follower)[1]
+
+    assert.is_true(follower_cursor >= follower_view.topline, "the follower cursor must remain in the aligned view")
+    assert.equals(0, vim.wo[follower].scrolloff, "the follower view must remain stable until its redraw")
+    fire_win_scrolled(group, follower)
+    vim.cmd("redraw")
+    assert.equals(8, vim.wo[follower].scrolloff, "the follower's scrolloff must be restored after its redraw")
+    assert.equals(20, view(follower).topline, "the follower must not flash unrelated baseline text")
+  end)
+
+  it("treats a later non-focused follower scroll as user input", function()
+    local scenario = setup_pending_follower_echo()
+    fire_win_scrolled(scenario.group, scenario.follower)
+    vim.wait(10)
+    assert.is_nil(scenario.group.pending_echo[scenario.follower], "the programmatic echo must be consumed first")
+    local leader_before = view(scenario.leader)
+    set_view(scenario.follower, 10, 20)
+
+    fire_win_scrolled(scenario.group, scenario.follower)
+
+    local leader_after = view(scenario.leader)
+    assert.not_equal(leader_before.topline, leader_after.topline, "later user scrolling in the follower must move the leader")
   end)
 
   it("syncs three panes together (conflict/merge view)", function()
