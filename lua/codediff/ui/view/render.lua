@@ -6,6 +6,12 @@ local semantic = require("codediff.ui.semantic_tokens")
 local config = require("codediff.config")
 local diff_module = require("codediff.core.diff")
 
+local function clamp_cursor(win, position)
+  local bufnr = vim.api.nvim_win_get_buf(win)
+  local line_count = vim.api.nvim_buf_line_count(bufnr)
+  return { math.max(1, math.min(position[1], line_count)), position[2] or 0 }
+end
+
 --- Establish scroll synchronization between the two diff windows.
 --- Positions each pane's cursor on its own hunk line, then binds them with the
 --- structural virtual-row scroll-sync (see codediff.scrollsync) and aligns the
@@ -24,10 +30,10 @@ function M.establish_scrollbind(orig_win, mod_win, orig_buf, mod_buf, lines_diff
 
   -- Place cursors on their respective hunk lines (per-pane coordinates).
   if orig_cursor then
-    pcall(vim.api.nvim_win_set_cursor, orig_win, orig_cursor)
+    pcall(vim.api.nvim_win_set_cursor, orig_win, clamp_cursor(orig_win, orig_cursor))
   end
   if mod_cursor then
-    pcall(vim.api.nvim_win_set_cursor, mod_win, mod_cursor)
+    pcall(vim.api.nvim_win_set_cursor, mod_win, clamp_cursor(mod_win, mod_cursor))
   end
 
   -- Bind the two panes and align the original pane to the modified pane.
