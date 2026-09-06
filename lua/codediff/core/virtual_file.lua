@@ -1,7 +1,6 @@
 -- Virtual file scheme for git revisions
 -- Inspired by vim-fugitive's fugitive:// URL scheme
--- LSP attachment is prevented via LspAttach guard; semantic tokens
--- are handled separately via semantic_tokens.lua
+-- LSP attachment is prevented so revision buffers use Tree-sitter highlighting only.
 
 local M = {}
 
@@ -61,7 +60,7 @@ local function load_virtual_buffer_content(buf, git_root, commit, filepath)
       if ft then
         local lang = vim.treesitter.language.get_lang(ft) or ft
         if pcall(vim.treesitter.start, buf, lang) then
-          -- Store filetype for semantic_tokens without firing autocmds
+          -- Keep syntax fallback disabled when Tree-sitter is active.
           vim.bo[buf].syntax = ""
         else
           -- TreeSitter parser not available, fall back to syntax highlighting

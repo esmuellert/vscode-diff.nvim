@@ -44,14 +44,6 @@ Diff view scrolling behavior:
 
 **5 tests**
 
-### ✅ Semantic Tokens (render/semantic_tokens_spec.lua)
-LSP integration and rendering:
-- Module compatibility checks
-- Virtual file URL handling
-- Namespace management
-
-**12 tests**
-
 ## Running Tests
 
 ### All tests:

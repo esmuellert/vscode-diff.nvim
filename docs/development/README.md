@@ -36,7 +36,7 @@ Read everything in order to understand the complete development journey:
 
 1. [04-lua-features/git-integration.md](04-lua-features/git-integration.md) — Git revision comparison
 2. [04-lua-features/rendering-evolution.md](04-lua-features/rendering-evolution.md) — Filler lines, colors, extmark layering
-3. [04-lua-features/virtual-file-implementation.md](04-lua-features/virtual-file-implementation.md) — LSP semantic tokens via virtual files
+3. [04-lua-features/virtual-file-implementation.md](04-lua-features/virtual-file-implementation.md) — Tree-sitter highlighting via virtual files
 4. [04-lua-features/explorer-mode.md](04-lua-features/explorer-mode.md) — File sidebar with git status
 5. [05-architecture/auto-refresh-strategy.md](05-architecture/auto-refresh-strategy.md) — How VSCode refreshes diffs
 6. [05-architecture/async-diff-architecture.md](05-architecture/async-diff-architecture.md) — Non-blocking diff computation
@@ -75,7 +75,7 @@ docs/development/
 | Oct 28-29, 2025 | VSCode extraction tool, UTF-8/UTF-16 comprehensive fixes |
 | Oct 26, 2025 | Cross-platform compatibility (Windows MSVC support) |
 | Oct 27, 2025 | Lua integration: git revision diff, rendering improvements |
-| Nov 2025 | Virtual files, semantic tokens, auto-refresh, timeout fix, installer |
+| Nov 2025 | Virtual files, Tree-sitter highlighting, auto-refresh, timeout fix, installer |
 | Nov 12, 2025 | Explorer mode with file sidebar |
 | Dec 2025 | Merge tool alignment parity, architecture refactor planning |
 
