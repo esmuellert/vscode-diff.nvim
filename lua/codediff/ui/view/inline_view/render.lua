@@ -6,12 +6,7 @@ local config = require("codediff.config")
 local diff_module = require("codediff.core.diff")
 local inline = require("codediff.ui.inline")
 local semantic = require("codediff.ui.semantic_tokens")
-
-local function clamp_line(win, line)
-  local bufnr = vim.api.nvim_win_get_buf(win)
-  local line_count = vim.api.nvim_buf_line_count(bufnr)
-  return math.max(1, math.min(line, line_count))
-end
+local cursor_util = require("codediff.ui.view.cursor")
 
 function M.compute_and_render_inline(modified_buf, original_buf, original_lines, modified_lines, original_is_virtual, modified_is_virtual, modified_win, auto_scroll_to_first_hunk)
   local diff_options = {
@@ -51,7 +46,7 @@ function M.compute_and_render_inline(modified_buf, original_buf, original_lines,
       end
 
       local target_line = landing == "last" and lines_diff.changes[#lines_diff.changes].modified.start_line or lines_diff.changes[1].modified.start_line
-      target_line = clamp_line(modified_win, target_line)
+      target_line = cursor_util.clamp_window_line(modified_win, target_line)
       pcall(vim.api.nvim_win_set_cursor, modified_win, { target_line, 0 })
       vim.api.nvim_set_current_win(modified_win)
       vim.cmd("normal! zz")
