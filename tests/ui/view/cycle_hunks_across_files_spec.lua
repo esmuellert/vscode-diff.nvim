@@ -44,8 +44,12 @@ describe("cycle_hunks_across_files (#161)", function()
 
   local function has_expected_hunk_count(session, expected_count)
     local changes = session and session.stored_diff_result and session.stored_diff_result.changes
-    if not changes then return false end
-    if expected_count ~= nil then return #changes == expected_count end
+    if not changes then
+      return false
+    end
+    if expected_count ~= nil then
+      return #changes == expected_count
+    end
     return #changes > 0
   end
 
@@ -90,9 +94,7 @@ describe("cycle_hunks_across_files (#161)", function()
       local s = lifecycle.get_session(tabpage)
       local e = lifecycle.get_panel_view(tabpage)
       local session_path = s and s.modified.absolute ~= "" and s.modified.absolute or s and s.original.absolute
-      return session_path and e and e.current_file_path
-        and session_path:find(e.current_file_path, 1, true) ~= nil
-        and has_expected_hunk_count(s, expected_hunk_count)
+      return session_path and e and e.current_file_path and session_path:find(e.current_file_path, 1, true) ~= nil and has_expected_hunk_count(s, expected_hunk_count)
     end, 20)
   end
 
@@ -313,5 +315,34 @@ describe("cycle_hunks_across_files (#161)", function()
 
     local cursor_after = vim.api.nvim_win_get_cursor(new_session.modified_win)[1]
     assert.equal(last_modified, cursor_after, "cursor must land on the MODIFIED-side last-hunk line (" .. last_modified .. "), not the original-side (" .. last_original .. ")")
+  end)
+
+  it("issue #479: EOF deletions use the last valid line and cross-file cycling advances", function()
+    config.options.diff.cycle_hunks_across_files = true
+
+    -- The modified side ends immediately before the deletion hunk's raw start
+    -- line. The hunk is reported as modified [4, 4), while line 3 is the last
+    -- cursor position that exists in the buffer.
+    repo.write_file("a.txt", { "a1", "a2", "a3" })
+
+    local tabpage, session, explorer = open_explorer("a.txt", 1)
+    assert.is_not_nil(session)
+    assert.is_not_nil(explorer)
+    assert.equal(3, vim.api.nvim_win_get_cursor(session.modified_win)[1], "EOF deletion should land on the last valid modified line")
+
+    local first_file = explorer.current_file_path
+    nav.next_hunk()
+    assert.is_true(wait_for_file_switch(tabpage, first_file), "next hunk should advance past the EOF deletion")
+    assert.equal("b.txt", explorer.current_file_path)
+
+    local next_session = lifecycle.get_session(tabpage)
+    local first_hunk_line = next_session.stored_diff_result.changes[1].modified.start_line
+    assert.equal(first_hunk_line, vim.api.nvim_win_get_cursor(next_session.modified_win)[1])
+
+    nav.prev_hunk()
+    assert.is_true(wait_for_file_switch(tabpage, "b.txt"), "previous hunk should return to the EOF deletion")
+    local previous_session = lifecycle.get_session(tabpage)
+    assert.equal("a.txt", explorer.current_file_path)
+    assert.equal(3, vim.api.nvim_win_get_cursor(previous_session.modified_win)[1], "backward landing should clamp the EOF deletion")
   end)
 end)
